@@ -3,6 +3,7 @@ schema_version = 1
 [batch]
 name = "shipwreck"
 max_concurrency = 3
+output_root = "repaired"
 
 [[datasets]]
 id = "healthy"

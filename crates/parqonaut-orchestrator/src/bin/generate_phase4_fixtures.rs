@@ -35,10 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ("05-stale-source", write_stale_source(&root.join("05-stale-source"))?),
         ("06-corrupt-input", write_corrupt_input(&root.join("06-corrupt-input"))?),
         ("07-large-streaming", write_large_streaming(&root.join("07-large-streaming"))?),
-        (
-            "08-interrupt-resume",
-            write_interrupt_resume(&root.join("08-interrupt-resume"))?,
-        ),
+        ("08-interrupt-resume", write_interrupt_resume(&root.join("08-interrupt-resume"))?),
     ];
 
     println!("Phase 4 SHIPWRECK fixtures written under {}", root.display());
@@ -153,9 +150,7 @@ fn sensor_batch_int64_temp(schema: Arc<Schema>, rows: i32) -> RecordBatch {
         schema.clone(),
         vec![
             Arc::new(Int64Array::from_iter_values((0..rows).map(|v| v as i64))),
-            Arc::new(StringArray::from_iter_values(
-                (0..rows as usize).map(|i| format!("S{i:04}")),
-            )),
+            Arc::new(StringArray::from_iter_values((0..rows as usize).map(|i| format!("S{i:04}")))),
             Arc::new(Int32Array::from_iter_values((0..rows).map(|v| v * 10))),
         ],
     )
@@ -342,10 +337,7 @@ fn write_large_streaming(dir: &Path) -> Result<DatasetStats, Box<dyn std::error:
         )?;
     }
 
-    Ok(DatasetStats {
-        files: FILE_COUNT,
-        rows: TOTAL_ROWS,
-    })
+    Ok(DatasetStats { files: FILE_COUNT, rows: TOTAL_ROWS })
 }
 
 /// Medium safe-repair workload for deterministic interrupt/resume injection.
