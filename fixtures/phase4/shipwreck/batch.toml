@@ -1,0 +1,41 @@
+schema_version = 1
+
+[batch]
+name = "shipwreck"
+max_concurrency = 3
+
+[[datasets]]
+id = "healthy"
+path = "01-healthy"
+
+[[datasets]]
+id = "safe-repairs"
+path = "02-safe-repairs"
+policy = "../../phase3/policy.toml"
+
+[[datasets]]
+id = "schema-review"
+path = "03-schema-review"
+policy = "schema-review-policy.toml"
+
+[[datasets]]
+id = "blocked-schema"
+path = "04-blocked-schema"
+
+[[datasets]]
+id = "stale-source"
+path = "05-stale-source"
+
+[[datasets]]
+id = "corrupt-input"
+path = "06-corrupt-input"
+
+[[datasets]]
+id = "large-streaming"
+path = "07-large-streaming"
+policy = "../../phase3/policy.toml"
+
+[[datasets]]
+id = "interrupt-resume"
+path = "08-interrupt-resume"
+policy = "../../phase3/policy.toml"
