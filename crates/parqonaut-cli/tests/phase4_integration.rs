@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -6,6 +7,7 @@ use assert_cmd::cargo::cargo_bin_cmd;
 use parqonaut_orchestrator::BatchPlan;
 use predicates::prelude::PredicateBooleanExt;
 use serde_json::Value;
+use serial_test::serial;
 use tempfile::TempDir;
 
 fn repo_root() -> camino::Utf8PathBuf {
@@ -74,7 +76,32 @@ fn run_dir_for(out: &Path) -> PathBuf {
     fs::read_dir(out.join("repaired/.parqonaut/runs")).unwrap().next().unwrap().unwrap().path()
 }
 
+fn dataset_id_from_json(value: &Value) -> String {
+    value
+        .as_str()
+        .or_else(|| value.get("0").and_then(|v| v.as_str()))
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+fn terminal_state_map(dir: &Path) -> HashMap<String, String> {
+    let run_dir = run_dir_for(dir);
+    let status = Command::new(cargo_bin_cmd!("parqonaut").get_program())
+        .args(["batch", "status", "--run-dir", run_dir.to_str().unwrap(), "--json"])
+        .current_dir(repo_root().as_std_path())
+        .output()
+        .unwrap();
+    let json: Value = serde_json::from_slice(&status.stdout).unwrap();
+    json["datasets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| (dataset_id_from_json(&d["dataset_id"]), d["state"].as_str().unwrap().to_string()))
+        .collect()
+}
+
 #[test]
+#[serial]
 fn batch_check_and_collision_rejection() {
     generate_fixtures();
     run_batch(&["batch", "check", "--config", shipwreck_config().as_str()])
@@ -112,6 +139,7 @@ output = "shared"
 }
 
 #[test]
+#[serial]
 fn jobs_zero_rejected() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
@@ -122,6 +150,7 @@ fn jobs_zero_rejected() {
 }
 
 #[test]
+#[serial]
 fn jobs_equivalence() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
@@ -130,37 +159,22 @@ fn jobs_equivalence() {
     fs::create_dir_all(&out1).unwrap();
     fs::create_dir_all(&out2).unwrap();
 
+    let shared_plan = plan_and_rewrite(&tmp.path().join("shared-plan"));
     for (out, jobs) in [(&out1, "1"), (&out2, "4")] {
-        let plan_path = plan_and_rewrite(out);
+        let plan_path = out.join("batch-plan.json");
+        let mut plan: BatchPlan =
+            serde_json::from_str(&fs::read_to_string(&shared_plan).unwrap()).unwrap();
+        rewrite_plan_outputs(&mut plan, out);
+        fs::write(&plan_path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
         run_batch(&["batch", "repair", "--plan", plan_path.to_str().unwrap(), "--jobs", jobs])
             .code(2);
     }
 
-    let terminal_states = |dir: &Path| -> Vec<String> {
-        let run_dir = run_dir_for(dir);
-        let status = Command::new(cargo_bin_cmd!("parqonaut").get_program())
-            .args(["batch", "status", "--run-dir", run_dir.to_str().unwrap(), "--json"])
-            .current_dir(repo_root().as_std_path())
-            .output()
-            .unwrap();
-        let json: Value = serde_json::from_slice(&status.stdout).unwrap();
-        json["datasets"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|d| format!("{}:{:?}", d["dataset_id"], d["state"]))
-            .collect()
-    };
-
-    let s1 = terminal_states(&out1);
-    let s4 = terminal_states(&out2);
-    assert_eq!(s1.len(), s4.len());
-    for ds in &s1 {
-        assert!(s4.contains(ds), "jobs=4 missing state {ds}");
-    }
+    assert_eq!(terminal_state_map(&out1), terminal_state_map(&out2));
 }
 
 #[tokio::test]
+#[serial]
 async fn interrupt_resume_and_idempotent_second_resume() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
@@ -190,6 +204,7 @@ async fn interrupt_resume_and_idempotent_second_resume() {
 }
 
 #[test]
+#[serial]
 fn stale_plan_rejected_on_resume() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
@@ -223,6 +238,7 @@ fn stale_plan_rejected_on_resume() {
 }
 
 #[test]
+#[serial]
 fn stale_source_rejected_at_execution() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
@@ -292,6 +308,7 @@ path = "stale-src"
 }
 
 #[test]
+#[serial]
 fn dry_run_has_no_persistent_side_effects() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
@@ -326,6 +343,7 @@ fn dry_run_has_no_persistent_side_effects() {
 }
 
 #[test]
+#[serial]
 fn dry_run_resume_has_no_journal_mutation() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
@@ -353,6 +371,7 @@ fn dry_run_resume_has_no_journal_mutation() {
 }
 
 #[test]
+#[serial]
 fn concurrent_destination_lock_rejection() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
@@ -388,6 +407,7 @@ fn concurrent_destination_lock_rejection() {
 }
 
 #[test]
+#[serial]
 fn status_and_verify_from_persisted_journal() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
@@ -434,6 +454,7 @@ fn status_and_verify_from_persisted_journal() {
 }
 
 #[test]
+#[serial]
 fn batch_plan_deterministic_serialization() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
