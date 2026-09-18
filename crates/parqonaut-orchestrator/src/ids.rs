@@ -24,6 +24,12 @@ impl RunId {
     }
 }
 
+impl Default for RunId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// User-declared dataset identifier within a batch config.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

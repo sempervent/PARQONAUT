@@ -44,4 +44,16 @@ pub enum OrchestratorError {
 
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("batch plan identity mismatch: {field} expected `{expected}` found `{found}`")]
+    PlanIdentityMismatch { field: String, expected: String, found: String },
+
+    #[error("run already completed; resume is a no-op")]
+    RunAlreadyCompleted,
+
+    #[error("batch run cancelled")]
+    Cancelled,
+
+    #[error("state transition error: {0}")]
+    State(#[from] crate::state::StateTransitionError),
 }

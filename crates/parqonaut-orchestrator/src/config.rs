@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
-use std::fs;
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use std::fs;
 
 use crate::error::OrchestratorError;
 use crate::ids::DatasetId;
@@ -21,6 +21,9 @@ pub struct BatchSection {
     pub name: String,
     #[serde(default = "default_concurrency")]
     pub max_concurrency: u32,
+    /// Root directory for repaired dataset outputs (relative to batch.toml unless absolute).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_root: Option<Utf8PathBuf>,
 }
 
 fn default_concurrency() -> u32 {
@@ -37,6 +40,9 @@ pub struct DatasetConfig {
     pub target_schema: Option<Utf8PathBuf>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub authorize: Vec<String>,
+    /// Output subdirectory under `batch.output_root` (defaults to dataset `id`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<Utf8PathBuf>,
 }
 
 impl BatchConfig {
@@ -46,8 +52,8 @@ impl BatchConfig {
     }
 
     pub fn from_toml(raw: &str) -> Result<Self, OrchestratorError> {
-        let cfg: Self = toml::from_str(raw)
-            .map_err(|e| OrchestratorError::InvalidConfig(e.to_string()))?;
+        let cfg: Self =
+            toml::from_str(raw).map_err(|e| OrchestratorError::InvalidConfig(e.to_string()))?;
         cfg.validate()?;
         Ok(cfg)
     }
@@ -88,9 +94,24 @@ impl BatchConfig {
         DatasetId(id.to_string())
     }
 
-    pub fn resolve_policy(&self, ds: &DatasetConfig) -> Result<EffectivePolicy, OrchestratorError> {
+    pub fn resolve_path(base: &Utf8Path, path: &Utf8Path) -> Utf8PathBuf {
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            base.join(path)
+        }
+    }
+
+    pub fn resolve_policy(
+        &self,
+        base: &Utf8Path,
+        ds: &DatasetConfig,
+    ) -> Result<EffectivePolicy, OrchestratorError> {
         let toml = match &ds.policy {
-            Some(p) => Some(fs::read_to_string(p.as_std_path())?),
+            Some(p) => {
+                let path = Self::resolve_path(base, p);
+                Some(fs::read_to_string(path.as_std_path())?)
+            }
             None => None,
         };
         EffectivePolicy::from_toml(toml.as_deref())
@@ -99,16 +120,21 @@ impl BatchConfig {
 
     pub fn resolve_target_schema(
         &self,
+        base: &Utf8Path,
         ds: &DatasetConfig,
     ) -> Result<Option<Vec<parqonaut_repair::FieldDescriptor>>, OrchestratorError> {
         let Some(path) = &ds.target_schema else {
             return Ok(None);
         };
+        let path = Self::resolve_path(base, path);
         let bytes = fs::read(path.as_std_path())?;
         Ok(Some(serde_json::from_slice(&bytes)?))
     }
 
-    pub fn canonicalize_path(base: &Utf8Path, path: &Utf8Path) -> Result<Utf8PathBuf, OrchestratorError> {
+    pub fn canonicalize_path(
+        base: &Utf8Path,
+        path: &Utf8Path,
+    ) -> Result<Utf8PathBuf, OrchestratorError> {
         if path.is_absolute() {
             return Ok(path.to_path_buf());
         }

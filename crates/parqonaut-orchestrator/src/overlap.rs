@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use camino::{Utf8Path, Utf8PathBuf};
 
 use crate::error::OrchestratorError;
@@ -62,37 +60,24 @@ fn cross_overlap_detail(left: &BatchPathSpec, right: &BatchPathSpec) -> Option<S
         if paths_overlap(left_path, right_path) {
             return Some(format!(
                 "datasets `{}` and `{}`: {} `{}` overlaps {} `{}`",
-                left.dataset_id.0,
-                right.dataset_id.0,
-                left_kind,
-                left_path,
-                right_kind,
-                right_path
+                left.dataset_id.0, right.dataset_id.0, left_kind, left_path, right_kind, right_path
             ));
         }
     }
     None
 }
 
-/// Validate path safety for a batch plan and its per-dataset output destinations.
-pub fn validate_batch_plan(
-    plan: &BatchPlan,
-    outputs: &HashMap<DatasetId, Utf8PathBuf>,
-) -> Result<(), OrchestratorError> {
-    let mut specs = Vec::with_capacity(plan.datasets.len());
-    for ds in &plan.datasets {
-        let output = outputs.get(&ds.dataset_id).ok_or_else(|| {
-            OrchestratorError::InvalidConfig(format!(
-                "missing output path for dataset `{}`",
-                ds.dataset_id.0
-            ))
-        })?;
-        specs.push(BatchPathSpec {
+/// Validate path safety for a batch plan using embedded output paths.
+pub fn validate_batch_plan(plan: &BatchPlan) -> Result<(), OrchestratorError> {
+    let specs: Vec<BatchPathSpec> = plan
+        .datasets
+        .iter()
+        .map(|ds| BatchPathSpec {
             dataset_id: ds.dataset_id.clone(),
             source: Utf8PathBuf::from(&ds.source_path),
-            output: output.clone(),
-        });
-    }
+            output: Utf8PathBuf::from(&ds.output_path),
+        })
+        .collect();
     validate_batch_overlap(&specs)
 }
 
