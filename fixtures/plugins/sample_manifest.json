@@ -1,0 +1,13 @@
+{
+  "name": "example_rules",
+  "version": "0.1.0",
+  "entrypoint": "paraclete_plugins.examples:run",
+  "capabilities": {
+    "supported_formats": ["parquet", "csv"],
+    "supported_phases": ["post_inventory", "post_rules"],
+    "tags": ["example"]
+  },
+  "metadata": {
+    "author": "paraclete"
+  }
+}

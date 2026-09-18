@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/paraclete-types",
+    "crates/paraclete-core",
+    "crates/paraclete-report",
+    "crates/paraclete-plugin-protocol",
+    "crates/paraclete-store",
+    "crates/paraclete-service",
+    "crates/parqonaut-transform",
+    "crates/parqonaut-stream",
+    "crates/parqonaut-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Joshua Grant"]
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+schemars = { version = "0.8", features = ["chrono", "url", "uuid1"] }
+chrono = { version = "0.4.44", features = ["serde"] }
+camino = { version = "1.1", features = ["serde1"] }
+url = { version = "2.5", features = ["serde"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+walkdir = "2.5"
+parquet = "53"
+paraclete-types = { path = "crates/paraclete-types" }
+paraclete-plugin-protocol = { path = "crates/paraclete-plugin-protocol" }
+sqlx = { version = "0.8.3", features = ["runtime-tokio", "sqlite", "postgres", "migrate", "uuid", "chrono"] }
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros"] }
+axum = { version = "0.8", features = ["macros", "json"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["compression-full", "trace", "timeout"] }
+utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono", "url"] }
+http-body-util = "0.1"
+urlencoding = "2.1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+clap = { version = "4.5", features = ["derive", "env", "string"] }
+comfy-table = "7.1"

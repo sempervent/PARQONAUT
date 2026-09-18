@@ -1,0 +1,19 @@
+{
+  "run_a": "00000000-0000-4000-8000-000000000001",
+  "run_b": "00000000-0000-4000-8000-000000000002",
+  "findings": {
+    "added": ["digest_added_1"],
+    "removed": ["digest_removed_1"]
+  },
+  "datasets_added": ["ds_new"],
+  "datasets_removed": ["ds_old"],
+  "summary_delta": {
+    "discovered_assets_delta": 2,
+    "inspected_assets_delta": -1,
+    "failed_inspection_assets_delta": 0,
+    "skipped_inspection_assets_delta": 0,
+    "dataset_member_assets_delta": 1,
+    "dataset_count_delta": 0,
+    "findings_total_delta": 3
+  }
+}

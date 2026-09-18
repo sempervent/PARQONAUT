@@ -1,0 +1,38 @@
+use crate::error::{ParqknifeError, Result};
+use crate::spec::types::Spec;
+use std::path::Path;
+
+pub fn parse_spec<P: AsRef<Path>>(path: P) -> Result<Spec> {
+    let path_ref = path.as_ref();
+    let content = std::fs::read_to_string(path_ref)?;
+    let ext = path_ref.extension().and_then(|s| s.to_str());
+
+    match ext {
+        Some("yaml") | Some("yml") => serde_yaml::from_str(&content)
+            .map_err(|e| ParqknifeError::SpecError(format!("YAML parse error: {}", e))),
+        Some("json") => serde_json::from_str(&content)
+            .map_err(|e| ParqknifeError::SpecError(format!("JSON parse error: {}", e))),
+        _ => Err(ParqknifeError::SpecError(
+            "Spec file must have .yaml, .yml, or .json extension".to_string(),
+        )),
+    }
+}
+
+pub fn merge_spec_with_cli(spec: Spec, cli_overrides: Spec) -> Spec {
+    // CLI values override spec values
+    Spec {
+        input: cli_overrides.input.or(spec.input),
+        output: cli_overrides.output.or(spec.output),
+        steps: if cli_overrides.steps.is_empty() { spec.steps } else { cli_overrides.steps },
+        options: Options {
+            concurrency: cli_overrides.options.concurrency.max(spec.options.concurrency),
+            batch_rows: cli_overrides.options.batch_rows.or(spec.options.batch_rows),
+            batch_bytes: cli_overrides.options.batch_bytes.or(spec.options.batch_bytes),
+            fail_fast: cli_overrides.options.fail_fast || spec.options.fail_fast,
+            atomic: cli_overrides.options.atomic || spec.options.atomic,
+            overwrite: cli_overrides.options.overwrite || spec.options.overwrite,
+        },
+    }
+}
+
+use crate::spec::types::Options;

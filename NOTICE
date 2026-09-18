@@ -1,0 +1,19 @@
+PARQONAUT
+Copyright (c) 2026 Joshua Grant
+
+This product consolidates software from:
+
+  Paraclete
+    Copyright (c) 2026 Joshua Grant
+    License: MIT (see LICENSE)
+
+  streaming-parquet (maw)
+    Copyright (c) 2025 Joshua Grant
+    License: MIT (see LICENSE)
+
+  parqknife (parqonaut-transform crate)
+    Authors: parqknife contributors (per upstream Cargo.toml)
+    License: MIT OR Apache-2.0 (see crates/parqonaut-transform/Cargo.toml)
+    Apache-2.0 text: LICENSE-APACHE-2.0
+
+See THIRD_PARTY_LICENSES.md and docs/provenance.md for import details and source commit SHAs.

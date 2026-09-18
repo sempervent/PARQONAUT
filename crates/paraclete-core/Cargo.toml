@@ -1,0 +1,22 @@
+[package]
+name = "paraclete-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Engine boundary traits and scan orchestration skeleton for Paraclete."
+
+[dependencies]
+paraclete-types.workspace = true
+paraclete-plugin-protocol.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+camino.workspace = true
+parquet.workspace = true
+walkdir.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "paraclete-report"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Report serialization, validation, and human-readable render stubs."
+
+[dependencies]
+paraclete-types.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+camino.workspace = true

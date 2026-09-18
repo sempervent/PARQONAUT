@@ -1,0 +1,17 @@
+[package]
+name = "paraclete-plugin-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Rust-side contracts for the Python plugin execution boundary."
+
+[dependencies]
+paraclete-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+schemars.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -1,0 +1,32 @@
+[package]
+name = "parqonaut-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Unified PARQONAUT CLI — scan, transform, stream"
+
+[[bin]]
+name = "parqonaut"
+path = "src/main.rs"
+
+[dependencies]
+paraclete-core = { path = "../paraclete-core" }
+paraclete-types = { path = "../paraclete-types" }
+parqonaut-transform = { path = "../parqonaut-transform" }
+parqonaut-stream = { path = "../parqonaut-stream" }
+clap.workspace = true
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+camino.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+parquet = "54"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+arrow = "54"
+parquet = { version = "54", features = ["arrow"] }
