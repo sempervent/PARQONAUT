@@ -6,7 +6,7 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 
 It consolidates [Paraclete](https://github.com/sempervent/paraclete), [parqknife](https://github.com/sempervent/parqknife), and [streaming-parquet (maw)](https://github.com/sempervent/streaming-parquet) into one workspace. See [docs/provenance.md](docs/provenance.md) for migration sources.
 
-## What works today (v0.1.0)
+## What works today
 
 | Command | Engine | Description |
 |---------|--------|-------------|
@@ -14,6 +14,12 @@ It consolidates [Paraclete](https://github.com/sempervent/paraclete), [parqknife
 | `parqonaut inspect <file>` | parqknife | Parquet schema and row-group metadata |
 | `parqonaut rewrite <in> <out> [--compression zstd]` | parqknife | Rewrite Parquet with optional recompression |
 | `parqonaut convert <inputs...> -o <out>` | maw | Stream CSV → Parquet (or concatenate CSV) |
+| `parqonaut doctor <path>` | repair | Scan → diagnose → plan (optional `--repair`) |
+| `parqonaut plan <path> [--policy policy.toml]` | repair | Generate durable repair plan JSON |
+| `parqonaut repair <path> --plan plan.json --output out/` | repair | Execute plan; `--authorize <op_id>` for ReviewRequired |
+| `parqonaut verify before/ after/ [--manifest manifest.json]` | repair | Verify invariants and optional manifest |
+| `parqonaut check <path> [--policy ci-policy.toml]` | repair | CI gate (non-mutating; exit codes 0/2/3/4/5) |
+| `parqonaut plan diff plan-a.json plan-b.json` | repair | Compare plans for review/CI |
 
 ### Predecessor contributions
 
@@ -73,6 +79,14 @@ just demo
 
 This creates a temporary CSV, converts it to Parquet, scans it, rewrites with zstd compression, and rescans with JSON output.
 
+### Phase 3 schema reconciliation demo
+
+```bash
+just phase3-demo
+```
+
+Runs the FRANKENLAKE v2 laboratory: diagnose → plan → partial repair → authorized schema repair → verify → CI check. See [docs/phase-3.md](docs/phase-3.md).
+
 ## Not yet implemented
 
 These are intentionally **not** available in v0.1.0:
@@ -89,6 +103,10 @@ See [CHANGELOG.md](CHANGELOG.md) for the v0.1.0 release notes.
 ## Documentation
 
 - [Architecture](docs/architecture.md)
+- [Phase 3 — schema reconciliation](docs/phase-3.md)
+- [Schema reconciliation policy](docs/schema-reconciliation.md)
+- [Repair plan contract](docs/plan-contract.md)
+- [CI policy / check command](docs/ci-policy.md)
 - [Migration analysis](docs/migration-analysis.md)
 - [Provenance](docs/provenance.md)
 - [Third-party licenses](THIRD_PARTY_LICENSES.md)
