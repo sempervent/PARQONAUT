@@ -80,6 +80,70 @@ phase3-demo:
     cargo run -p parqonaut-cli -- check target/frankenlake-v2-repaired \
         --policy fixtures/phase3/ci-policy.toml || test $? -eq 4
 
+phase4-fixtures:
+    cargo run -p parqonaut-orchestrator --bin generate-phase4-fixtures -- fixtures/phase4/shipwreck
+
+phase4-demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just phase4-fixtures
+    rm -rf target/phase4-shipwreck-out
+    echo "=== batch check (SHIPWRECK includes intentionally bad datasets) ==="
+    cargo run -p parqonaut-cli -- batch check --config fixtures/phase4/shipwreck/batch.toml || test $? -eq 1
+    echo "=== batch plan ==="
+    cargo run -p parqonaut-cli -- batch plan --config fixtures/phase4/shipwreck/batch.toml \
+        --output target/shipwreck.batch-plan.json
+    python3 - <<'PY'
+    import json, pathlib
+    plan = json.load(open("target/shipwreck.batch-plan.json"))
+    out = pathlib.Path("target/phase4-shipwreck-out").resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    plan["output_root"] = str(out / "repaired")
+    for ds in plan["datasets"]:
+        ds_id = ds["dataset_id"]["0"] if isinstance(ds["dataset_id"], dict) else ds["dataset_id"]
+        ds["output_path"] = str(out / "repaired" / ds_id)
+    json.dump(plan, open("target/shipwreck.batch-plan.json", "w"), indent=2)
+    PY
+    echo "=== batch repair ==="
+    cargo run -p parqonaut-cli -- batch repair --plan target/shipwreck.batch-plan.json --jobs 2 || test $? -eq 2
+    run_dir=$(find target/phase4-shipwreck-out/repaired/.parqonaut/runs -mindepth 1 -maxdepth 1 -type d | head -1)
+    echo "=== batch status ==="
+    cargo run -p parqonaut-cli -- batch status --run-dir "$run_dir"
+    echo "=== batch verify ==="
+    cargo run -p parqonaut-cli -- batch verify --run-dir "$run_dir" || true
+    echo "=== aggregate report ==="
+    test -f "$run_dir/report.json"
+    head -40 "$run_dir/report.json"
+
+phase4-resume-demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just phase4-fixtures
+    rm -rf target/phase4-resume-out
+    cargo run -p parqonaut-cli -- batch plan --config fixtures/phase4/shipwreck/batch.toml \
+        --output target/shipwreck-resume.plan.json
+    python3 - <<'PY'
+    import json, pathlib
+    plan = json.load(open("target/shipwreck-resume.plan.json"))
+    out = pathlib.Path("target/phase4-resume-out").resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    plan["output_root"] = str(out / "repaired")
+    for ds in plan["datasets"]:
+        ds_id = ds["dataset_id"]["0"] if isinstance(ds["dataset_id"], dict) else ds["dataset_id"]
+        ds["output_path"] = str(out / "repaired" / ds_id)
+    json.dump(plan, open("target/shipwreck-resume.plan.json", "w"), indent=2)
+    PY
+    echo "=== start (interrupt after 2 datasets) ==="
+    cargo run -p parqonaut-cli -- batch repair --plan target/shipwreck-resume.plan.json \
+        --jobs 1 --interrupt-after 2 || test $? -eq 130
+    run_dir=$(find target/phase4-resume-out/repaired/.parqonaut/runs -mindepth 1 -maxdepth 1 -type d | head -1)
+    echo "=== status after interrupt ==="
+    cargo run -p parqonaut-cli -- batch status --run-dir "$run_dir"
+    echo "=== resume ==="
+    cargo run -p parqonaut-cli -- batch resume --run-dir "$run_dir" --jobs 1 || test $? -eq 2
+    echo "=== verify ==="
+    cargo run -p parqonaut-cli -- batch verify --run-dir "$run_dir" || true
+
 demo:
     #!/usr/bin/env bash
     set -euo pipefail

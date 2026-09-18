@@ -24,7 +24,7 @@ mod safety;
 mod schema;
 mod schema_policy;
 mod schema_rules;
-mod stable_id;
+pub mod stable_id;
 mod verify;
 
 pub mod fmt;
@@ -54,4 +54,5 @@ pub use schema::{
     SchemaDiff, SchemaDifferenceKind, SchemaResolution, UnresolvableSchemaConflict,
 };
 pub use schema_policy::{CiPolicy, EffectivePolicy, FilePolicy, SchemaPolicy};
+pub use stable_id::{canonical_json, stable_hex_id};
 pub use verify::{scan_directory, verify_repair, VerificationOutcome, VerificationReport};

@@ -8,6 +8,41 @@ fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures").join(name)
 }
 
+fn data_fixture(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data").join(name)
+}
+
+#[test]
+fn scan_dummy_parquet_data_fixture() {
+    let path = data_fixture("dummy.parquet");
+    assert!(path.exists(), "missing committed data fixture: {}", path.display());
+    Command::cargo_bin("parqonaut")
+        .unwrap()
+        .args(["scan", path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Scan complete"));
+}
+
+#[test]
+fn inspect_dummy_parquet_data_fixture() {
+    let path = data_fixture("dummy.parquet");
+    Command::cargo_bin("parqonaut")
+        .unwrap()
+        .args(["inspect", path.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("region"));
+}
+
+#[test]
+fn dummy_parquet_has_expected_row_count() {
+    let path = data_fixture("dummy.parquet");
+    let file = fs::File::open(&path).unwrap();
+    let reader = ParquetRecordBatchReaderBuilder::try_new(file).unwrap();
+    assert_eq!(reader.metadata().file_metadata().num_rows(), 100_000);
+}
+
 #[test]
 fn scan_parquet_fixture() {
     let path = fixture("phase1/single_parquet/data.parquet");

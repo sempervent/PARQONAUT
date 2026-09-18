@@ -1,0 +1,5 @@
+[schema]
+allow_numeric_widening = true
+allow_nullable_widening = true
+allow_column_reorder = true
+allow_missing_nullable_columns = false

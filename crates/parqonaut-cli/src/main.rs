@@ -1,3 +1,4 @@
+mod batch;
 mod repair;
 mod scan;
 mod stream;
@@ -101,6 +102,11 @@ enum Command {
         #[arg(long = "authorize")]
         authorize: Vec<String>,
     },
+    /// Multi-dataset batch orchestration (Phase 4)
+    Batch {
+        #[command(subcommand)]
+        command: BatchCommand,
+    },
     /// Stream-convert CSV/Parquet inputs (maw engine)
     Convert {
         /// Input file(s), directories, or globs
@@ -121,6 +127,52 @@ enum Command {
     },
 }
 
+#[derive(Subcommand, Debug)]
+enum BatchCommand {
+    /// Validate batch configuration without executing
+    Check {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Produce a durable batch plan
+    Plan {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Execute an approved batch plan
+    Repair {
+        #[arg(long)]
+        plan: PathBuf,
+        #[arg(long)]
+        jobs: Option<u32>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, hide = true, help = "Stop after N successful datasets (demo/tests)")]
+        interrupt_after: Option<usize>,
+    },
+    /// Read run journal status
+    Status {
+        #[arg(long)]
+        run_dir: PathBuf,
+    },
+    /// Resume an interrupted batch run
+    Resume {
+        #[arg(long)]
+        run_dir: PathBuf,
+        #[arg(long)]
+        jobs: Option<u32>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Verify batch outputs against the plan
+    Verify {
+        #[arg(long)]
+        run_dir: PathBuf,
+    },
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -130,8 +182,13 @@ async fn main() {
         .init();
 
     let cli = Cli::parse();
+    let json_output = cli.json;
     if let Err(e) = run(cli).await {
-        eprintln!("error: {e}");
+        if json_output {
+            eprintln!("{}", serde_json::json!({ "ok": false, "error": e.to_string() }));
+        } else {
+            eprintln!("error: {e}");
+        }
         std::process::exit(1);
     }
 }
@@ -179,6 +236,20 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             let policy_toml = policy.map(std::fs::read_to_string).transpose()?;
             repair::run_doctor(path, policy_toml, repair, output, authorize, cli.json).await?;
         }
+        Command::Batch { command } => match command {
+            BatchCommand::Check { config } => batch::run_check(config, cli.json).await?,
+            BatchCommand::Plan { config, output } => {
+                batch::run_plan(config, output, cli.json).await?
+            }
+            BatchCommand::Repair { plan, jobs, dry_run, interrupt_after } => {
+                batch::run_repair(plan, jobs, dry_run, cli.json, interrupt_after).await?
+            }
+            BatchCommand::Status { run_dir } => batch::run_status(run_dir, cli.json).await?,
+            BatchCommand::Resume { run_dir, jobs, dry_run } => {
+                batch::run_resume(run_dir, jobs, dry_run, cli.json).await?
+            }
+            BatchCommand::Verify { run_dir } => batch::run_verify(run_dir, cli.json).await?,
+        },
         Command::Convert { inputs, out, out_format, compression, zstd_level, plan, dry_run } => {
             stream::run_convert(inputs, out, out_format, compression, zstd_level, plan, dry_run)
                 .await?;
