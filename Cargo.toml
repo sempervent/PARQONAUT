@@ -9,6 +9,7 @@ members = [
     "crates/paraclete-service",
     "crates/parqonaut-transform",
     "crates/parqonaut-stream",
+    "crates/parqonaut-repair",
     "crates/parqonaut-cli",
 ]
 
