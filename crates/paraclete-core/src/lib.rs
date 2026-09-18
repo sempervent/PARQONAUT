@@ -23,6 +23,7 @@ mod scan_engine;
 mod shallow_inspect;
 mod target_resolution;
 
+pub use dataset_infer::parquet_schema_signature;
 pub use dataset_inspector::DatasetInspector;
 pub use error::CoreError;
 pub use format_detection::{classify_format_from_path, ExtensionFormatDetector, FormatDetector};
