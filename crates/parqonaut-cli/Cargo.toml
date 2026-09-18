@@ -16,8 +16,10 @@ paraclete-types = { path = "../paraclete-types" }
 parqonaut-transform = { path = "../parqonaut-transform" }
 parqonaut-stream = { path = "../parqonaut-stream" }
 parqonaut-repair = { path = "../parqonaut-repair" }
+parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
 clap.workspace = true
-tokio = { version = "1.43", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "signal"] }
+serde = { workspace = true, features = ["derive"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 camino.workspace = true
@@ -29,6 +31,10 @@ parquet = "54"
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
+parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros"] }
 walkdir = "2.5"
 arrow = "54"
 parquet = { version = "54", features = ["arrow"] }
