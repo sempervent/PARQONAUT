@@ -15,6 +15,7 @@ paraclete-core = { path = "../paraclete-core" }
 paraclete-types = { path = "../paraclete-types" }
 parqonaut-transform = { path = "../parqonaut-transform" }
 parqonaut-stream = { path = "../parqonaut-stream" }
+parqonaut-repair = { path = "../parqonaut-repair" }
 clap.workspace = true
 tokio = { version = "1.43", features = ["rt-multi-thread", "macros"] }
 tracing.workspace = true
@@ -28,5 +29,6 @@ parquet = "54"
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
+walkdir = "2.5"
 arrow = "54"
 parquet = { version = "54", features = ["arrow"] }

@@ -13,6 +13,7 @@ pub mod output;
 pub mod spec;
 
 pub use engine::*;
+pub use engine::{merge_parquet_files, rewrite_parquet_file};
 pub use error::*;
 pub use io::*;
 pub use output::*;

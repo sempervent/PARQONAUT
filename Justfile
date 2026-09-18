@@ -29,6 +29,9 @@ docs:
 
 ci: fmt-check lint test
 
+phase2-fixtures:
+    cargo run -p parqonaut-repair --bin generate-phase2-fixtures -- fixtures/phase2
+
 demo:
     #!/usr/bin/env bash
     set -euo pipefail

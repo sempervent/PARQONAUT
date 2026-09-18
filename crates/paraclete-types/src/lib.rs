@@ -36,6 +36,7 @@ pub use finding::{
     FindingFingerprint, FindingLocation, FindingSeverity, FingerprintAlgorithm, Recommendation,
 };
 pub use finding_code::{system, FindingCode, FindingCodeError};
+pub use fingerprint::sort_json_value;
 pub use format::{DataFormat, FormatSupportTier};
 pub use job::{JobErrorCode, JobId, JobResultRef, JobStatus};
 pub use job_recovery::JobRecoveryPolicy;

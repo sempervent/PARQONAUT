@@ -1,5 +1,6 @@
 //! Parquet footer inspection (metadata only; no row reads in Phase 1).
 
+use std::collections::BTreeSet;
 use std::fs::File;
 
 use camino::Utf8Path;
@@ -27,6 +28,8 @@ pub struct ParquetInspection {
     pub row_groups: Vec<RowGroupSummary>,
     pub schema: SchemaSnapshot,
     pub created_by: Option<String>,
+    /// Distinct compression codecs observed on column chunks (uppercase labels).
+    pub compression_codecs: BTreeSet<String>,
 }
 
 /// Reads Parquet footer metadata for a UTF-8 path.
@@ -48,6 +51,13 @@ pub fn inspect_parquet_file(path: &Utf8Path) -> Result<ParquetInspection, CoreEr
     }
     let schema = schema_from_parquet_meta(fm.schema_descr());
     let created_by = fm.created_by().map(str::to_string);
+    let mut compression_codecs = BTreeSet::new();
+    for i in 0..nrg {
+        let rg = meta.row_group(i);
+        for col in rg.columns() {
+            compression_codecs.insert(format!("{:?}", col.compression()).to_uppercase());
+        }
+    }
     Ok(ParquetInspection {
         path: path.as_str().to_string(),
         num_rows: fm.num_rows(),
@@ -55,6 +65,7 @@ pub fn inspect_parquet_file(path: &Utf8Path) -> Result<ParquetInspection, CoreEr
         row_groups,
         schema,
         created_by,
+        compression_codecs,
     })
 }
 

@@ -1,3 +1,4 @@
+mod repair;
 mod scan;
 mod stream;
 mod transform;
@@ -48,6 +49,36 @@ enum Command {
         filter: Option<String>,
         #[arg(long)]
         rebuild_stats: bool,
+    },
+    /// Diagnose dataset repair opportunities from scan evidence
+    Diagnose { path: PathBuf },
+    /// Generate an evidence-bound repair plan
+    Plan {
+        path: PathBuf,
+        #[arg(long)]
+        output: Option<PathBuf>,
+        #[arg(long, help = "Optional TOML policy file contents path")]
+        policy: Option<PathBuf>,
+    },
+    /// Execute a repair plan to a separate output directory
+    Repair {
+        path: PathBuf,
+        #[arg(long)]
+        plan: PathBuf,
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, help = "Allow review-required operations (Phase 2: still not executed)")]
+        authorize_review: bool,
+    },
+    /// Verify repaired dataset against a before scan
+    Verify { before: PathBuf, after: PathBuf },
+    /// Integrated scan → diagnose → plan (optional safe repair)
+    Doctor {
+        path: PathBuf,
+        #[arg(long, help = "Execute safe repairs after showing the plan")]
+        repair: bool,
+        #[arg(long)]
+        output: Option<PathBuf>,
     },
     /// Stream-convert CSV/Parquet inputs (maw engine)
     Convert {
@@ -109,6 +140,18 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 rebuild_stats,
             )
             .await?;
+        }
+        Command::Diagnose { path } => repair::run_diagnose(path, cli.json).await?,
+        Command::Plan { path, output, policy } => {
+            let policy_toml = policy.map(std::fs::read_to_string).transpose()?;
+            repair::run_plan(path, cli.json, output, policy_toml).await?;
+        }
+        Command::Repair { path, plan, output, authorize_review } => {
+            repair::run_repair(path, plan, output, authorize_review).await?;
+        }
+        Command::Verify { before, after } => repair::run_verify(before, after, cli.json).await?,
+        Command::Doctor { path, repair, output } => {
+            repair::run_doctor(path, repair, output, cli.json).await?;
         }
         Command::Convert { inputs, out, out_format, compression, zstd_level, plan, dry_run } => {
             stream::run_convert(inputs, out, out_format, compression, zstd_level, plan, dry_run)

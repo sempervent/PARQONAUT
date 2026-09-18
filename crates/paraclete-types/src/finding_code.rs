@@ -26,6 +26,12 @@ pub mod system {
     pub const DATASET_GROUPING_AMBIGUOUS: &str = "system.dataset.grouping_ambiguous";
     pub const ASSET_INSPECTION_SKIPPED: &str = "system.asset.inspection_skipped";
     pub const ASSET_INSPECTION_PARTIAL: &str = "system.asset.inspection_partial";
+
+    /// Repair-oriented diagnoses (Phase 2); emitted by diagnosis, not raw scan heuristics alone.
+    pub const REPAIR_EXCESSIVE_SMALL_FILES: &str = "system.repair.excessive_small_files";
+    pub const REPAIR_INEFFICIENT_ROW_GROUPS: &str = "system.repair.inefficient_row_groups";
+    pub const REPAIR_INCONSISTENT_COMPRESSION: &str = "system.repair.inconsistent_compression";
+    pub const REPAIR_SCHEMA_DRIFT: &str = "system.repair.schema_drift";
 }
 
 /// Errors from [`FindingCode::try_new`].
