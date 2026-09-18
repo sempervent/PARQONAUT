@@ -1,0 +1,17 @@
+[repair]
+default_compression = "zstd"
+target_row_group_mb = 128
+small_file_threshold_mb = 16
+merge_target_mb = 256
+min_files_for_merge = 8
+
+[schema]
+allow_numeric_widening = true
+allow_nullable_widening = true
+allow_column_reorder = true
+allow_missing_nullable_columns = false
+allow_timestamp_unit_widening = false
+
+[files]
+max_file_mb = 1
+split_target_mb = 512

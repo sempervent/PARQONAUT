@@ -1,0 +1,6 @@
+{
+  "description": "Repair must reject when source fingerprint no longer matches plan",
+  "expected_error": "dataset changed",
+  "plan_digest_in_plan": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+  "valid_digest": "81bf5719e850c00d3d034f20f793033a2bbdac7dd6646ab7a5cbd1066b2ea230"
+}

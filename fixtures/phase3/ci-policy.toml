@@ -1,0 +1,9 @@
+[ci]
+fail_on_safe_findings = false
+fail_on_review_required = true
+fail_on_destructive = true
+fail_on_unresolvable_schema = true
+
+[schema]
+allow_numeric_widening = true
+allow_nullable_widening = true
