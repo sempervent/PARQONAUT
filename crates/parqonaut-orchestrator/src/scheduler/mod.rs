@@ -40,9 +40,7 @@ pub struct BatchScheduler {
 
 impl BatchScheduler {
     pub fn new(max_jobs: u32) -> Self {
-        Self {
-            max_jobs: max_jobs.max(1) as usize,
-        }
+        Self { max_jobs: max_jobs.max(1) as usize }
     }
 
     pub fn max_jobs(&self) -> usize {
@@ -60,31 +58,67 @@ impl BatchScheduler {
         Fut: Future<Output = T> + Send + 'static,
         T: Send + 'static,
     {
+        self.run_bounded_cancellable(tasks, metrics, crate::cancel::CancelFlag::new()).await
+    }
+
+    /// Like [`run_bounded`](Self::run_bounded) but stops scheduling new tasks once `cancel` is set.
+    pub async fn run_bounded_cancellable<T, F, Fut>(
+        &self,
+        tasks: Vec<F>,
+        metrics: Arc<ConcurrencyMetrics>,
+        cancel: crate::cancel::CancelFlag,
+    ) -> Vec<T>
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+    {
         let max_jobs = self.max_jobs;
         let semaphore = Arc::new(Semaphore::new(max_jobs));
         let mut join_set = tokio::task::JoinSet::new();
+        let mut pending = tasks.into_iter();
+        let mut results = Vec::new();
 
-        for task in tasks {
-            let permit = semaphore
-                .clone()
-                .acquire_owned()
-                .await
-                .expect("semaphore closed");
-            let metrics = Arc::clone(&metrics);
-            join_set.spawn(async move {
-                let _permit = permit;
-                let active = metrics.record_start();
-                debug!(active, max_jobs, "dataset task started");
-                let result = task().await;
-                metrics.record_end();
-                result
-            });
+        while !cancel.is_cancelled() {
+            while join_set.len() < max_jobs {
+                if cancel.is_cancelled() {
+                    break;
+                }
+                let Some(task) = pending.next() else {
+                    break;
+                };
+                let permit = semaphore.clone().acquire_owned().await.expect("semaphore closed");
+                let metrics = Arc::clone(&metrics);
+                join_set.spawn(async move {
+                    let _permit = permit;
+                    let active = metrics.record_start();
+                    debug!(active, max_jobs, "dataset task started");
+                    let result = task().await;
+                    metrics.record_end();
+                    result
+                });
+            }
+
+            if join_set.is_empty() {
+                break;
+            }
+
+            match join_set.join_next().await {
+                Some(Ok(result)) => results.push(result),
+                Some(Err(err)) => {
+                    tracing::error!(%err, "dataset task panicked; continuing remaining work");
+                }
+                None => break,
+            }
         }
 
-        let mut results = Vec::with_capacity(join_set.len());
         while let Some(joined) = join_set.join_next().await {
-            results.push(joined.expect("dataset task panicked"));
+            match joined {
+                Ok(result) => results.push(result),
+                Err(err) => tracing::error!(%err, "dataset task panicked during drain"),
+            }
         }
+
         results
     }
 }
@@ -109,9 +143,11 @@ mod tests {
                     async move {
                         let active = peak.fetch_add(1, AtomicOrdering::SeqCst) + 1;
                         peak.fetch_max(active, AtomicOrdering::SeqCst);
-                        tokio::task::spawn_blocking(|| std::thread::sleep(Duration::from_millis(25)))
-                            .await
-                            .unwrap();
+                        tokio::task::spawn_blocking(|| {
+                            std::thread::sleep(Duration::from_millis(25))
+                        })
+                        .await
+                        .unwrap();
                         peak.fetch_sub(1, AtomicOrdering::SeqCst);
                     }
                 }

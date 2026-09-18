@@ -1,13 +1,13 @@
-use std::collections::HashMap;
 use std::fs;
 use std::sync::Arc;
 
 use chrono::Utc;
 use parqonaut_orchestrator::{
     build_batch_plan, validate_batch_overlap, BatchConfig, BatchExecutor, BatchExecutorConfig,
-    BatchPathSpec, DatasetId, DatasetState, RunHeader, RunId, SqliteRunJournal,
+    BatchPathSpec, CancelFlag, DatasetId, DatasetState, ExecutionMode, RunId, RunIdentity,
+    SqliteRunJournal,
 };
-use parqonaut_repair::RepairExecutor;
+use parqonaut_repair::{RepairExecutor, PARQONAUT_VERSION};
 use tempfile::TempDir;
 
 fn write_batch_config(base: &TempDir, ds_paths: &[(&str, &str)]) -> camino::Utf8PathBuf {
@@ -18,16 +18,31 @@ schema_version = 1
 [batch]
 name = "scheduler-test"
 max_concurrency = 2
+output_root = "outputs"
 "#,
     );
     for (id, path) in ds_paths {
-        body.push_str(&format!(
-            "\n[[datasets]]\nid = \"{id}\"\npath = \"{path}\"\n"
-        ));
+        body.push_str(&format!("\n[[datasets]]\nid = \"{id}\"\npath = \"{path}\"\n"));
     }
     let cfg_path = base.path().join("batch.toml");
     fs::write(&cfg_path, body).unwrap();
     cfg_path.try_into().unwrap()
+}
+
+fn run_identity(plan: &parqonaut_orchestrator::BatchPlan, run_id: &RunId) -> RunIdentity {
+    RunIdentity {
+        run_id: run_id.clone(),
+        batch_plan_id: plan.batch_plan_id.clone(),
+        config_fingerprint: plan.config_fingerprint.clone(),
+        batch_name: plan.batch_name.clone(),
+        output_root: plan.output_root.clone(),
+        parqonaut_version: PARQONAUT_VERSION.to_string(),
+        plan_digest: plan.plan_digest(),
+        started_at: Utc::now(),
+        updated_at: Utc::now(),
+        completed_at: None,
+        cancelled_at: None,
+    }
 }
 
 #[test]
@@ -69,45 +84,21 @@ async fn executor_respects_jobs_bound_metric() {
     let cfg = BatchConfig::from_toml_path(&cfg_path).unwrap();
     let plan = build_batch_plan(&cfg, &cfg_path).unwrap();
 
-    let mut outputs = HashMap::new();
-    outputs.insert(
-        DatasetId("one".into()),
-        tmp.path().join("out1").try_into().unwrap(),
-    );
-    outputs.insert(
-        DatasetId("two".into()),
-        tmp.path().join("out2").try_into().unwrap(),
-    );
-    outputs.insert(
-        DatasetId("three".into()),
-        tmp.path().join("out3").try_into().unwrap(),
-    );
-
     let run_id = RunId::new();
-    let header = RunHeader {
-        run_id: run_id.clone(),
-        batch_plan_id: plan.batch_plan_id.clone(),
-        batch_name: plan.batch_name.clone(),
-        started_at: Utc::now(),
-        updated_at: Utc::now(),
-        completed_at: None,
-    };
+    let identity = run_identity(&plan, &run_id);
     let journal_path: camino::Utf8PathBuf = tmp.path().join("run.db").try_into().unwrap();
-    let journal = Arc::new(SqliteRunJournal::open(&journal_path, &header).await.unwrap());
+    let journal = Arc::new(SqliteRunJournal::open(&journal_path, &identity).await.unwrap());
 
     let executor = BatchExecutor::new(RepairExecutor::default(), BatchExecutorConfig::default());
     let outcome = executor
-        .run(&plan, &outputs, &run_id, journal)
+        .run(&plan, &run_id, journal, ExecutionMode::Fresh, CancelFlag::new(), false)
         .await
         .unwrap();
 
     assert!(outcome.peak_concurrent_datasets <= plan.max_concurrency as usize);
     assert!(outcome.peak_concurrent_datasets >= 1);
     assert_eq!(outcome.datasets.len(), 3);
-    assert!(outcome
-        .datasets
-        .iter()
-        .all(|d| d.state == DatasetState::Succeeded));
+    assert!(outcome.datasets.iter().all(|d| d.state == DatasetState::Succeeded));
 }
 
 #[tokio::test]
@@ -120,47 +111,32 @@ async fn failure_isolation_continues_other_datasets() {
 
     let cfg_path = write_batch_config(
         &tmp,
-        &[
-            ("good", good.to_str().unwrap()),
-            ("blocked", blocked.to_str().unwrap()),
-        ],
+        &[("good", good.to_str().unwrap()), ("blocked", blocked.to_str().unwrap())],
     );
     let cfg = BatchConfig::from_toml_path(&cfg_path).unwrap();
-    let plan = build_batch_plan(&cfg, &cfg_path).unwrap();
+    let mut plan = build_batch_plan(&cfg, &cfg_path).unwrap();
 
-    let blocked_out: camino::Utf8PathBuf = tmp.path().join("out-blocked").try_into().unwrap();
-    fs::create_dir_all(&blocked_out).unwrap();
-
-    let mut outputs = HashMap::new();
-    outputs.insert(
-        DatasetId("good".into()),
-        tmp.path().join("out-good").try_into().unwrap(),
-    );
-    outputs.insert(DatasetId("blocked".into()), blocked_out);
+    for ds in &mut plan.datasets {
+        if ds.dataset_id.0 == "blocked" {
+            ds.output_path =
+                tmp.path().join("outputs/blocked-preexisting").to_str().unwrap().to_string();
+            fs::create_dir_all(&ds.output_path).unwrap();
+        }
+    }
 
     let run_id = RunId::new();
-    let header = RunHeader {
-        run_id: run_id.clone(),
-        batch_plan_id: plan.batch_plan_id.clone(),
-        batch_name: plan.batch_name.clone(),
-        started_at: Utc::now(),
-        updated_at: Utc::now(),
-        completed_at: None,
-    };
+    let identity = run_identity(&plan, &run_id);
     let journal_path: camino::Utf8PathBuf = tmp.path().join("run.db").try_into().unwrap();
-    let journal = Arc::new(SqliteRunJournal::open(&journal_path, &header).await.unwrap());
+    let journal = Arc::new(SqliteRunJournal::open(&journal_path, &identity).await.unwrap());
 
     let executor = BatchExecutor::new(RepairExecutor::default(), BatchExecutorConfig::default());
     let outcome = executor
-        .run(&plan, &outputs, &run_id, journal)
+        .run(&plan, &run_id, journal, ExecutionMode::Fresh, CancelFlag::new(), false)
         .await
         .unwrap();
 
-    let good_result = outcome
-        .datasets
-        .iter()
-        .find(|d| d.dataset_id.0 == "good")
-        .expect("good dataset outcome");
+    let good_result =
+        outcome.datasets.iter().find(|d| d.dataset_id.0 == "good").expect("good dataset outcome");
     let blocked_result = outcome
         .datasets
         .iter()
