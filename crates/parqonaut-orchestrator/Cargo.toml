@@ -29,3 +29,4 @@ path = "src/bin/generate_phase4_fixtures.rs"
 
 [dev-dependencies]
 tempfile = "3"
+sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }

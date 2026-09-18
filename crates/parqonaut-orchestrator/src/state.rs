@@ -33,7 +33,33 @@ impl DatasetState {
                 | Self::FailedPermanent
                 | Self::Cancelled
                 | Self::VerificationFailed
+                | Self::StaleSource
         )
+    }
+
+    pub fn is_runnable(self) -> bool {
+        matches!(self, Self::Pending | Self::FailedRecoverable)
+    }
+
+    pub fn is_resumable(self) -> bool {
+        matches!(
+            self,
+            Self::Pending
+                | Self::PlanningValidated
+                | Self::Running
+                | Self::FailedRecoverable
+                | Self::Cancelled
+        )
+    }
+
+    /// Conservative recovery for datasets left `running` after a crash.
+    pub fn recover_after_crash(self) -> Self {
+        match self {
+            Self::Running | Self::RepairComplete | Self::Verifying | Self::PlanningValidated => {
+                Self::FailedRecoverable
+            }
+            other => other,
+        }
     }
 
     pub fn transition(self, to: DatasetState) -> Result<DatasetState, StateTransitionError> {
@@ -49,21 +75,30 @@ impl DatasetState {
         if self == to {
             return true;
         }
-        match (self, to) {
-            (Pending, PlanningValidated) => true,
-            (PlanningValidated, Running) => true,
-            (Running, RepairComplete) => true,
-            (RepairComplete, Verifying) => true,
-            (Verifying, Succeeded) => true,
-            (Pending | PlanningValidated, StaleSource) => true,
-            (Running | RepairComplete | Verifying, FailedRecoverable) => true,
-            (Running | RepairComplete | Verifying, FailedPermanent) => true,
-            (Running | RepairComplete | Verifying, VerificationFailed) => true,
-            (Pending | PlanningValidated | Running, Cancelled) => true,
-            (PlanningValidated, Blocked) => true,
-            (FailedRecoverable, Running) => true,
-            _ => false,
-        }
+        matches!(
+            (self, to),
+            (Pending, PlanningValidated)
+                | (PlanningValidated, Running)
+                | (Running, RepairComplete)
+                | (RepairComplete, Verifying)
+                | (Verifying, Succeeded)
+                | (Pending | PlanningValidated, StaleSource)
+                | (Running | RepairComplete | Verifying, FailedRecoverable)
+                | (Running | RepairComplete | Verifying, FailedPermanent)
+                | (Running | RepairComplete | Verifying, VerificationFailed)
+                | (Pending | PlanningValidated | Running, Cancelled)
+                | (PlanningValidated, Blocked)
+                | (FailedRecoverable, Running)
+                | (PlanningValidated, FailedRecoverable)
+                | (Cancelled, FailedRecoverable)
+                | (StaleSource, StaleSource)
+        )
+    }
+
+    pub fn apply_transition(&mut self, to: DatasetState) -> Result<(), StateTransitionError> {
+        let from = *self;
+        *self = from.transition(to)?;
+        Ok(())
     }
 }
 
