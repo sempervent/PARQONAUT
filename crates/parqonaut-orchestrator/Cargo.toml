@@ -1,0 +1,25 @@
+[package]
+name = "parqonaut-orchestrator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Multi-dataset batch orchestration: planning, scheduling, journal, and recovery"
+
+[dependencies]
+parqonaut-repair = { path = "../parqonaut-repair" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+camino = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+sha2 = { workspace = true }
+hex = { workspace = true }
+toml = "0.8"
+sqlx = { workspace = true, features = ["runtime-tokio", "sqlite", "migrate", "uuid", "chrono"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "signal"] }
+
+[dev-dependencies]
+tempfile = "3"
