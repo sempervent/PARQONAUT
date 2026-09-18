@@ -37,6 +37,9 @@ pub enum RepairError {
     #[error("plan file invalid: {0}")]
     InvalidPlan(String),
 
+    #[error("repair plan schema version {found} is not supported by this PARQONAUT build (supported: {supported})")]
+    UnsupportedPlanVersion { found: u32, supported: u32 },
+
     #[error("scan failed: {0}")]
     ScanFailed(String),
 

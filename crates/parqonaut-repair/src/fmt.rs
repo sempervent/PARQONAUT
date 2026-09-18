@@ -10,8 +10,10 @@ pub fn format_plan_human(plan: &RepairPlan) -> String {
         plan.operations.iter().filter(|o| o.safety == RepairSafety::ReviewRequired).collect();
     let destructive: Vec<_> =
         plan.operations.iter().filter(|o| o.safety == RepairSafety::Destructive).collect();
+    let blocked: Vec<_> =
+        plan.operations.iter().filter(|o| o.safety == RepairSafety::Blocked).collect();
 
-    if safe.is_empty() && review.is_empty() && destructive.is_empty() {
+    if safe.is_empty() && review.is_empty() && destructive.is_empty() && blocked.is_empty() {
         out.push_str("No repair proposals.\n");
         return out;
     }
@@ -45,6 +47,21 @@ pub fn format_plan_human(plan: &RepairPlan) -> String {
         out.push_str("DESTRUCTIVE (not auto-executed)\n");
         for op in &destructive {
             out.push_str(&format!("  [{}] {}\n", op.operation_id, op.rationale));
+        }
+        out.push('\n');
+    }
+
+    if !blocked.is_empty() {
+        out.push_str("BLOCKED\n");
+        for op in &blocked {
+            out.push_str(&format!("  [{}] {}\n", op.operation_id, op.rationale));
+        }
+        out.push('\n');
+    }
+
+    if let Some(conflicts) = &plan.schema_conflicts {
+        for c in conflicts {
+            out.push_str(&format!("Schema conflict `{}`: {}\n", c.field, c.reason));
         }
         out.push('\n');
     }

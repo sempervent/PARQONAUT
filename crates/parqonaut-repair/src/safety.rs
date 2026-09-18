@@ -8,12 +8,18 @@ pub enum RepairSafety {
     Safe,
     /// May alter representation or require assumptions; needs explicit authorization.
     ReviewRequired,
-    /// Alters logical content; never auto-executed in Phase 2.
+    /// Alters logical content; never auto-executed.
     Destructive,
+    /// Diagnosed conflict that cannot be repaired under policy; never executed.
+    Blocked,
 }
 
 impl RepairSafety {
     pub fn is_auto_executable(self) -> bool {
         matches!(self, Self::Safe)
+    }
+
+    pub fn requires_explicit_authorization(self) -> bool {
+        matches!(self, Self::ReviewRequired)
     }
 }

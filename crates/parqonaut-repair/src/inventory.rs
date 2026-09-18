@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use paraclete_core::inspect_parquet_file;
-use paraclete_types::{DataFormat, ScanReport};
+use paraclete_types::{DataFormat, FieldDefinition, ScanReport};
 
 use crate::error::RepairError;
 
@@ -15,6 +15,8 @@ pub struct ParquetFileMeta {
     pub median_row_group_bytes: u64,
     pub compression_codecs: Vec<String>,
     pub schema_signature: String,
+    pub fields: Vec<FieldDefinition>,
+    pub has_statistics: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -46,6 +48,8 @@ impl DatasetInventory {
                 insp.row_groups.iter().map(|rg| rg.compressed_size.max(0) as u64).collect();
             let median_rg = median_u64(&rg_sizes);
 
+            let has_statistics = insp.statistics_present;
+
             parquet_files.push(ParquetFileMeta {
                 path: asset.path.clone(),
                 size_bytes: asset.size_bytes,
@@ -54,6 +58,8 @@ impl DatasetInventory {
                 median_row_group_bytes: median_rg,
                 compression_codecs: insp.compression_codecs.iter().cloned().collect(),
                 schema_signature: sig,
+                fields: insp.schema.fields.clone(),
+                has_statistics,
             });
         }
 
@@ -76,6 +82,19 @@ impl DatasetInventory {
 
     pub fn small_files(&self, threshold_bytes: u64) -> Vec<&ParquetFileMeta> {
         self.parquet_files.iter().filter(|f| f.size_bytes < threshold_bytes).collect()
+    }
+
+    /// Structural schema key including nullability (for merge compatibility).
+    pub fn structural_schema_key(fields: &[FieldDefinition]) -> String {
+        let mut parts: Vec<String> = fields
+            .iter()
+            .map(|f| {
+                let ty = f.logical_type.split_whitespace().next().unwrap_or("UNKNOWN");
+                format!("{}:{}:{}", f.name, ty, f.nullable)
+            })
+            .collect();
+        parts.sort();
+        parts.join("\x1f")
     }
 }
 

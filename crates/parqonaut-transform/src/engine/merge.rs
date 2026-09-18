@@ -120,3 +120,24 @@ pub fn rewrite_parquet_file(
     writer.close()?;
     Ok(())
 }
+
+/// Split a single Parquet file into multiple parts capped at `target_bytes`.
+pub fn split_parquet_file(
+    input: &str,
+    output_dir: &Path,
+    output_basename: &str,
+    target_bytes: u64,
+    compression: Option<&str>,
+    row_group_size_mb: Option<u64>,
+    rebuild_stats: bool,
+) -> Result<Vec<PathBuf>> {
+    merge_parquet_files(
+        &[input.to_string()],
+        output_dir,
+        output_basename,
+        target_bytes,
+        compression,
+        row_group_size_mb,
+        rebuild_stats,
+    )
+}

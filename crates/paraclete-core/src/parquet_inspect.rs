@@ -30,6 +30,8 @@ pub struct ParquetInspection {
     pub created_by: Option<String>,
     /// Distinct compression codecs observed on column chunks (uppercase labels).
     pub compression_codecs: BTreeSet<String>,
+    /// True when every column chunk in every row group exposes statistics metadata.
+    pub statistics_present: bool,
 }
 
 /// Reads Parquet footer metadata for a UTF-8 path.
@@ -52,10 +54,14 @@ pub fn inspect_parquet_file(path: &Utf8Path) -> Result<ParquetInspection, CoreEr
     let schema = schema_from_parquet_meta(fm.schema_descr());
     let created_by = fm.created_by().map(str::to_string);
     let mut compression_codecs = BTreeSet::new();
+    let mut statistics_present = nrg > 0;
     for i in 0..nrg {
         let rg = meta.row_group(i);
         for col in rg.columns() {
             compression_codecs.insert(format!("{:?}", col.compression()).to_uppercase());
+            if col.statistics().is_none() {
+                statistics_present = false;
+            }
         }
     }
     Ok(ParquetInspection {
@@ -66,6 +72,7 @@ pub fn inspect_parquet_file(path: &Utf8Path) -> Result<ParquetInspection, CoreEr
         schema,
         created_by,
         compression_codecs,
+        statistics_present,
     })
 }
 

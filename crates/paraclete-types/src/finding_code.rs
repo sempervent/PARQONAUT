@@ -32,6 +32,9 @@ pub mod system {
     pub const REPAIR_INEFFICIENT_ROW_GROUPS: &str = "system.repair.inefficient_row_groups";
     pub const REPAIR_INCONSISTENT_COMPRESSION: &str = "system.repair.inconsistent_compression";
     pub const REPAIR_SCHEMA_DRIFT: &str = "system.repair.schema_drift";
+    pub const REPAIR_MISSING_STATISTICS: &str = "system.repair.missing_statistics";
+    pub const REPAIR_OVERSIZED_FILE: &str = "system.repair.oversized_file";
+    pub const REPAIR_SCHEMA_CONFLICT: &str = "system.repair.schema_conflict";
 }
 
 /// Errors from [`FindingCode::try_new`].

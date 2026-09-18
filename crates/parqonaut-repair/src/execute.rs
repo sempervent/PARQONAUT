@@ -3,16 +3,25 @@ use std::fs;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::Utc;
-use parqonaut_transform::{merge_parquet_files, rewrite_parquet_file};
+use parqonaut_transform::{
+    merge_parquet_files, rewrite_parquet_file, rewrite_parquet_with_cast,
+    rewrite_parquet_with_rename, split_parquet_file,
+};
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 use uuid::Uuid;
 
 use crate::action::RepairAction;
+use crate::authorization::{
+    AuthorizationSource, OperationAuditContext, OperationAuditRecord, RepairAuthorization,
+};
+use crate::deps::sort_by_dependencies;
 use crate::error::RepairError;
 use crate::fingerprint::{compute_fingerprint_from_scan, paths_overlap, relativize};
-use crate::plan::{RepairOperation, RepairPlan};
+use crate::manifest::{ExecutionManifest, MANIFEST_VERSION};
+use crate::plan::{RepairOperation, RepairPlan, PARQONAUT_VERSION};
 use crate::safety::RepairSafety;
+use crate::verify::{scan_directory, verify_repair};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionReport {
@@ -24,12 +33,19 @@ pub struct ExecutionReport {
     pub operations_skipped: Vec<String>,
     pub staging_path: String,
     pub output_path: String,
+    pub manifest_path: String,
     pub success: bool,
 }
 
-#[derive(Default)]
 pub struct RepairExecutor {
-    pub authorize_review: bool,
+    pub authorization: RepairAuthorization,
+    pub verify_before_publish: bool,
+}
+
+impl Default for RepairExecutor {
+    fn default() -> Self {
+        Self { authorization: RepairAuthorization::default(), verify_before_publish: true }
+    }
 }
 
 impl RepairExecutor {
@@ -40,6 +56,7 @@ impl RepairExecutor {
         output: &Utf8Path,
         scan: &paraclete_types::ScanReport,
     ) -> Result<ExecutionReport, RepairError> {
+        plan.validate_version()?;
         let root = Utf8Path::new(&plan.dataset_root);
         let started = Utc::now();
         let execution_id = Uuid::new_v4();
@@ -63,26 +80,74 @@ impl RepairExecutor {
 
         let mut executed = Vec::new();
         let mut skipped = Vec::new();
+        let mut audit = Vec::new();
+        let audit_ctx = OperationAuditContext {
+            plan_id: plan.plan_id.as_str(),
+            dataset_fingerprint: plan.dataset_fingerprint.digest.as_str(),
+            policy_fingerprint: plan.policy_fingerprint.as_str(),
+            executor_version: PARQONAUT_VERSION,
+        };
 
         let mut working = seed_work_dir(root, &work, scan)?;
 
+        let sorted = sort_by_dependencies(&plan.operations)?;
         let run_result = (|| {
-            for op in &plan.operations {
+            for op in sorted {
+                let now = Utc::now();
                 match op.safety {
                     RepairSafety::Safe => {
                         apply_operation(op, plan, root, &work, &mut working)?;
                         executed.push(op.operation_id.clone());
+                        audit.push(OperationAuditRecord::new(
+                            audit_ctx,
+                            op.operation_id.clone(),
+                            op.safety,
+                            AuthorizationSource::AutomaticSafePolicy,
+                            now,
+                            true,
+                            None,
+                        ));
                     }
                     RepairSafety::ReviewRequired => {
-                        if self.authorize_review {
-                            return Err(RepairError::ReviewRequiredNotAuthorized {
-                                operation_id: op.operation_id.clone(),
-                            });
+                        if self.authorization.is_authorized(&op.operation_id) {
+                            apply_operation(op, plan, root, &work, &mut working)?;
+                            executed.push(op.operation_id.clone());
+                            audit.push(OperationAuditRecord::new(
+                                audit_ctx,
+                                op.operation_id.clone(),
+                                op.safety,
+                                AuthorizationSource::ExplicitUser,
+                                now,
+                                true,
+                                None,
+                            ));
+                        } else {
+                            skipped.push(op.operation_id.clone());
+                            audit.push(OperationAuditRecord::new(
+                                audit_ctx,
+                                op.operation_id.clone(),
+                                op.safety,
+                                AuthorizationSource::NotAuthorized,
+                                now,
+                                false,
+                                Some(format!(
+                                    "review-required operation {} not authorized",
+                                    op.operation_id
+                                )),
+                            ));
                         }
-                        skipped.push(op.operation_id.clone());
                     }
-                    RepairSafety::Destructive => {
+                    RepairSafety::Blocked | RepairSafety::Destructive => {
                         skipped.push(op.operation_id.clone());
+                        audit.push(OperationAuditRecord::new(
+                            audit_ctx,
+                            op.operation_id.clone(),
+                            op.safety,
+                            AuthorizationSource::BlockedByPolicy,
+                            now,
+                            false,
+                            Some("operation blocked by safety policy".into()),
+                        ));
                     }
                 }
             }
@@ -96,6 +161,31 @@ impl RepairExecutor {
 
         fs::create_dir_all(output)?;
         copy_work_to_output(&work, output)?;
+
+        let after_scan = scan_directory(output)?;
+        let verification = if self.verify_before_publish {
+            Some(verify_repair(scan, &after_scan, root, output, &plan.policy.repair, None)?)
+        } else {
+            None
+        };
+
+        let output_fp = compute_fingerprint_from_scan(output, &after_scan)?;
+        let manifest = ExecutionManifest {
+            parqonaut_manifest_version: MANIFEST_VERSION,
+            plan_id: plan.plan_id.clone(),
+            execution_id: execution_id.to_string(),
+            parqonaut_version: PARQONAUT_VERSION.to_string(),
+            source_fingerprint: plan.dataset_fingerprint.clone(),
+            output_fingerprint: output_fp,
+            policy_fingerprint: plan.policy_fingerprint.clone(),
+            started_at: started,
+            completed_at: Utc::now(),
+            operations: audit,
+            verification: verification.clone(),
+        };
+        let manifest_path = output.join(".parqonaut-manifest.json");
+        manifest.write_json(&manifest_path)?;
+
         let _ = fs::remove_dir_all(&staging);
 
         Ok(ExecutionReport {
@@ -107,6 +197,7 @@ impl RepairExecutor {
             operations_skipped: skipped,
             staging_path: staging.as_str().to_string(),
             output_path: output.as_str().to_string(),
+            manifest_path: manifest_path.as_str().to_string(),
             success: true,
         })
     }
@@ -144,8 +235,12 @@ fn apply_operation(
         RepairAction::MergeSmallFiles { target_bytes, input_paths } => {
             let abs: Vec<String> = input_paths
                 .iter()
-                .map(|rel| working.get(rel).unwrap_or(&root.join(rel)).as_str().to_string())
+                .filter(|rel| working.contains_key(*rel))
+                .map(|rel| working.get(rel).expect("filtered").as_str().to_string())
                 .collect();
+            if abs.len() < 2 {
+                return Ok(());
+            }
             let merge_out = work.join("_merge_out");
             fs::create_dir_all(&merge_out)?;
             let outputs = merge_parquet_files(
@@ -158,7 +253,6 @@ fn apply_operation(
                 false,
             )
             .map_err(|e| RepairError::TransformFailed(e.to_string()))?;
-
             for rel in input_paths {
                 if let Some(path) = working.remove(rel) {
                     let _ = fs::remove_file(path);
@@ -172,15 +266,49 @@ fn apply_operation(
             }
             let _ = fs::remove_dir_all(&merge_out);
         }
+        RepairAction::SplitLargeFile { target_bytes, input_path } => {
+            let src = working.get(input_path).cloned().unwrap_or_else(|| root.join(input_path));
+            let split_out = work.join("_split_out");
+            fs::create_dir_all(&split_out)?;
+            let outputs = split_parquet_file(
+                src.as_str(),
+                split_out.as_std_path(),
+                "split",
+                *target_bytes,
+                None,
+                None,
+                true,
+            )
+            .map_err(|e| RepairError::TransformFailed(e.to_string()))?;
+            if let Some(old) = working.remove(input_path) {
+                let _ = fs::remove_file(old);
+            }
+            for (idx, out) in outputs.into_iter().enumerate() {
+                let rel = format!("{input_path}.split-{idx:04}.parquet");
+                let dest = work.join(&rel);
+                fs::copy(&out, &dest)?;
+                working.insert(rel, dest);
+            }
+            let _ = fs::remove_dir_all(&split_out);
+        }
         RepairAction::ResizeRowGroups { target_bytes, target_paths } => {
             let mb = (*target_bytes / (1024 * 1024)).max(1);
-            rewrite_targets(working, target_paths, None, Some(mb))?;
+            rewrite_targets(working, target_paths, None, Some(mb), false)?;
         }
         RepairAction::Recompress { codec, target_paths } => {
-            rewrite_targets(working, target_paths, Some(codec.as_str()), None)?;
+            rewrite_targets(working, target_paths, Some(codec.as_str()), None, false)?;
         }
         RepairAction::RebuildStatistics { target_paths } => {
-            rewrite_targets(working, target_paths, None, None)?;
+            rewrite_targets(working, target_paths, None, None, true)?;
+        }
+        RepairAction::CastColumn { column, to_type, .. } => {
+            cast_targets(working, target_paths_all(working, &[]), column, to_type)?;
+        }
+        RepairAction::AlignSchema { field, to_type, .. } => {
+            cast_targets(working, target_paths_all(working, &[]), field, to_type)?;
+        }
+        RepairAction::RenameColumn { from, to } => {
+            rename_targets(working, target_paths_all(working, &[]), from, to)?;
         }
         other => {
             return Err(RepairError::UnsupportedOperation {
@@ -193,27 +321,78 @@ fn apply_operation(
     Ok(())
 }
 
+fn target_paths_all(
+    working: &BTreeMap<String, Utf8PathBuf>,
+    target_paths: &[String],
+) -> Vec<String> {
+    if target_paths.is_empty() {
+        working.keys().cloned().collect()
+    } else {
+        target_paths.to_vec()
+    }
+}
+
+fn rename_targets(
+    working: &mut BTreeMap<String, Utf8PathBuf>,
+    paths: Vec<String>,
+    from: &str,
+    to: &str,
+) -> Result<(), RepairError> {
+    for rel in paths {
+        let src = working.get(&rel).ok_or_else(|| RepairError::PreconditionFailed {
+            operation_id: rel.clone(),
+            detail: "rename target missing".into(),
+        })?;
+        let tmp = src.with_extension("parqonaut-rename.parquet");
+        rewrite_parquet_with_rename(src.as_str(), tmp.as_str(), from, to, None, None, true)
+            .map_err(|e| RepairError::TransformFailed(e.to_string()))?;
+        fs::rename(tmp.as_std_path(), src.as_std_path())?;
+        working.insert(rel, src.clone());
+    }
+    Ok(())
+}
+
+fn cast_targets(
+    working: &mut BTreeMap<String, Utf8PathBuf>,
+    paths: Vec<String>,
+    column: &str,
+    to_type: &str,
+) -> Result<(), RepairError> {
+    for rel in paths {
+        let src = working.get(&rel).ok_or_else(|| RepairError::PreconditionFailed {
+            operation_id: rel.clone(),
+            detail: "cast target missing".into(),
+        })?;
+        let tmp = src.with_extension("parqonaut-cast.parquet");
+        rewrite_parquet_with_cast(src.as_str(), tmp.as_str(), column, to_type, None, None, true)
+            .map_err(|e| RepairError::TransformFailed(e.to_string()))?;
+        fs::rename(tmp.as_std_path(), src.as_std_path())?;
+        working.insert(rel, src.clone());
+    }
+    Ok(())
+}
+
 fn rewrite_targets(
     working: &mut BTreeMap<String, Utf8PathBuf>,
     target_paths: &[String],
     compression: Option<&str>,
     row_group_mb: Option<u64>,
+    rebuild_stats: bool,
 ) -> Result<(), RepairError> {
-    let paths: Vec<String> = if target_paths.iter().all(|p| working.contains_key(p)) {
-        target_paths.to_vec()
-    } else {
-        working.keys().cloned().collect()
-    };
+    let paths: Vec<String> = target_paths_all(working, target_paths)
+        .into_iter()
+        .filter(|p| working.contains_key(p))
+        .collect();
     for rel in paths {
         let src = working.get(&rel).ok_or_else(|| RepairError::PreconditionFailed {
             operation_id: rel.clone(),
             detail: "target path not in working set".into(),
         })?;
         let tmp = src.with_extension("parqonaut-tmp.parquet");
-        rewrite_parquet_file(src.as_str(), tmp.as_str(), compression, row_group_mb, true)
+        rewrite_parquet_file(src.as_str(), tmp.as_str(), compression, row_group_mb, rebuild_stats)
             .map_err(|e| RepairError::TransformFailed(e.to_string()))?;
         fs::rename(tmp.as_std_path(), src.as_std_path())?;
-        working.insert(rel.clone(), src.clone());
+        working.insert(rel, src.clone());
     }
     Ok(())
 }
