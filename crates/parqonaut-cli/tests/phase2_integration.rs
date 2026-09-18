@@ -63,7 +63,8 @@ fn frankenlake_repair_and_verify() {
         .args(["plan", output.to_str().unwrap()])
         .assert()
         .success()
-        .stdout(predicates::str::contains("Automatic repair will execute 0 operation(s)"));
+        .stdout(predicates::str::contains("REVIEW REQUIRED"))
+        .stdout(predicates::str::contains("schema-widen"));
 }
 
 #[test]

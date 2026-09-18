@@ -57,7 +57,19 @@ enum Command {
         path: PathBuf,
         #[arg(long)]
         output: Option<PathBuf>,
-        #[arg(long, help = "Optional TOML policy file contents path")]
+        #[arg(long, help = "TOML policy file path")]
+        policy: Option<PathBuf>,
+        #[arg(long, help = "Explicit target schema JSON")]
+        target_schema: Option<PathBuf>,
+        #[arg(long, help = "Emit canonical deterministic plan JSON")]
+        canonical: bool,
+    },
+    /// Diff two repair plans
+    PlanDiff { left: PathBuf, right: PathBuf },
+    /// CI-oriented policy compliance check (non-mutating)
+    Check {
+        path: PathBuf,
+        #[arg(long, help = "TOML CI policy file")]
         policy: Option<PathBuf>,
     },
     /// Execute a repair plan to a separate output directory
@@ -67,18 +79,27 @@ enum Command {
         plan: PathBuf,
         #[arg(long)]
         output: PathBuf,
-        #[arg(long, help = "Allow review-required operations (Phase 2: still not executed)")]
-        authorize_review: bool,
+        #[arg(long = "authorize", help = "Explicitly authorize a ReviewRequired operation ID")]
+        authorize: Vec<String>,
     },
     /// Verify repaired dataset against a before scan
-    Verify { before: PathBuf, after: PathBuf },
+    Verify {
+        before: PathBuf,
+        after: PathBuf,
+        #[arg(long, help = "Optional execution manifest path")]
+        manifest: Option<PathBuf>,
+    },
     /// Integrated scan → diagnose → plan (optional safe repair)
     Doctor {
         path: PathBuf,
-        #[arg(long, help = "Execute safe repairs after showing the plan")]
+        #[arg(long, help = "TOML policy file path (same as plan)")]
+        policy: Option<PathBuf>,
+        #[arg(long, help = "Execute authorized repairs after showing the plan")]
         repair: bool,
         #[arg(long)]
         output: Option<PathBuf>,
+        #[arg(long = "authorize")]
+        authorize: Vec<String>,
     },
     /// Stream-convert CSV/Parquet inputs (maw engine)
     Convert {
@@ -142,16 +163,21 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             .await?;
         }
         Command::Diagnose { path } => repair::run_diagnose(path, cli.json).await?,
-        Command::Plan { path, output, policy } => {
+        Command::Plan { path, output, policy, target_schema, canonical } => {
             let policy_toml = policy.map(std::fs::read_to_string).transpose()?;
-            repair::run_plan(path, cli.json, output, policy_toml).await?;
+            repair::run_plan(path, cli.json, canonical, output, policy_toml, target_schema).await?;
         }
-        Command::Repair { path, plan, output, authorize_review } => {
-            repair::run_repair(path, plan, output, authorize_review).await?;
+        Command::PlanDiff { left, right } => repair::run_plan_diff(left, right, cli.json).await?,
+        Command::Check { path, policy } => repair::run_check(path, policy, cli.json).await?,
+        Command::Repair { path, plan, output, authorize } => {
+            repair::run_repair(path, plan, output, authorize).await?;
         }
-        Command::Verify { before, after } => repair::run_verify(before, after, cli.json).await?,
-        Command::Doctor { path, repair, output } => {
-            repair::run_doctor(path, repair, output, cli.json).await?;
+        Command::Verify { before, after, manifest } => {
+            repair::run_verify(before, after, manifest, cli.json).await?;
+        }
+        Command::Doctor { path, policy, repair, output, authorize } => {
+            let policy_toml = policy.map(std::fs::read_to_string).transpose()?;
+            repair::run_doctor(path, policy_toml, repair, output, authorize, cli.json).await?;
         }
         Command::Convert { inputs, out, out_format, compression, zstd_level, plan, dry_run } => {
             stream::run_convert(inputs, out, out_format, compression, zstd_level, plan, dry_run)
