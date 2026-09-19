@@ -18,6 +18,19 @@ rm -rf "${RUSTDOC_OUT}"
 cargo doc --workspace --no-deps --target-dir "${RUSTDOC_OUT}"
 rm -rf "${DOCS_OUTPUT}/rustdoc"
 cp -a "${RUSTDOC_OUT}/doc" "${DOCS_OUTPUT}/rustdoc"
+cat >"${DOCS_OUTPUT}/rustdoc/index.html" <<'EOF'
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0; url=prqnt/index.html" />
+    <title>PARQONAUT Rust API</title>
+  </head>
+  <body>
+    <p><a href="prqnt/index.html">PARQONAUT Rust API (prqnt)</a></p>
+  </body>
+</html>
+EOF
 
 mkdir -p "${DOCS_OUTPUT}/openapi"
 cp "${REPO_ROOT}/fixtures/api/openapi-v1.json" "${DOCS_OUTPUT}/openapi/openapi.json"

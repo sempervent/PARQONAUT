@@ -2,7 +2,7 @@
 
 Library crates in this workspace are documented with **rustdoc**. The built index is published at:
 
-**`/rustdoc/index.html`** on the deployed site (generated during `just docs-build`, not stored in git)
+**`/rustdoc/`** on the deployed site (entry redirects to **`prqnt`** crate docs; generated during `just docs-build`)
 
 End users normally interact through **`prqnt`** or **`/api/v1`**. Rust API docs are for contributors and crate integrators.
 
