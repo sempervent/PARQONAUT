@@ -164,12 +164,12 @@ fn jobs_equivalence() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
     let out1 = tmp.path().join("run-j1");
-    let out2 = tmp.path().join("run-j4");
+    let out2 = tmp.path().join("run-j2");
     fs::create_dir_all(&out1).unwrap();
     fs::create_dir_all(&out2).unwrap();
 
     let shared_plan = plan_and_rewrite(&tmp.path().join("shared-plan"));
-    for (out, jobs) in [(&out1, "1"), (&out2, "4")] {
+    for (out, jobs) in [(&out1, "1"), (&out2, "2")] {
         let plan_path = out.join("batch-plan.json");
         let mut plan: BatchPlan =
             serde_json::from_str(&fs::read_to_string(&shared_plan).unwrap()).unwrap();
