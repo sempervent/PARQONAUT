@@ -58,7 +58,7 @@ jobs:
             -e RUSTFS_UNSAFE_BYPASS_DISK_CHECK=true \
             "${RUSTFS_IMAGE}@${RUSTFS_IMAGE_DIGEST}"
           for i in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:9000/health/ready || curl -fsS http://127.0.0.1:9000/health/live; then
+            if curl -fsS http://127.0.0.1:9000/health/ready; then
               echo "RustFS ready"
               break
             fi

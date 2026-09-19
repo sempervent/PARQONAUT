@@ -114,7 +114,7 @@ async fn backend_for_s3() -> Result<RepairBackend, RepairError> {
     #[cfg(feature = "s3")]
     {
         use parqonaut_storage::{S3Config, S3StorageBackend};
-        let config = S3Config::default();
+        let config = S3Config::from_env();
         Ok(RepairBackend::S3(Arc::new(S3StorageBackend::new(config).await)))
     }
     #[cfg(not(feature = "s3"))]

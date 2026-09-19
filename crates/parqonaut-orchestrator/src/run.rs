@@ -242,7 +242,7 @@ async fn execute_with_journal(
         journal.mark_run_completed(Utc::now())?;
     }
 
-    let verify = verify_batch(&plan, &records).ok();
+    let verify = verify_batch_with_run(&plan, &records, Some(&run_id)).ok();
     let verify_map = verify.as_ref().map(verify_results_map).unwrap_or_default();
     let identity = journal.run_identity()?.unwrap_or(identity);
     let verification_summary = verify.as_ref().map(|v| BatchVerificationSummary {
