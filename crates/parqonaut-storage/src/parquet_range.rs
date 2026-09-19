@@ -36,7 +36,7 @@ impl ParquetFooterBytes {
 }
 
 /// Read the Parquet footer for `object` using bounded range GETs.
-pub async fn read_parquet_footer<B: StorageBackend>(
+pub async fn read_parquet_footer<B: StorageBackend + ?Sized>(
     backend: &B,
     object: &ObjectLocation,
 ) -> Result<(ParquetFooterBytes, ParquetRangeMetrics), StorageError> {

@@ -36,7 +36,7 @@ impl RemotePublicationLock {
     ///
     /// Fails with [`PublicationError::LockHeld`] when another run owns the lock. The same
     /// `run_id` may reclaim a stale lock (mirrors local `{output}.parqonaut.lock` recovery).
-    pub async fn acquire<B: StorageBackend>(
+    pub async fn acquire<B: StorageBackend + ?Sized>(
         backend: &B,
         dataset: &DatasetLocation,
         run_id: &str,
@@ -72,7 +72,7 @@ impl RemotePublicationLock {
         }
     }
 
-    async fn reclaim_or_reject<B: StorageBackend>(
+    async fn reclaim_or_reject<B: StorageBackend + ?Sized>(
         backend: &B,
         lock_object: &ObjectLocation,
         record: &WriterLockRecord,
@@ -108,7 +108,10 @@ impl RemotePublicationLock {
     }
 
     /// Release the writer lock. Idempotent after the first successful release.
-    pub async fn release<B: StorageBackend>(mut self, backend: &B) -> Result<(), PublicationError> {
+    pub async fn release<B: StorageBackend + ?Sized>(
+        mut self,
+        backend: &B,
+    ) -> Result<(), PublicationError> {
         if self.released {
             return Ok(());
         }

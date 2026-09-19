@@ -152,7 +152,7 @@ pub enum PublicationError {
 }
 
 /// Active remote publication session for one run/version.
-pub struct RemotePublicationSession<'a, B: StorageBackend> {
+pub struct RemotePublicationSession<'a, B: StorageBackend + ?Sized> {
     backend: &'a B,
     dataset: DatasetLocation,
     version_id: PublicationVersionId,
@@ -161,7 +161,7 @@ pub struct RemotePublicationSession<'a, B: StorageBackend> {
     lock: Option<RemotePublicationLock>,
 }
 
-impl<'a, B: StorageBackend> RemotePublicationSession<'a, B> {
+impl<'a, B: StorageBackend + ?Sized> RemotePublicationSession<'a, B> {
     /// Begin or resume a publication for `run_id`, acquiring the writer lock.
     pub async fn begin(
         backend: &'a B,
@@ -408,7 +408,7 @@ impl<'a, B: StorageBackend> RemotePublicationSession<'a, B> {
 }
 
 /// Returns `true` only when the commit marker object exists.
-pub async fn is_version_committed<B: StorageBackend>(
+pub async fn is_version_committed<B: StorageBackend + ?Sized>(
     backend: &B,
     dataset: &DatasetLocation,
     version_id: &PublicationVersionId,
@@ -422,7 +422,7 @@ pub async fn is_version_committed<B: StorageBackend>(
 }
 
 /// Observed publication state for recovery/display. Never reports `Committed` without marker.
-pub async fn observed_state<B: StorageBackend>(
+pub async fn observed_state<B: StorageBackend + ?Sized>(
     backend: &B,
     dataset: &DatasetLocation,
     version_id: &PublicationVersionId,
@@ -449,7 +449,7 @@ pub async fn observed_state<B: StorageBackend>(
     }
 }
 
-pub async fn read_current_version<B: StorageBackend>(
+pub async fn read_current_version<B: StorageBackend + ?Sized>(
     backend: &B,
     dataset: &DatasetLocation,
 ) -> Result<Option<String>, PublicationError> {
@@ -473,7 +473,7 @@ pub(crate) fn object_at(
     }
 }
 
-pub(crate) async fn read_json_object<T: for<'de> Deserialize<'de>, B: StorageBackend>(
+pub(crate) async fn read_json_object<T: for<'de> Deserialize<'de>, B: StorageBackend + ?Sized>(
     backend: &B,
     object: &ObjectLocation,
 ) -> Result<T, PublicationError> {
@@ -492,7 +492,7 @@ pub(crate) async fn read_json_object<T: for<'de> Deserialize<'de>, B: StorageBac
     })
 }
 
-async fn load_recovered_state<B: StorageBackend>(
+async fn load_recovered_state<B: StorageBackend + ?Sized>(
     backend: &B,
     dataset: &DatasetLocation,
     version_id: &PublicationVersionId,

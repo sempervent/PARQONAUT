@@ -23,7 +23,7 @@ impl RemoteInventory {
 }
 
 /// Recursively list a dataset and return a sorted, de-duplicated inventory.
-pub async fn list_remote_inventory<B: StorageBackend>(
+pub async fn list_remote_inventory<B: StorageBackend + ?Sized>(
     backend: &B,
     dataset: &DatasetLocation,
 ) -> Result<RemoteInventory, StorageError> {

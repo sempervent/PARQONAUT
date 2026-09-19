@@ -34,6 +34,16 @@ pub struct MemoryStorageBackend {
     capabilities: StorageCapabilities,
 }
 
+impl Clone for MemoryStorageBackend {
+    fn clone(&self) -> Self {
+        Self {
+            state: Arc::clone(&self.state),
+            metrics: Arc::clone(&self.metrics),
+            capabilities: self.capabilities,
+        }
+    }
+}
+
 impl MemoryStorageBackend {
     pub fn new(capabilities: StorageCapabilities) -> Self {
         Self {
