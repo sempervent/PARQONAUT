@@ -2,6 +2,33 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.7.0] - 2026-09-19
+
+Unified application server: CLI and HTTP share `parqonaut-app`; durable jobs for scan, repair, and batch orchestration.
+
+### ADDED
+
+- **`prqnt serve`** — PARQONAUT HTTP API at `/api/v1` (OpenAPI, metrics, health live/ready).
+- **`parqonaut-app`** — transport-neutral scan, repair, and batch use cases.
+- Durable **`application_jobs`** model (scan, repair, batch_repair, batch_resume) with lease/recovery and cancellation.
+- Server storage policy (allowed local roots, S3 buckets/prefixes); `PRQNT_BOOTSTRAP_ADMIN_TOKEN`.
+- API integration scripts (`scripts/api-test/`), `just api-test`, `api-demo`, `api-restart-demo`.
+- CI jobs **`api-integration`** and **`postgres-integration`**.
+
+### CHANGED
+
+- CLI repair/batch commands delegate to **`parqonaut-app`** (scan already did).
+- OpenAPI title **PARQONAUT API**; metrics namespace **`parqonaut_`**; new bearer tokens use **`prqnt_`** prefix.
+- SQLite **`scan_jobs`** migrated to **`application_jobs`** (data preserved).
+
+### SECURITY
+
+- Default bind **127.0.0.1**; location policy enforced before storage I/O.
+
+### DEFERRED
+
+- Idempotency-Key, distributed workers, SDKs, web UI/TUI, TLS termination, plugin execution.
+
 ## [0.6.0] - 2026-09-19
 
 Interface normalization: one public executable (`prqnt`), capability-oriented repository layout, and removal of legacy product entrypoints.

@@ -40,7 +40,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: API tests and smoke
-        run: just api-test
+        run: |
+          set -euo pipefail
+          cargo test -p paraclete-service --tests
+          cargo test -p paraclete-store --test auth_tokens
+          bash scripts/api-test/smoke.sh --start
 
   postgres-integration:
     name: Postgres integration

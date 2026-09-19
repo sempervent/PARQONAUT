@@ -22,13 +22,13 @@ pub struct ScanJobRow {
     pub failure_message: Option<String>,
     pub run_id: Option<String>,
     pub worker_id: Option<String>,
-    pub attempt_count: i64,
+    pub attempt_count: i32,
     pub heartbeat_at: Option<String>,
     pub leased_until: Option<String>,
     pub recovery_note: Option<String>,
     pub job_kind: String,
-    pub payload_schema_version: i64,
-    pub cancel_requested: i64,
+    pub payload_schema_version: i32,
+    pub cancel_requested: i32,
     pub result_ref_json: Option<String>,
 }
 

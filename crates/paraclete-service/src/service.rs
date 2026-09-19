@@ -555,7 +555,7 @@ fn scan_job_row_to_view(row: ScanJobRow) -> Result<ScanJobView, AppError> {
         completed_at,
         target_kind: row.target_kind,
         normalized_target_key: row.normalized_target_key,
-        attempt_count: row.attempt_count,
+        attempt_count: i64::from(row.attempt_count),
         worker_id: row.worker_id,
         heartbeat_at,
         leased_until,

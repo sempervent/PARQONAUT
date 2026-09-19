@@ -71,7 +71,7 @@ pub mod audit {
         );
     }
 
-    pub fn job_claimed(job_id: uuid::Uuid, attempt_count: i64, worker_id: &str) {
+    pub fn job_claimed(job_id: uuid::Uuid, attempt_count: i32, worker_id: &str) {
         tracing::info!(
             target: "parqonaut_audit",
             event = "job.claimed",

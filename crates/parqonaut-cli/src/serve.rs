@@ -62,8 +62,8 @@ pub async fn run(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let file_cfg = load_config(args.config.as_ref())?;
-    let state_dir = resolve_state_dir(args.state_dir.as_ref())?;
+    let file_cfg = load_config(args.config.as_deref())?;
+    let state_dir = resolve_state_dir(args.state_dir.as_deref())?;
     std::fs::create_dir_all(&state_dir)?;
 
     let db_url = args.database.clone().unwrap_or_else(|| default_sqlite_url(&state_dir));
@@ -87,7 +87,9 @@ pub async fn run(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn load_config(path: Option<&PathBuf>) -> Result<ServerFileConfig, Box<dyn std::error::Error>> {
+fn load_config(
+    path: Option<&std::path::Path>,
+) -> Result<ServerFileConfig, Box<dyn std::error::Error>> {
     let Some(path) = path else {
         return Ok(ServerFileConfig::default());
     };
@@ -106,9 +108,11 @@ fn storage_policy_from_config(cfg: &ServerFileConfig) -> StoragePolicy {
     }
 }
 
-fn resolve_state_dir(explicit: Option<&PathBuf>) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn resolve_state_dir(
+    explicit: Option<&std::path::Path>,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
     if let Some(p) = explicit {
-        return Ok(p.clone());
+        return Ok(p.to_path_buf());
     }
     if let Ok(p) = std::env::var("PRQNT_STATE_DIR") {
         return Ok(PathBuf::from(p));
@@ -117,7 +121,7 @@ fn resolve_state_dir(explicit: Option<&PathBuf>) -> Result<PathBuf, Box<dyn std:
     Ok(base.join("prqnt"))
 }
 
-fn default_sqlite_url(state_dir: &PathBuf) -> String {
+fn default_sqlite_url(state_dir: &std::path::Path) -> String {
     let db_dir = state_dir.join("database");
     let _ = std::fs::create_dir_all(&db_dir);
     let path = db_dir.join("parqonaut.sqlite");

@@ -596,7 +596,7 @@ impl PostgresScanStore {
     ) -> Result<StaleRecoveryStats, StoreError> {
         let now_s = now.to_rfc3339();
         let mut tx = self.pool.begin().await?;
-        let rows: Vec<(String, i64)> = sqlx::query_as(
+        let rows: Vec<(String, i32)> = sqlx::query_as(
             r#"SELECT job_id, attempt_count FROM application_jobs
                WHERE status = 'running'
                  AND leased_until IS NOT NULL
@@ -607,7 +607,7 @@ impl PostgresScanStore {
         .await?;
 
         let mut stats = StaleRecoveryStats::default();
-        let max = policy.max_attempts as i64;
+        let max = policy.max_attempts as i32;
 
         for (job_id, attempt_count) in rows {
             if attempt_count >= max {
@@ -751,7 +751,7 @@ impl PostgresScanStore {
     }
 
     pub async fn job_cancel_requested(&self, job_id: JobId) -> Result<bool, StoreError> {
-        let v: Option<i64> = sqlx::query_scalar(
+        let v: Option<i32> = sqlx::query_scalar(
             "SELECT cancel_requested FROM application_jobs WHERE job_id = $1 AND status = 'running'",
         )
         .bind(job_id.0.to_string())
