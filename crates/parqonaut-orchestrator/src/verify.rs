@@ -12,7 +12,7 @@ use crate::ids::RunId;
 use crate::journal::DatasetRunRecord;
 use crate::plan::BatchPlan;
 use crate::state::DatasetState;
-use crate::storage::{remote_output_committed, BatchStorageRuntime, block_on_async};
+use crate::storage::{block_on_async, remote_output_committed, BatchStorageRuntime};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DatasetVerifyResult {
@@ -88,13 +88,7 @@ async fn verify_batch_async(
             let before = scan_location(storage, &source).await?;
             let after = scan_location(storage, &output).await?;
             let manifest = local_manifest_if_present(&output);
-            (
-                before,
-                after,
-                location_root(&source),
-                location_root(&output),
-                manifest,
-            )
+            (before, after, location_root(&source), location_root(&output), manifest)
         } else {
             let source = Utf8Path::new(&ds.source_path);
             let output = Utf8Path::new(&ds.output_path);

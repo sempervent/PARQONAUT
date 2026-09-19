@@ -76,6 +76,7 @@ jobs:
         run: |
           aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://fogbank" || true
           aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://parqonaut-test" || true
+          aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://contract-test" || true
           bash scripts/phase5/fixtures.sh
       - name: Phase 5 storage integration tests
         run: |

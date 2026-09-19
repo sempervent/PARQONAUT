@@ -121,10 +121,7 @@ async fn fogbank_stale_baseline_matches_manifest_when_present() {
     let manifest_path = fogbank_manifest("stale-baseline-fingerprint.json");
     if !manifest_path.exists() {
         if integration_required() {
-            panic!(
-                "integration CI requires manifest at {}",
-                manifest_path.display()
-            );
+            panic!("integration CI requires manifest at {}", manifest_path.display());
         }
         eprintln!(
             "skipping manifest comparison: {} not found (run phase5-fixtures)",

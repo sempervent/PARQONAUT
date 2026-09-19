@@ -47,6 +47,7 @@ pub use location_ops::{
     diagnose_location, evaluate_check_for_location, generate_plan_for_location,
 };
 pub use manifest::{ExecutionManifest, MANIFEST_VERSION};
+pub use paraclete_types::ScanReport;
 pub use plan::{
     generate_plan, RepairOperation, RepairPlan, PARQONAUT_VERSION, PLAN_SCHEMA_VERSION,
 };
@@ -62,6 +63,5 @@ pub use schema::{
 };
 pub use schema_policy::{CiPolicy, EffectivePolicy, FilePolicy, SchemaPolicy};
 pub use stable_id::{canonical_json, stable_hex_id};
-pub use paraclete_types::ScanReport;
 pub use storage_scan::{backend_for_location, location_root, scan_dataset, RepairBackend};
 pub use verify::{scan_directory, verify_repair, VerificationOutcome, VerificationReport};
