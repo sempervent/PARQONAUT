@@ -32,8 +32,8 @@ pub use format_detection::{classify_format_from_path, ExtensionFormatDetector, F
 pub use local_resolve::resolve_local_scan_plan;
 pub use orchestrator::ScanOrchestrator;
 pub use parquet_inspect::{
-    inspect_parquet_chunk_reader, inspect_parquet_file, inspect_parquet_footer_buffer,
-    inspect_parquet_reader, ParquetInspection, RowGroupSummary,
+    footer_inspection_heap_bound, inspect_parquet_chunk_reader, inspect_parquet_file,
+    inspect_parquet_footer_buffer, inspect_parquet_reader, ParquetInspection, RowGroupSummary,
 };
 pub use phase1_rules::evaluate_phase1_rules;
 pub use phase2_findings::{

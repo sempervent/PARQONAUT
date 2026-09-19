@@ -2,7 +2,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
-use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+use tokio::io::{AsyncRead, ReadBuf};
 
 use crate::error::StorageError;
 
@@ -123,8 +123,8 @@ impl ObjectWriteStream {
     pub fn inject_writer(
         self,
         wrap: impl FnOnce(
-            Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
-        ) -> Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>
+                Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+            ) -> Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>
             + Send
             + 'static,
     ) -> Self {

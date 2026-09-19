@@ -606,8 +606,7 @@ mod tests {
     async fn concurrent_writers_rejected() {
         let backend = memory_backend();
         let ds = dataset();
-        let mut first =
-            RemotePublicationSession::begin(&backend, ds.clone(), "run-a").await.unwrap();
+        let first = RemotePublicationSession::begin(&backend, ds.clone(), "run-a").await.unwrap();
         let err = match RemotePublicationSession::begin(&backend, ds, "run-b").await {
             Err(err) => err,
             Ok(_) => panic!("expected lock conflict"),

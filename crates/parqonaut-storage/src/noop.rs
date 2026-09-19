@@ -11,14 +11,9 @@ use crate::metrics::{StorageMetrics, StorageMetricsCollector};
 use crate::stream::{ObjectReadStream, ObjectWriteStream};
 
 /// Placeholder backend used before real implementations land. All operations unsupported.
+#[derive(Default)]
 pub struct NoopStorageBackend {
     metrics: StorageMetricsCollector,
-}
-
-impl Default for NoopStorageBackend {
-    fn default() -> Self {
-        Self { metrics: StorageMetricsCollector::default() }
-    }
 }
 
 impl NoopStorageBackend {

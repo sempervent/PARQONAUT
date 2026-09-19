@@ -179,7 +179,7 @@ mod tests {
             version_id: None,
             last_modified: None,
         };
-        let mut objects = vec![a, b];
+        let mut objects = [a, b];
         objects.sort_by(inventory_sort_key);
         match &objects[0].location {
             ObjectLocation::S3 { key, .. } => assert_eq!(key, "p/a.parquet"),

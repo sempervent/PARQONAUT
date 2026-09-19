@@ -16,6 +16,24 @@ pub struct S3Config {
 }
 
 impl S3Config {
+    /// Load non-secret client options from the environment (AWS + MinIO conventions).
+    pub fn from_env() -> Self {
+        let endpoint =
+            std::env::var("MINIO_ENDPOINT").ok().or_else(|| std::env::var("AWS_ENDPOINT_URL").ok());
+        let path_style = std::env::var("MINIO_PATH_STYLE")
+            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "on"))
+            .unwrap_or_else(|_| endpoint.is_some());
+        Self {
+            endpoint,
+            region: std::env::var("AWS_REGION")
+                .ok()
+                .or_else(|| std::env::var("MINIO_REGION").ok())
+                .or(Some("us-east-1".into())),
+            path_style,
+            profile: std::env::var("AWS_PROFILE").ok(),
+        }
+    }
+
     pub fn minio(endpoint: impl Into<String>) -> Self {
         Self {
             endpoint: Some(endpoint.into()),

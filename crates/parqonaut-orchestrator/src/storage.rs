@@ -17,32 +17,42 @@ use tokio::sync::Semaphore;
 
 use crate::error::OrchestratorError;
 
+#[cfg(feature = "s3")]
+use parqonaut_storage::{S3Config, S3StorageBackend};
+
+/// Remote backend handle. Production builds use [`RemoteBackend::S3`]; tests inject memory.
+enum RemoteBackend {
+    #[cfg(test)]
+    Memory(MemoryStorageBackend),
+    #[cfg(feature = "s3")]
+    S3(Arc<S3StorageBackend>),
+    #[cfg(all(not(feature = "s3"), not(test)))]
+    Unconfigured,
+}
+
 /// Bounded concurrent storage requests across a batch run (`--jobs` is separate).
 pub struct BatchStorageRuntime {
     local: LocalStorageBackend,
-    remote: MemoryStorageBackend,
+    remote: RemoteBackend,
     requests: Arc<Semaphore>,
 }
 
 impl BatchStorageRuntime {
+    /// Production runtime: local filesystem + real S3 backend for `s3://` locations.
     pub fn new(max_storage_requests: u32) -> Self {
         Self {
             local: LocalStorageBackend::direct(),
-            remote: MemoryStorageBackend::new(StorageCapabilities {
-                range_reads: true,
-                stream_reads: true,
-                conditional_create: true,
-                conditional_replace: true,
-                ..StorageCapabilities::S3
-            }),
+            remote: RemoteBackend::production(),
             requests: Arc::new(Semaphore::new(max_storage_requests.max(1) as usize)),
         }
     }
 
+    /// Test-only: in-memory remote backend (never used in production `new()`).
+    #[cfg(test)]
     pub fn with_remote_backend(max_storage_requests: u32, remote: MemoryStorageBackend) -> Self {
         Self {
             local: LocalStorageBackend::direct(),
-            remote,
+            remote: RemoteBackend::Memory(remote),
             requests: Arc::new(Semaphore::new(max_storage_requests.max(1) as usize)),
         }
     }
@@ -50,14 +60,40 @@ impl BatchStorageRuntime {
     pub fn repair_backend_for(&self, location: &DatasetLocation) -> RepairBackend {
         match location {
             DatasetLocation::Local(_) => RepairBackend::Local(LocalStorageBackend::direct()),
-            DatasetLocation::S3(_) => RepairBackend::Memory(self.remote.clone()),
+            DatasetLocation::S3(_) => self.remote_repair_backend(),
+        }
+    }
+
+    fn remote_repair_backend(&self) -> RepairBackend {
+        match &self.remote {
+            #[cfg(test)]
+            RemoteBackend::Memory(m) => RepairBackend::Memory(m.clone()),
+            #[cfg(feature = "s3")]
+            RemoteBackend::S3(s) => RepairBackend::S3(Arc::clone(s)),
+            #[cfg(all(not(feature = "s3"), not(test)))]
+            RemoteBackend::Unconfigured => {
+                panic!("s3:// locations require the orchestrator `s3` feature")
+            }
         }
     }
 
     pub fn backend_for(&self, location: &DatasetLocation) -> &dyn StorageBackend {
         match location {
             DatasetLocation::Local(_) => &self.local,
-            DatasetLocation::S3(_) => &self.remote,
+            DatasetLocation::S3(_) => self.remote_backend_ref(),
+        }
+    }
+
+    fn remote_backend_ref(&self) -> &dyn StorageBackend {
+        match &self.remote {
+            #[cfg(test)]
+            RemoteBackend::Memory(m) => m,
+            #[cfg(feature = "s3")]
+            RemoteBackend::S3(s) => s.as_ref(),
+            #[cfg(all(not(feature = "s3"), not(test)))]
+            RemoteBackend::Unconfigured => {
+                panic!("s3:// locations require the orchestrator `s3` feature")
+            }
         }
     }
 
@@ -77,6 +113,25 @@ impl Default for BatchStorageRuntime {
     }
 }
 
+impl RemoteBackend {
+    fn production() -> Self {
+        #[cfg(feature = "s3")]
+        {
+            let config = S3Config::from_env();
+            let backend = block_on_async(S3StorageBackend::new(config));
+            Self::S3(Arc::new(backend))
+        }
+        #[cfg(all(not(feature = "s3"), test))]
+        {
+            Self::Memory(MemoryStorageBackend::new(StorageCapabilities::S3))
+        }
+        #[cfg(all(not(feature = "s3"), not(test)))]
+        {
+            Self::Unconfigured
+        }
+    }
+}
+
 pub fn default_max_storage_requests() -> u32 {
     8
 }
@@ -87,7 +142,6 @@ where
     F: Future<Output = T>,
 {
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        // `block_in_place` is invalid on current-thread runtimes (common in `#[tokio::test]`).
         if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
             return tokio::task::block_in_place(|| handle.block_on(future));
         }
@@ -126,14 +180,10 @@ pub async fn dataset_is_directory_like(
 ) -> Result<bool, OrchestratorError> {
     match location {
         DatasetLocation::Local(local) => Ok(local.path.as_std_path().is_dir()),
-        DatasetLocation::S3(_) => {
-            let _ = runtime.backend_for(location);
-            Ok(true)
-        }
+        DatasetLocation::S3(_) => Ok(true),
     }
 }
 
-/// Remote output already committed for `run_id` (resume/idempotency).
 pub async fn remote_output_committed(
     runtime: &BatchStorageRuntime,
     output: &DatasetLocation,
@@ -152,7 +202,6 @@ pub async fn remote_output_committed(
         .await
 }
 
-/// Observed remote publication state for recovery display and resume decisions.
 pub async fn remote_publication_state(
     runtime: &BatchStorageRuntime,
     output: &DatasetLocation,
@@ -241,9 +290,22 @@ mod tests {
         assert!(!dataset_exists(&runtime, &missing).await.unwrap());
     }
 
+    #[cfg(feature = "s3")]
+    #[test]
+    fn production_runtime_selects_s3_backend_for_remote_locations() {
+        let runtime = BatchStorageRuntime::new(4);
+        match runtime.repair_backend_for(&DatasetLocation::parse("s3://bucket/prefix/").unwrap()) {
+            RepairBackend::S3(_) => {}
+            _ => panic!("expected S3 backend for s3:// location"),
+        }
+    }
+
     #[tokio::test]
     async fn request_permit_bounds_concurrency() {
-        let runtime = Arc::new(BatchStorageRuntime::new(1));
+        let runtime = Arc::new(BatchStorageRuntime::with_remote_backend(
+            1,
+            MemoryStorageBackend::new(StorageCapabilities::S3),
+        ));
         let r1 = Arc::clone(&runtime);
         let r2 = Arc::clone(&runtime);
         let first = tokio::spawn(async move {

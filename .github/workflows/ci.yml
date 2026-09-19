@@ -24,3 +24,40 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: test
         run: cargo test --workspace
+
+  phase5-minio:
+    runs-on: ubuntu-latest
+    services:
+      minio:
+        image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
+        ports:
+          - 9000:9000
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/live || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          server /data --console-address :9001
+    env:
+      MINIO_ENDPOINT: http://127.0.0.1:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+      MINIO_PATH_STYLE: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install MinIO client
+        run: |
+          curl -fsSL -o mc https://dl.min.io/client/mc/release/linux-amd64/mc
+          chmod +x mc
+          ./mc alias set local "$MINIO_ENDPOINT" minioadmin minioadmin
+          ./mc mb local/fogbank --ignore-existing
+          ./mc mb local/parqonaut-test --ignore-existing
+      - name: FOGBANK storage integration
+        run: |
+          cargo test -p parqonaut-storage --features "s3,fogbank-fixtures,test-util" fogbank chaos -- --nocapture

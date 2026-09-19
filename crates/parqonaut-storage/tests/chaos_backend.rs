@@ -41,7 +41,9 @@ where
     for attempt in 0..max_attempts {
         match op().await {
             Ok(value) => return Ok(value),
-            Err(err) if err.retry_class() == RetryClass::Retryable && attempt + 1 < max_attempts => {
+            Err(err)
+                if err.retry_class() == RetryClass::Retryable && attempt + 1 < max_attempts =>
+            {
                 continue;
             }
             Err(err) => return Err(err),
@@ -55,9 +57,8 @@ async fn chaos_list_transient_maps_to_retryable() {
     let inner = memory_backend();
     let backend = FaultInjectingBackend::new(
         inner,
-        vec![FaultRule::new(FaultTarget::List).steps(vec![FaultStep::Inject(
-            faults::transient_timeout(),
-        )])],
+        vec![FaultRule::new(FaultTarget::List)
+            .steps(vec![FaultStep::Inject(faults::transient_timeout())])],
     );
     let dataset = DatasetLocation::parse("s3://bucket/prefix/").unwrap();
     let err = backend.list(&dataset, ListOptions::default(), None).await.unwrap_err();
@@ -77,10 +78,8 @@ async fn chaos_head_unavailable_then_ok_with_retry() {
         .await
         .unwrap();
 
-    let backend = FaultInjectingBackend::new(
-        inner,
-        vec![faults::unavailable_then_ok(FaultTarget::Head)],
-    );
+    let backend =
+        FaultInjectingBackend::new(inner, vec![faults::unavailable_then_ok(FaultTarget::Head)]);
 
     let meta = with_retry(|| backend.head(&object), 3).await.unwrap();
     assert_eq!(meta.size, 4);
@@ -101,15 +100,11 @@ async fn chaos_read_range_failure_is_retryable() {
 
     let backend = FaultInjectingBackend::new(
         inner,
-        vec![FaultRule::new(FaultTarget::ReadRange).steps(vec![FaultStep::Inject(
-            faults::service_unavailable(),
-        )])],
+        vec![FaultRule::new(FaultTarget::ReadRange)
+            .steps(vec![FaultStep::Inject(faults::service_unavailable())])],
     );
 
-    let err = backend
-        .read_range(&object, ByteRange::new(0, 3).unwrap())
-        .await
-        .unwrap_err();
+    let err = backend.read_range(&object, ByteRange::new(0, 3).unwrap()).await.unwrap_err();
     assert_eq!(err.retry_class(), RetryClass::Retryable);
 }
 
@@ -128,9 +123,8 @@ async fn chaos_read_stream_open_failure_is_retryable() {
 
     let backend = FaultInjectingBackend::new(
         inner,
-        vec![FaultRule::new(FaultTarget::ReadStreamOpen).steps(vec![FaultStep::Inject(
-            faults::service_unavailable(),
-        )])],
+        vec![FaultRule::new(FaultTarget::ReadStreamOpen)
+            .steps(vec![FaultStep::Inject(faults::service_unavailable())])],
     );
 
     let err = match backend.read_stream(&object, None).await {
@@ -145,18 +139,12 @@ async fn chaos_retry_exhaustion_stays_retryable() {
     let inner = memory_backend();
     let object = ObjectLocation::S3 { bucket: "bucket".into(), key: "obj.bin".into() };
     inner
-        .conditional_create(
-            &object,
-            ConditionalCreate::must_not_exist(),
-            Bytes::from_static(b"x"),
-        )
+        .conditional_create(&object, ConditionalCreate::must_not_exist(), Bytes::from_static(b"x"))
         .await
         .unwrap();
 
-    let backend = FaultInjectingBackend::new(
-        inner,
-        vec![faults::retry_exhaustion(FaultTarget::Head)],
-    );
+    let backend =
+        FaultInjectingBackend::new(inner, vec![faults::retry_exhaustion(FaultTarget::Head)]);
 
     let err = with_retry(|| backend.head(&object), 3).await.unwrap_err();
     assert_eq!(err.retry_class(), RetryClass::Retryable);
@@ -187,9 +175,8 @@ async fn chaos_conditional_create_conflict_is_never_retry() {
 
     let backend = FaultInjectingBackend::new(
         inner,
-        vec![FaultRule::new(FaultTarget::ConditionalCreate).steps(vec![FaultStep::Inject(
-            faults::conflict_exists("s3://bucket/new.bin"),
-        )])],
+        vec![FaultRule::new(FaultTarget::ConditionalCreate)
+            .steps(vec![FaultStep::Inject(faults::conflict_exists("s3://bucket/new.bin"))])],
     );
 
     let err = backend
@@ -208,19 +195,14 @@ async fn chaos_conditional_replace_precondition_is_never_retry() {
     let inner = memory_backend();
     let object = ObjectLocation::S3 { bucket: "bucket".into(), key: "replace.bin".into() };
     inner
-        .conditional_create(
-            &object,
-            ConditionalCreate::must_not_exist(),
-            Bytes::from_static(b"v1"),
-        )
+        .conditional_create(&object, ConditionalCreate::must_not_exist(), Bytes::from_static(b"v1"))
         .await
         .unwrap();
 
     let backend = FaultInjectingBackend::new(
         inner,
-        vec![FaultRule::new(FaultTarget::ConditionalReplace).steps(vec![FaultStep::Inject(
-            faults::precondition_etag(),
-        )])],
+        vec![FaultRule::new(FaultTarget::ConditionalReplace)
+            .steps(vec![FaultStep::Inject(faults::precondition_etag())])],
     );
 
     let head = backend.head(&object).await.unwrap();
@@ -240,9 +222,8 @@ async fn chaos_permission_denied_is_never_retry() {
     let inner = memory_backend();
     let backend = FaultInjectingBackend::new(
         inner,
-        vec![FaultRule::new(FaultTarget::Head).steps(vec![FaultStep::Inject(
-            faults::permission_denied("s3://bucket/denied"),
-        )])],
+        vec![FaultRule::new(FaultTarget::Head)
+            .steps(vec![FaultStep::Inject(faults::permission_denied("s3://bucket/denied"))])],
     );
     let object = ObjectLocation::S3 { bucket: "bucket".into(), key: "denied".into() };
     let err = backend.head(&object).await.unwrap_err();

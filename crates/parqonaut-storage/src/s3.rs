@@ -112,7 +112,7 @@ impl StorageBackend for S3StorageBackend {
             .map(|obj| list_object_to_metadata(&s3.bucket, obj))
             .collect::<Vec<_>>();
 
-        objects.sort_by(|a, b| a.location.display_uri().cmp(&b.location.display_uri()));
+        objects.sort_by_key(|a| a.location.display_uri());
 
         let mut prefixes: Vec<String> = output
             .common_prefixes()

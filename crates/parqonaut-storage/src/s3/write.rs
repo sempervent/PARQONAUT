@@ -109,13 +109,15 @@ impl MultipartState {
 }
 
 fn io_error(err: StorageError) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, err.to_string())
+    io::Error::other(err.to_string())
 }
+
+type PendingUpload = Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send>>;
 
 /// AsyncWrite sink that performs multipart upload and aborts on drop if not completed.
 pub(crate) struct MultipartAsyncWrite {
     state: Arc<Mutex<MultipartState>>,
-    pending: Option<Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send>>>,
+    pending: Option<PendingUpload>,
 }
 
 impl MultipartAsyncWrite {
@@ -159,7 +161,7 @@ impl MultipartAsyncWrite {
     }
 
     fn poll_pending(
-        pending: &mut Option<Pin<Box<dyn Future<Output = Result<(), StorageError>> + Send>>>,
+        pending: &mut Option<PendingUpload>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
         if let Some(fut) = pending.as_mut() {

@@ -119,15 +119,13 @@ impl FaultRule {
         if self.steps.is_empty() {
             return None;
         }
-        let last_inject = self
-            .steps
-            .iter()
-            .enumerate()
-            .filter_map(|(i, s)| match s {
-                FaultStep::Inject(_) => Some(i),
-                FaultStep::Delegate => None,
-            })
-            .last();
+        let last_inject = self.steps.iter().enumerate().rev().find_map(|(i, s)| {
+            if matches!(s, FaultStep::Inject(_)) {
+                Some(i)
+            } else {
+                None
+            }
+        });
 
         if invocation < self.steps.len() as u64 {
             return match &self.steps[invocation as usize] {
@@ -168,7 +166,9 @@ fn clone_rules(rules: &[FaultRule]) -> Vec<FaultRule> {
 
 fn replay_error(err: &StorageError) -> StorageError {
     match err {
-        StorageError::NotFound { location } => StorageError::NotFound { location: location.clone() },
+        StorageError::NotFound { location } => {
+            StorageError::NotFound { location: location.clone() }
+        }
         StorageError::PermissionDenied { location } => {
             StorageError::PermissionDenied { location: location.clone() }
         }
@@ -184,9 +184,9 @@ fn replay_error(err: &StorageError) -> StorageError {
         StorageError::InvalidLocation { message } => {
             StorageError::InvalidLocation { message: message.clone() }
         }
-        StorageError::UnsupportedCapability { capability } => StorageError::UnsupportedCapability {
-            capability: capability.clone(),
-        },
+        StorageError::UnsupportedCapability { capability } => {
+            StorageError::UnsupportedCapability { capability: capability.clone() }
+        }
         StorageError::Io(e) => StorageError::Other { message: e.to_string() },
         StorageError::Other { message } => StorageError::Other { message: message.clone() },
     }
@@ -247,7 +247,6 @@ impl<B> FaultInjectingBackend<B> {
         }
         None
     }
-
 }
 
 #[async_trait]
@@ -327,12 +326,7 @@ impl<B: StorageBackend> StorageBackend for FaultInjectingBackend<B> {
         let backend = self.clone_shim();
         let object = object.clone();
         Ok(stream.inject_reader(move |inner| {
-            Box::pin(FaultInjectingReader {
-                inner,
-                backend,
-                object,
-                first_read: false,
-            })
+            Box::pin(FaultInjectingReader { inner, backend, object, first_read: false })
         }))
     }
 
@@ -489,10 +483,7 @@ impl AsyncRead for FaultInjectingReader {
                 write_part_index: None,
             };
             if let Some(err) = self.backend.evaluate(&ctx) {
-                return Poll::Ready(Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    err.to_string(),
-                )));
+                return Poll::Ready(Err(std::io::Error::other(err.to_string())));
             }
         }
         self.inner.as_mut().poll_read(cx, buf)
@@ -529,10 +520,8 @@ pub mod faults {
 
     /// 503 once, then delegate (retry success path).
     pub fn unavailable_then_ok(target: FaultTarget) -> FaultRule {
-        FaultRule::new(target).steps(vec![
-            FaultStep::Inject(service_unavailable()),
-            FaultStep::Delegate,
-        ])
+        FaultRule::new(target)
+            .steps(vec![FaultStep::Inject(service_unavailable()), FaultStep::Delegate])
     }
 
     /// Always return 503 (retry exhaustion when caller cap is lower).

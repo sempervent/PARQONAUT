@@ -1,12 +1,12 @@
 //! Parquet footer inspection (metadata only; no row reads in Phase 1).
 
-use bytes::Bytes;
 use std::collections::BTreeSet;
 use std::fs::File;
 
 use camino::Utf8Path;
 use paraclete_types::{FieldDefinition, SchemaSnapshot};
 use parquet::basic::Repetition;
+use parquet::file::metadata::ParquetMetaDataReader;
 use parquet::file::reader::{ChunkReader, FileReader, SerializedFileReader};
 
 use crate::CoreError;
@@ -70,10 +70,26 @@ pub fn inspect_parquet_footer_buffer(
     if footer.len() < 8 || footer.len() as u64 > object_size {
         return Err(CoreError::Parquet("invalid Parquet footer buffer".into()));
     }
-    let content_len = object_size - footer.len() as u64;
-    let mut buf = vec![0u8; content_len as usize];
-    buf.extend_from_slice(footer);
-    inspect_parquet_reader(path, Bytes::from(buf))
+    let trailer: [u8; 8] = footer[footer.len() - 8..]
+        .try_into()
+        .map_err(|_| CoreError::Parquet("invalid Parquet footer trailer".into()))?;
+    let metadata_len = ParquetMetaDataReader::decode_footer(&trailer)
+        .map_err(|e| CoreError::Parquet(e.to_string()))?;
+    if metadata_len + 8 != footer.len() {
+        return Err(CoreError::Parquet(format!(
+            "footer buffer length {} does not match metadata length {metadata_len}",
+            footer.len(),
+        )));
+    }
+    let metadata_bytes = &footer[..metadata_len];
+    let meta = ParquetMetaDataReader::decode_metadata(metadata_bytes)
+        .map_err(|e| CoreError::Parquet(e.to_string()))?;
+    inspection_from_metadata(path, &meta)
+}
+
+/// Upper bound on heap used by [`inspect_parquet_footer_buffer`] (footer bytes only).
+pub fn footer_inspection_heap_bound(footer_len: usize) -> usize {
+    footer_len
 }
 
 fn inspection_from_metadata(

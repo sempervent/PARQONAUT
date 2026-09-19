@@ -19,6 +19,7 @@ use parqonaut_storage::memory::MemoryStorageBackend;
 use parqonaut_storage::parquet_range::read_parquet_footer;
 use parqonaut_storage::LocalStorageBackend;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
 
@@ -38,7 +39,7 @@ pub enum RepairBackend {
     Local(LocalStorageBackend),
     Memory(MemoryStorageBackend),
     #[cfg(feature = "s3")]
-    S3(parqonaut_storage::S3StorageBackend),
+    S3(Arc<parqonaut_storage::S3StorageBackend>),
 }
 
 impl RepairBackend {
@@ -47,7 +48,7 @@ impl RepairBackend {
             Self::Local(b) => scan_dataset(location, b).await,
             Self::Memory(b) => scan_dataset(location, b).await,
             #[cfg(feature = "s3")]
-            Self::S3(b) => scan_dataset(location, b).await,
+            Self::S3(b) => scan_dataset(location, b.as_ref()).await,
         }
     }
 
@@ -75,23 +76,23 @@ impl RepairBackend {
             }
             #[cfg(feature = "s3")]
             (Self::S3(s), Self::S3(o)) => {
-                executor.execute_storage(plan, output, scan, s, o, run_id).await
+                executor.execute_storage(plan, output, scan, s.as_ref(), o.as_ref(), run_id).await
             }
             #[cfg(feature = "s3")]
             (Self::Local(s), Self::S3(o)) => {
-                executor.execute_storage(plan, output, scan, s, o, run_id).await
+                executor.execute_storage(plan, output, scan, s, o.as_ref(), run_id).await
             }
             #[cfg(feature = "s3")]
             (Self::S3(s), Self::Local(o)) => {
-                executor.execute_storage(plan, output, scan, s, o, run_id).await
+                executor.execute_storage(plan, output, scan, s.as_ref(), o, run_id).await
             }
             #[cfg(feature = "s3")]
             (Self::Memory(s), Self::S3(o)) => {
-                executor.execute_storage(plan, output, scan, s, o, run_id).await
+                executor.execute_storage(plan, output, scan, s, o.as_ref(), run_id).await
             }
             #[cfg(feature = "s3")]
             (Self::S3(s), Self::Memory(o)) => {
-                executor.execute_storage(plan, output, scan, s, o, run_id).await
+                executor.execute_storage(plan, output, scan, s.as_ref(), o, run_id).await
             }
             _ => Err(RepairError::Storage("unsupported cross-backend repair pairing".into())),
         }
@@ -113,7 +114,7 @@ async fn backend_for_s3() -> Result<RepairBackend, RepairError> {
     {
         use parqonaut_storage::{S3Config, S3StorageBackend};
         let config = S3Config::default();
-        Ok(RepairBackend::S3(S3StorageBackend::new(config).await))
+        Ok(RepairBackend::S3(Arc::new(S3StorageBackend::new(config).await)))
     }
     #[cfg(not(feature = "s3"))]
     {
@@ -532,5 +533,37 @@ mod tests {
                 .unwrap();
         assert_eq!(remote.num_rows, local.num_rows);
         assert_eq!(remote.num_row_groups, local.num_row_groups);
+    }
+
+    #[test]
+    fn footer_inspection_bounded_for_huge_declared_object_size() {
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int32, false)]));
+        let batch =
+            RecordBatch::try_new(schema.clone(), vec![Arc::new(Int32Array::from(vec![1, 2, 3]))])
+                .unwrap();
+        let mut buf = Vec::new();
+        {
+            let mut writer = ArrowWriter::try_new(&mut buf, schema, None).unwrap();
+            writer.write(&batch).unwrap();
+            writer.close().unwrap();
+        }
+        let local_size = buf.len() as u64;
+        let trailer_start = local_size - 8;
+        let metadata_len = u32::from_le_bytes(
+            buf[trailer_start as usize..trailer_start as usize + 4].try_into().unwrap(),
+        );
+        let footer_start = local_size - u64::from(metadata_len) - 8;
+        let footer = buf[footer_start as usize..].to_vec();
+        let declared_size = 50u64 << 30;
+        let bound = paraclete_core::footer_inspection_heap_bound(footer.len());
+        let inspection = inspect_parquet_footer_buffer(
+            "s3://bucket/huge.parquet".into(),
+            declared_size,
+            &footer,
+        )
+        .expect("must parse footer without allocating declared object size");
+        assert_eq!(inspection.num_rows, 3);
+        assert!(bound < 1_000_000, "bound should be footer-sized only");
+        assert!(declared_size > bound as u64);
     }
 }

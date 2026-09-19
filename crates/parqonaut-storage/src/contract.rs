@@ -1,7 +1,6 @@
 use bytes::Bytes;
 
 use crate::backend::{ByteRange, ListOptions, StorageBackend};
-use crate::capabilities::StorageCapabilities;
 use crate::conditional::{ConditionalCreate, ConditionalReplace};
 use crate::error::StorageError;
 use crate::location::{DatasetLocation, ObjectLocation};

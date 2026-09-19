@@ -99,7 +99,7 @@ impl StorageBackend for MemoryStorageBackend {
             }
             objects.push(object_metadata_from_key(k, v));
         }
-        objects.sort_by(|a, b| a.location.display_uri().cmp(&b.location.display_uri()));
+        objects.sort_by_key(|a| a.location.display_uri());
         Ok(ListPage { objects, prefixes: vec![], truncated: false, continuation_token: None })
     }
 

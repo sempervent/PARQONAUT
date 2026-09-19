@@ -150,7 +150,7 @@ mod tests {
             etag: "opaque".into(),
             version_id: Some("v1".into()),
         };
-        let d0 = digest_entries(&[base.clone()]);
+        let d0 = digest_entries(std::slice::from_ref(&base));
 
         let mut size_changed = base.clone();
         size_changed.size = 101;
