@@ -239,8 +239,9 @@ async fn upload_fixtures(
     local_root: &Path,
     manifest_root: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let endpoint =
-        std::env::var("MINIO_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:9000".into());
+    let endpoint = std::env::var("PARQONAUT_S3_ENDPOINT")
+        .or_else(|_| std::env::var("MINIO_ENDPOINT"))
+        .unwrap_or_else(|_| "http://127.0.0.1:9000".into());
     let bucket = std::env::var("FOGBANK_BUCKET").unwrap_or_else(|_| "fogbank".into());
     let prefix = std::env::var("FOGBANK_DATASET_PREFIX").unwrap_or_else(|_| "datasets".into());
 

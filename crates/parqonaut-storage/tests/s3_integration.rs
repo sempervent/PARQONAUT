@@ -1,5 +1,7 @@
 #![cfg(feature = "s3")]
 
+mod common;
+
 use bytes::Bytes;
 use parqonaut_storage::backend::{ByteRange, ListOptions, StorageBackend};
 use parqonaut_storage::conditional::{ConditionalCreate, ConditionalReplace};
@@ -9,23 +11,20 @@ use parqonaut_storage::location::{DatasetLocation, ObjectLocation};
 use parqonaut_storage::{S3Config, S3StorageBackend};
 use uuid::Uuid;
 
-fn minio_config() -> Option<S3Config> {
-    let endpoint = std::env::var("MINIO_ENDPOINT").ok()?;
-    Some(S3Config {
-        endpoint: Some(endpoint),
-        region: std::env::var("MINIO_REGION")
-            .ok()
-            .or_else(|| std::env::var("AWS_REGION").ok())
-            .or(Some("us-east-1".into())),
-        path_style: std::env::var("MINIO_PATH_STYLE")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(true),
-        profile: std::env::var("AWS_PROFILE").ok(),
+fn s3_config() -> Option<S3Config> {
+    common::require_s3_endpoint().map(|endpoint| {
+        let mut cfg = S3Config::minio(endpoint);
+        if let Ok(region) = std::env::var("AWS_REGION") {
+            cfg.region = Some(region);
+        }
+        cfg
     })
 }
 
 fn test_bucket() -> String {
-    std::env::var("MINIO_BUCKET").unwrap_or_else(|_| "parqonaut-test".into())
+    std::env::var("PARQONAUT_S3_BUCKET")
+        .or_else(|_| std::env::var("MINIO_BUCKET"))
+        .unwrap_or_else(|_| "parqonaut-test".into())
 }
 
 fn unique_key(prefix: &str) -> String {
@@ -33,14 +32,14 @@ fn unique_key(prefix: &str) -> String {
 }
 
 async fn backend() -> Option<S3StorageBackend> {
-    let config = minio_config()?;
+    let config = s3_config()?;
     Some(S3StorageBackend::new(config).await)
 }
 
 #[tokio::test]
-async fn s3_backend_satisfies_contract_when_minio_available() {
+async fn s3_backend_satisfies_contract_when_s3_available() {
     let Some(backend) = backend().await else {
-        eprintln!("skipping MinIO integration test: MINIO_ENDPOINT not set");
+        eprintln!("skipping S3 integration test: no endpoint configured");
         return;
     };
 
@@ -50,7 +49,7 @@ async fn s3_backend_satisfies_contract_when_minio_available() {
 #[tokio::test]
 async fn conditional_create_and_replace_roundtrip() {
     let Some(backend) = backend().await else {
-        eprintln!("skipping MinIO integration test: MINIO_ENDPOINT not set");
+        eprintln!("skipping S3 integration test: no endpoint configured");
         return;
     };
 
@@ -91,7 +90,7 @@ async fn conditional_create_and_replace_roundtrip() {
 #[tokio::test]
 async fn list_with_pagination_prefix() {
     let Some(backend) = backend().await else {
-        eprintln!("skipping MinIO integration test: MINIO_ENDPOINT not set");
+        eprintln!("skipping S3 integration test: no endpoint configured");
         return;
     };
 
@@ -131,7 +130,7 @@ async fn list_with_pagination_prefix() {
 #[tokio::test]
 async fn write_stream_multipart_small_object() {
     let Some(backend) = backend().await else {
-        eprintln!("skipping MinIO integration test: MINIO_ENDPOINT not set");
+        eprintln!("skipping S3 integration test: no endpoint configured");
         return;
     };
 

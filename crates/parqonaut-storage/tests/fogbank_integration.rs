@@ -1,8 +1,10 @@
 #![cfg(feature = "s3")]
 
-//! FOGBANK laboratory integration tests (MinIO required).
+//! FOGBANK laboratory integration tests (S3-compatible backend, RustFS in CI).
 //!
 //! Run after `just phase5-up && just phase5-fixtures`.
+
+mod common;
 
 use parqonaut_storage::backend::{ByteRange, StorageBackend};
 use parqonaut_storage::fingerprint::compute_remote_fingerprint;
@@ -10,13 +12,8 @@ use parqonaut_storage::inventory::list_remote_inventory;
 use parqonaut_storage::location::{DatasetLocation, ObjectLocation};
 use parqonaut_storage::{S3Config, S3StorageBackend};
 
-fn minio_config() -> Option<S3Config> {
-    let endpoint = std::env::var("MINIO_ENDPOINT").ok()?;
-    Some(S3Config::minio(endpoint))
-}
-
-fn fogbank_bucket() -> String {
-    std::env::var("FOGBANK_BUCKET").unwrap_or_else(|_| "fogbank".into())
+fn s3_config() -> Option<S3Config> {
+    common::require_s3_endpoint().map(S3Config::minio)
 }
 
 fn dataset_prefix() -> String {
@@ -30,18 +27,22 @@ fn fogbank_manifest(name: &str) -> std::path::PathBuf {
 }
 
 async fn backend() -> Option<S3StorageBackend> {
-    let config = minio_config()?;
+    let config = s3_config()?;
     Some(S3StorageBackend::new(config).await)
+}
+
+fn integration_required() -> bool {
+    std::env::var("PARQONAUT_S3_INTEGRATION").as_deref() == Ok("1")
 }
 
 #[tokio::test]
 async fn fogbank_healthy_dataset_present() {
     let Some(backend) = backend().await else {
-        eprintln!("skipping FOGBANK test: MINIO_ENDPOINT not set");
+        eprintln!("skipping FOGBANK test: no S3 endpoint configured");
         return;
     };
 
-    let bucket = fogbank_bucket();
+    let bucket = common::fogbank_bucket();
     let prefix = dataset_prefix();
     let dataset =
         DatasetLocation::parse(&format!("s3://{bucket}/{prefix}/healthy/")).expect("parse");
@@ -62,11 +63,11 @@ async fn fogbank_healthy_dataset_present() {
 #[tokio::test]
 async fn fogbank_large_parquet_supports_footer_range_read() {
     let Some(backend) = backend().await else {
-        eprintln!("skipping FOGBANK test: MINIO_ENDPOINT not set");
+        eprintln!("skipping FOGBANK test: no S3 endpoint configured");
         return;
     };
 
-    let bucket = fogbank_bucket();
+    let bucket = common::fogbank_bucket();
     let prefix = dataset_prefix();
     let object = ObjectLocation::S3 {
         bucket: bucket.clone(),
@@ -75,6 +76,9 @@ async fn fogbank_large_parquet_supports_footer_range_read() {
 
     let head = match backend.head(&object).await {
         Ok(h) => h,
+        Err(e) if integration_required() => {
+            panic!("FOGBANK large-parquet head failed in integration CI: {e}");
+        }
         Err(e) => {
             eprintln!("skipping FOGBANK large-parquet test: {e} (run just phase5-fixtures)");
             return;
@@ -97,11 +101,11 @@ async fn fogbank_large_parquet_supports_footer_range_read() {
 #[tokio::test]
 async fn fogbank_stale_baseline_matches_manifest_when_present() {
     let Some(backend) = backend().await else {
-        eprintln!("skipping FOGBANK test: MINIO_ENDPOINT not set");
+        eprintln!("skipping FOGBANK test: no S3 endpoint configured");
         return;
     };
 
-    let bucket = fogbank_bucket();
+    let bucket = common::fogbank_bucket();
     let prefix = dataset_prefix();
     let dataset =
         DatasetLocation::parse(&format!("s3://{bucket}/{prefix}/stale-source/")).expect("parse");
@@ -116,6 +120,12 @@ async fn fogbank_stale_baseline_matches_manifest_when_present() {
 
     let manifest_path = fogbank_manifest("stale-baseline-fingerprint.json");
     if !manifest_path.exists() {
+        if integration_required() {
+            panic!(
+                "integration CI requires manifest at {}",
+                manifest_path.display()
+            );
+        }
         eprintln!(
             "skipping manifest comparison: {} not found (run phase5-fixtures)",
             manifest_path.display()

@@ -5,7 +5,7 @@ use aws_sdk_s3::Client;
 /// Non-secret S3 client configuration. Credentials load via the standard AWS provider chain.
 #[derive(Debug, Clone, Default)]
 pub struct S3Config {
-    /// Custom endpoint URL (e.g. MinIO at `http://127.0.0.1:9000`).
+    /// Custom endpoint URL (e.g. RustFS/MinIO at `http://127.0.0.1:9000`).
     pub endpoint: Option<String>,
     /// AWS region. Defaults to `us-east-1` when unset (required for signature calculation).
     pub region: Option<String>,
@@ -18,9 +18,12 @@ pub struct S3Config {
 impl S3Config {
     /// Load non-secret client options from the environment (AWS + MinIO conventions).
     pub fn from_env() -> Self {
-        let endpoint =
-            std::env::var("MINIO_ENDPOINT").ok().or_else(|| std::env::var("AWS_ENDPOINT_URL").ok());
-        let path_style = std::env::var("MINIO_PATH_STYLE")
+        let endpoint = std::env::var("PARQONAUT_S3_ENDPOINT")
+            .ok()
+            .or_else(|| std::env::var("MINIO_ENDPOINT").ok())
+            .or_else(|| std::env::var("AWS_ENDPOINT_URL").ok());
+        let path_style = std::env::var("PARQONAUT_S3_PATH_STYLE")
+            .or_else(|_| std::env::var("MINIO_PATH_STYLE"))
             .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "on"))
             .unwrap_or_else(|_| endpoint.is_some());
         Self {
