@@ -23,7 +23,7 @@ struct MultipartState {
     client: Client,
     bucket: String,
     key: String,
-    upload_id: String,
+    upload_id: Option<String>,
     parts: Vec<CompletedPart>,
     next_part_number: i32,
     buffer: Vec<u8>,
@@ -37,22 +37,50 @@ impl MultipartState {
         format!("s3://{}/{}", self.bucket, self.key)
     }
 
+    async fn ensure_multipart(&mut self) -> Result<(), StorageError> {
+        if self.upload_id.is_some() {
+            return Ok(());
+        }
+        let location = self.location();
+        let response = self
+            .client
+            .create_multipart_upload()
+            .bucket(&self.bucket)
+            .key(&self.key)
+            .send()
+            .await
+            .map_err(|e| map_multipart_create_error(&location, e))?;
+        let upload_id = response
+            .upload_id()
+            .ok_or_else(|| StorageError::Other {
+                message: "multipart upload missing upload_id".into(),
+            })?
+            .to_string();
+        self.upload_id = Some(upload_id);
+        Ok(())
+    }
+
     async fn abort(&mut self) {
         if self.completed || self.aborted {
             return;
         }
+        let Some(upload_id) = self.upload_id.take() else {
+            return;
+        };
         self.aborted = true;
         let _ = self
             .client
             .abort_multipart_upload()
             .bucket(&self.bucket)
             .key(&self.key)
-            .upload_id(&self.upload_id)
+            .upload_id(upload_id)
             .send()
             .await;
     }
 
     async fn upload_part(&mut self, data: Bytes) -> Result<(), StorageError> {
+        self.ensure_multipart().await?;
+        let upload_id = self.upload_id.as_ref().expect("multipart started");
         let part_number = self.next_part_number;
         self.next_part_number += 1;
         let len = data.len();
@@ -61,7 +89,7 @@ impl MultipartState {
             .upload_part()
             .bucket(&self.bucket)
             .key(&self.key)
-            .upload_id(&self.upload_id)
+            .upload_id(upload_id)
             .part_number(part_number)
             .body(data.into())
             .send()
@@ -90,21 +118,9 @@ impl MultipartState {
     }
 
     async fn complete(&mut self) -> Result<(), StorageError> {
-        // Single small object: PutObject after aborting the empty MPU (RustFS and some S3 APIs).
         if self.parts.is_empty() && !self.buffer.is_empty() && self.buffer.len() < PART_SIZE {
             let data = Bytes::from(std::mem::take(&mut self.buffer));
             let location = self.location();
-            if !self.aborted {
-                self.aborted = true;
-                let _ = self
-                    .client
-                    .abort_multipart_upload()
-                    .bucket(&self.bucket)
-                    .key(&self.key)
-                    .upload_id(&self.upload_id)
-                    .send()
-                    .await;
-            }
             self.client
                 .put_object()
                 .bucket(&self.bucket)
@@ -119,13 +135,16 @@ impl MultipartState {
         }
 
         self.flush_buffer(true).await?;
+        let upload_id = self.upload_id.as_ref().ok_or_else(|| StorageError::Other {
+            message: "multipart complete without upload_id".into(),
+        })?;
         let upload =
             CompletedMultipartUpload::builder().set_parts(Some(self.parts.clone())).build();
         self.client
             .complete_multipart_upload()
             .bucket(&self.bucket)
             .key(&self.key)
-            .upload_id(&self.upload_id)
+            .upload_id(upload_id)
             .multipart_upload(upload)
             .send()
             .await
@@ -155,28 +174,12 @@ impl MultipartAsyncWrite {
         key: String,
         metrics: Arc<StorageMetricsCollector>,
     ) -> Result<Self, StorageError> {
-        let location = format!("s3://{bucket}/{key}");
-        let response = client
-            .create_multipart_upload()
-            .bucket(&bucket)
-            .key(&key)
-            .send()
-            .await
-            .map_err(|e| map_multipart_create_error(&location, e))?;
-
-        let upload_id = response
-            .upload_id()
-            .ok_or_else(|| StorageError::Other {
-                message: "multipart upload missing upload_id".into(),
-            })?
-            .to_string();
-
         Ok(Self {
             state: Arc::new(Mutex::new(MultipartState {
                 client,
                 bucket,
                 key,
-                upload_id,
+                upload_id: None,
                 parts: Vec::new(),
                 next_part_number: 1,
                 buffer: Vec::new(),

@@ -146,13 +146,12 @@ async fn write_stream_multipart_small_object() {
     let object = ObjectLocation::S3 { bucket: bucket.clone(), key: key.clone() };
 
     let mut stream = backend.write_stream(&object, None).await.expect("write_stream");
-    let payload = vec![b'x'; 5 * 1024 * 1024 + 1];
-    stream.write_all(&payload).await.expect("write");
+    stream.write_all(b"hello-stream").await.expect("write");
     let written = stream.finish().await.expect("finish");
-    assert_eq!(written, payload.len() as u64);
+    assert_eq!(written, 12);
 
     let head = backend.head(&object).await.expect("head");
-    assert_eq!(head.size, payload.len() as u64);
+    assert_eq!(head.size, 12);
 
     backend.delete_owned_object(&object).await.expect("delete");
 }
