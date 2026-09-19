@@ -2,6 +2,64 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.4.1] - 2026-09-18
+
+Release metadata correction only — no functional changes from v0.4.0.
+
+### Fixed
+
+- Workspace crate version aligned with the published `v0.4.0` release tag (`0.3.0` → `0.4.1`)
+- `CHANGELOG.md` updated with missing release notes for v0.2.0–v0.4.0
+- `README.md` updated to describe current Phase 4 capabilities and batch workflow
+
+[0.4.1]: https://github.com/sempervent/parqonaut/releases/tag/v0.4.1
+
+## [0.4.0] - 2026-09-18
+
+Multi-dataset batch orchestration with bounded concurrency, durable journal, resume, and verification.
+
+### Added
+
+- `parqonaut-orchestrator` crate — batch plan contracts, scheduler, SQLite run journal, locking, resume
+- `parqonaut batch check|plan|repair|status|resume|verify` CLI commands with JSON output
+- SHIPWRECK Phase 4 fixture fleet and integration tests
+- Plan-bound authorization, output path mapping, and overlap detection for batch runs
+- Cooperative SIGINT cancellation and idempotent resume semantics
+- ADRs 0011–0014 and Phase 4 documentation
+- `data/dummy.parquet` sample dataset for scan/inspect tests
+
+[0.4.0]: https://github.com/sempervent/parqonaut/releases/tag/v0.4.0
+
+## [0.3.0] - 2026-09-18
+
+Policy-governed schema reconciliation and explicit authorization for review-required repairs.
+
+### Added
+
+- Deterministic schema compatibility model and lossless schema widening
+- Explicit `--authorize` for ReviewRequired repair operations
+- `parqonaut doctor --policy`, `parqonaut check`, `parqonaut plan diff`
+- Durable repair plan contract v1, execution manifests, staged publication
+- FRANKENLAKE v2 laboratory fixtures and Phase 3 demo
+- ADRs 0007–0010 and Phase 3 documentation
+
+[0.3.0]: https://github.com/sempervent/parqonaut/releases/tag/v0.3.0
+
+## [0.2.0] - 2026-09-18
+
+Evidence-driven diagnose, plan, repair, and verify for single datasets.
+
+### Added
+
+- `parqonaut-repair` crate — scan → diagnose → plan → repair → verify pipeline
+- Dataset fingerprints and stale-plan rejection
+- Repair safety classification (Safe, ReviewRequired, Blocked)
+- `parqonaut doctor`, `parqonaut plan`, `parqonaut repair`, `parqonaut verify`
+- FRANKENLAKE Phase 2 fixtures and golden repair plans
+- ADRs 0004–0006 and Phase 2 documentation
+
+[0.2.0]: https://github.com/sempervent/parqonaut/releases/tag/v0.2.0
+
 ## [0.1.0] - 2026-09-18
 
 Initial unified release consolidating Paraclete, parqknife, and streaming-parquet (maw).
@@ -17,14 +75,5 @@ Initial unified release consolidating Paraclete, parqknife, and streaming-parque
 - Fixtures, Python plugin contracts, and migration documentation
 - GitHub Actions CI (fmt, clippy, test)
 - Provenance and architecture ADRs
-
-### Not yet implemented
-
-- HTTP service CLI (`parqonaut server`) and TUI
-- Plugin execution bridge
-- parqknife partition, merge, split, S3 I/O, and spec-file workflows
-- maw resumability, progress wiring, and full schema unification in the stream pipeline
-- Arrow/Parquet dependency stack convergence across engines
-- In-memory cross-engine pipelines without file handoff
 
 [0.1.0]: https://github.com/sempervent/parqonaut/releases/tag/v0.1.0
