@@ -26,7 +26,9 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: test
-        run: cargo test --workspace
+        run: |
+          cargo run -p parqonaut-repair --bin generate-phase2-fixtures -- fixtures/phase2
+          cargo test --workspace
 
   phase5-s3-integration:
     runs-on: ubuntu-latest

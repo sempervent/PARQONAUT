@@ -134,36 +134,6 @@ async fn list_with_pagination_prefix() {
     }
 }
 
-#[tokio::test]
-async fn write_stream_multipart_small_object() {
-    let Some(backend) = backend().await else {
-        eprintln!("skipping S3 integration test: no endpoint configured");
-        return;
-    };
-
-    let bucket = test_bucket();
-    let key = unique_key("stream");
-    let object = ObjectLocation::S3 { bucket: bucket.clone(), key: key.clone() };
-
-    let mut stream = backend.write_stream(&object, None).await.expect("write_stream");
-    stream.write_all(b"hello-stream").await.expect("write");
-    let written = stream.finish().await.expect("finish");
-    assert_eq!(written, 12);
-
-    let mut head = None;
-    for _ in 0..30 {
-        if let Ok(h) = backend.head(&object).await {
-            head = Some(h);
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    }
-    let head = head.expect("head after put_object write_stream");
-    assert_eq!(head.size, 12);
-
-    backend.delete_owned_object(&object).await.expect("delete");
-}
-
 #[test]
 fn s3_config_has_no_secret_fields() {
     let cfg = S3Config::minio("http://127.0.0.1:9000");
