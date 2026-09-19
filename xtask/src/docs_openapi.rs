@@ -24,10 +24,7 @@ fn normalize_openapi_document(v: Value) -> String {
 
     let mut sorted = sort_json_value(v);
     if let Some(info) = sorted.get_mut("info").and_then(|i| i.as_object_mut()) {
-        info.insert(
-            "version".into(),
-            Value::String(env!("CARGO_PKG_VERSION").into()),
-        );
+        info.insert("version".into(), Value::String(env!("CARGO_PKG_VERSION").into()));
     }
     serde_json::to_string_pretty(&sorted).expect("normalized openapi serializes")
 }
