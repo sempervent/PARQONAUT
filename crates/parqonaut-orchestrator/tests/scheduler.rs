@@ -64,8 +64,10 @@ fn overlap_rejects_shared_output_tree() {
     assert!(err.to_string().contains("overlap"));
 }
 
-#[tokio::test]
-async fn executor_respects_jobs_bound_metric() {
+#[test]
+fn executor_respects_jobs_bound_metric() {
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    rt.block_on(async {
     let tmp = TempDir::new().unwrap();
     let ds1 = tmp.path().join("ds1");
     let ds2 = tmp.path().join("ds2");
@@ -101,10 +103,13 @@ async fn executor_respects_jobs_bound_metric() {
     assert!(outcome.peak_concurrent_datasets >= 1);
     assert_eq!(outcome.datasets.len(), 3);
     assert!(outcome.datasets.iter().all(|d| d.state == DatasetState::Succeeded));
+    });
 }
 
-#[tokio::test]
-async fn failure_isolation_continues_other_datasets() {
+#[test]
+fn failure_isolation_continues_other_datasets() {
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
+    rt.block_on(async {
     let tmp = TempDir::new().unwrap();
     let good = tmp.path().join("good");
     let blocked = tmp.path().join("blocked");
@@ -149,4 +154,5 @@ async fn failure_isolation_continues_other_datasets() {
     assert_eq!(good_result.state, DatasetState::Succeeded);
     assert_eq!(blocked_result.state, DatasetState::FailedPermanent);
     assert_eq!(outcome.datasets.len(), 2);
+    });
 }

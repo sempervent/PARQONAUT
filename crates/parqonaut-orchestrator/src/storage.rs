@@ -144,7 +144,9 @@ where
     F: Future<Output = T>,
 {
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        return tokio::task::block_in_place(|| handle.block_on(future));
+        if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
+            return tokio::task::block_in_place(|| handle.block_on(future));
+        }
     }
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
