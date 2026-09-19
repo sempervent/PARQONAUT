@@ -42,6 +42,7 @@ jobs:
       - name: API tests and smoke
         run: |
           set -euo pipefail
+          cargo build -p parqonaut-cli --bin prqnt
           cargo test -p paraclete-service --tests
           cargo test -p paraclete-store --test auth_tokens
           bash scripts/api-test/smoke.sh --start

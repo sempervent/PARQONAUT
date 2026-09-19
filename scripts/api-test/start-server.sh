@@ -27,11 +27,17 @@ PRQNT_BOOTSTRAP_ADMIN_TOKEN=${PRQNT_BOOTSTRAP_ADMIN_TOKEN}
 API_TEST_CONFIG=${API_TEST_CONFIG}
 EOF
 
+cd "${REPO_ROOT}"
+cargo build -q -p parqonaut-cli --bin prqnt
+prqnt_bin="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}/debug/prqnt"
+if [[ ! -x "${prqnt_bin}" ]]; then
+  echo "missing prqnt binary at ${prqnt_bin}" >&2
+  exit 1
+fi
+
+export PRQNT_BOOTSTRAP_ADMIN_TOKEN
 (
-  cd "${REPO_ROOT}"
-  cargo build -q -p parqonaut-cli --bin prqnt
-  export PRQNT_BOOTSTRAP_ADMIN_TOKEN
-  exec cargo run -q -p parqonaut-cli --bin prqnt -- serve \
+  exec "${prqnt_bin}" serve \
     --listen "${API_TEST_LISTEN}" \
     --state-dir "${API_TEST_STATE_DIR}" \
     --workers 2 \
