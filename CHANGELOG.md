@@ -29,6 +29,8 @@ Unified application server: CLI and HTTP share `parqonaut-app`; durable jobs for
 
 - Idempotency-Key, distributed workers, SDKs, web UI/TUI, TLS termination, plugin execution.
 
+[0.7.0]: https://github.com/sempervent/PARQONAUT/releases/tag/v0.7.0
+
 ## [0.6.0] - 2026-09-19
 
 Interface normalization: one public executable (`prqnt`), capability-oriented repository layout, and removal of legacy product entrypoints.
