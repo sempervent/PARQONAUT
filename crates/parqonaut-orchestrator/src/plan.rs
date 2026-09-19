@@ -5,16 +5,23 @@ use serde::{Deserialize, Serialize};
 
 use chrono::Utc;
 use parqonaut_repair::{
-    generate_plan, scan_directory, stable_hex_id, DatasetFingerprint, EffectivePolicy, RepairPlan,
-    PARQONAUT_VERSION, PLAN_SCHEMA_VERSION,
+    generate_plan, generate_plan_for_location, location_root, scan_directory, stable_hex_id,
+    DatasetFingerprint, EffectivePolicy, RepairPlan, PARQONAUT_VERSION, PLAN_SCHEMA_VERSION,
 };
+use parqonaut_storage::location::DatasetLocation;
 use uuid::Uuid;
 
 use crate::config::BatchConfig;
 use crate::error::OrchestratorError;
 use crate::ids::{BatchPlanId, DatasetId};
-use crate::paths::resolve_output_mappings;
+use crate::location::location_display;
+use crate::paths::{resolve_output_mappings, resolve_run_root};
+use crate::storage::{block_on_async, default_max_storage_requests, BatchStorageRuntime};
 use crate::BATCH_PLAN_SCHEMA_VERSION;
+
+fn default_plan_storage_requests() -> u32 {
+    default_max_storage_requests()
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BatchPlan {
@@ -23,7 +30,13 @@ pub struct BatchPlan {
     pub config_fingerprint: String,
     pub batch_name: String,
     pub max_concurrency: u32,
+    #[serde(default = "default_plan_storage_requests")]
+    pub max_storage_requests: u32,
+    /// Resolved output root URI (local path or `s3://`).
     pub output_root: String,
+    /// Local directory for run journals and plan snapshots.
+    #[serde(default)]
+    pub run_root: String,
     pub parqonaut_version: String,
     pub datasets: Vec<DatasetPlan>,
 }
@@ -50,27 +63,30 @@ pub fn build_batch_plan(
     config: &BatchConfig,
     config_path: &Utf8Path,
 ) -> Result<BatchPlan, OrchestratorError> {
+    let storage = BatchStorageRuntime::new(config.max_storage_requests());
+    block_on_async(build_batch_plan_async(config, config_path, &storage))
+}
+
+pub async fn build_batch_plan_async(
+    config: &BatchConfig,
+    config_path: &Utf8Path,
+    storage: &BatchStorageRuntime,
+) -> Result<BatchPlan, OrchestratorError> {
     config.validate()?;
     let base = config_path.parent().unwrap_or_else(|| Utf8Path::new("."));
     let mappings = resolve_output_mappings(config, base)?;
-    let output_root = config.require_output_root()?;
-    let output_root_resolved =
-        if output_root.is_absolute() { output_root.to_path_buf() } else { base.join(output_root) };
+    let output_root = config.require_output_root()?.resolve(base)?;
+    let run_root = resolve_run_root(config, base)?;
 
     let mut datasets = Vec::new();
     for (ds_cfg, mapping) in config.datasets.iter().zip(mappings.iter()) {
         let policy = config.resolve_policy(base, ds_cfg)?;
         let target = config.resolve_target_schema(base, ds_cfg)?;
-        let repair_plan = match scan_directory(&mapping.source)
-            .and_then(|scan| generate_plan(&mapping.source, &scan, &policy, target.clone()))
-        {
-            Ok(plan) => plan,
-            Err(_) => unscannable_dataset_plan(&mapping.source, &policy, target)?,
-        };
+        let repair_plan = plan_dataset(storage, &mapping.source, &policy, target).await?;
         datasets.push(DatasetPlan {
             dataset_id: mapping.dataset_id.clone(),
-            source_path: mapping.source.as_str().to_string(),
-            output_path: mapping.output.as_str().to_string(),
+            source_path: mapping.source_display(),
+            output_path: mapping.output_display(),
             repair_plan,
             authorize: ds_cfg.authorize.clone(),
         });
@@ -79,7 +95,8 @@ pub fn build_batch_plan(
     let config_fp = config.config_fingerprint();
     let payload = serde_json::json!({
         "config_fingerprint": config_fp,
-        "output_root": output_root_resolved.as_str(),
+        "output_root": location_display(&output_root),
+        "run_root": run_root.as_str(),
         "datasets": datasets.iter().map(|d| serde_json::json!({
             "id": d.dataset_id.0,
             "output": d.output_path,
@@ -96,17 +113,46 @@ pub fn build_batch_plan(
         config_fingerprint: config_fp,
         batch_name: config.batch.name.clone(),
         max_concurrency: config.batch.max_concurrency,
-        output_root: output_root_resolved.as_str().to_string(),
+        max_storage_requests: config.max_storage_requests(),
+        output_root: location_display(&output_root),
+        run_root: run_root.to_string(),
         parqonaut_version: PARQONAUT_VERSION.to_string(),
         datasets,
     })
 }
 
-fn unscannable_dataset_plan(
-    root: &Utf8Path,
+async fn plan_dataset(
+    storage: &BatchStorageRuntime,
+    source: &DatasetLocation,
     policy: &EffectivePolicy,
     target_schema: Option<Vec<parqonaut_repair::FieldDescriptor>>,
 ) -> Result<RepairPlan, OrchestratorError> {
+    match source {
+        DatasetLocation::Local(local) => {
+            match scan_directory(&local.path)
+                .and_then(|scan| generate_plan(&local.path, &scan, policy, target_schema.clone()))
+            {
+                Ok(plan) => Ok(plan),
+                Err(_) => unscannable_dataset_plan(source, policy, target_schema),
+            }
+        }
+        DatasetLocation::S3(_) => {
+            let backend = storage.repair_backend_for(source);
+            match generate_plan_for_location(source, &backend, policy, target_schema.clone()).await
+            {
+                Ok(plan) => Ok(plan),
+                Err(_) => unscannable_dataset_plan(source, policy, target_schema),
+            }
+        }
+    }
+}
+
+fn unscannable_dataset_plan(
+    root: &DatasetLocation,
+    policy: &EffectivePolicy,
+    target_schema: Option<Vec<parqonaut_repair::FieldDescriptor>>,
+) -> Result<RepairPlan, OrchestratorError> {
+    let root = location_root(root);
     let digest = stable_hex_id("unscannable-dataset", root.as_str());
     let policy_fp = policy.fingerprint();
     let plan_id = stable_hex_id("plan", &format!("{digest}:{policy_fp}"));
@@ -202,5 +248,30 @@ impl BatchPlan {
             .iter()
             .map(|d| (d.dataset_id.clone(), camino::Utf8PathBuf::from(&d.output_path)))
             .collect()
+    }
+
+    pub fn dataset_locations(
+        &self,
+    ) -> Result<Vec<(DatasetId, DatasetLocation, DatasetLocation)>, OrchestratorError> {
+        self.datasets
+            .iter()
+            .map(|ds| {
+                Ok((
+                    ds.dataset_id.clone(),
+                    DatasetLocation::parse(&ds.source_path)
+                        .map_err(|e| OrchestratorError::InvalidConfig(e.to_string()))?,
+                    DatasetLocation::parse(&ds.output_path)
+                        .map_err(|e| OrchestratorError::InvalidConfig(e.to_string()))?,
+                ))
+            })
+            .collect()
+    }
+
+    pub fn effective_run_root(&self) -> camino::Utf8PathBuf {
+        if self.run_root.is_empty() {
+            camino::Utf8PathBuf::from(&self.output_root)
+        } else {
+            camino::Utf8PathBuf::from(&self.run_root)
+        }
     }
 }

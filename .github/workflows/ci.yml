@@ -8,6 +8,9 @@ on:
 
 env:
   CARGO_BUILD_JOBS: 2
+  # RustFS 1.0.0 — official GHCR image, linux/amd64 digest pinned for reproducible CI.
+  RUSTFS_IMAGE: ghcr.io/rustfs/rustfs:1.0.0
+  RUSTFS_IMAGE_DIGEST: sha256:ba0a1b53e36f321c0d46f3867104abef169f7bc59c467c664ddac87e7ddc9a8b
 
 jobs:
   rust:
@@ -23,4 +26,60 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: test
-        run: cargo test --workspace
+        run: |
+          cargo run -p parqonaut-repair --bin generate-phase2-fixtures -- fixtures/phase2
+          cargo test --workspace
+
+  phase5-s3-integration:
+    runs-on: ubuntu-latest
+    env:
+      PARQONAUT_S3_INTEGRATION: "1"
+      PARQONAUT_S3_ENDPOINT: http://127.0.0.1:9000
+      PARQONAUT_S3_PATH_STYLE: "true"
+      AWS_ACCESS_KEY_ID: rustfsadmin
+      AWS_SECRET_ACCESS_KEY: rustfsadmin
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Start RustFS (S3-compatible integration backend)
+        run: |
+          docker pull "${RUSTFS_IMAGE}@${RUSTFS_IMAGE_DIGEST}"
+          docker rm -f parqonaut-rustfs || true
+          docker volume create parqonaut-rustfs-ci-data
+          docker run -d \
+            --name parqonaut-rustfs \
+            -p 9000:9000 \
+            -v parqonaut-rustfs-ci-data:/data \
+            -e RUSTFS_VOLUMES=/data \
+            -e RUSTFS_ADDRESS=0.0.0.0:9000 \
+            -e RUSTFS_CONSOLE_ENABLE=false \
+            -e RUSTFS_ACCESS_KEY=rustfsadmin \
+            -e RUSTFS_SECRET_KEY=rustfsadmin \
+            -e RUSTFS_UNSAFE_BYPASS_DISK_CHECK=true \
+            "${RUSTFS_IMAGE}@${RUSTFS_IMAGE_DIGEST}"
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:9000/health/ready; then
+              echo "RustFS ready"
+              break
+            fi
+            if [ "$i" = 60 ]; then
+              docker logs parqonaut-rustfs
+              exit 1
+            fi
+            sleep 2
+          done
+      - name: Install AWS CLI
+        run: pip install awscli
+      - name: S3 smoke test
+        run: bash scripts/phase5/s3-smoke.sh
+      - name: FOGBANK fixtures upload
+        run: |
+          aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://fogbank" || true
+          aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://parqonaut-test" || true
+          aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://contract-test" || true
+          bash scripts/phase5/fixtures.sh
+      - name: Phase 5 storage integration tests
+        run: |
+          cargo test -p parqonaut-storage --features "s3,fogbank-fixtures,test-util" -- --nocapture

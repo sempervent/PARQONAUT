@@ -4,11 +4,12 @@ use std::sync::Arc;
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::Utc;
 use parqonaut_repair::{RepairExecutor, PARQONAUT_VERSION};
+use parqonaut_storage::location::DatasetLocation;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::{assert_datasets_match_plan, assert_plan_matches_identity};
 use crate::cancel::CancelFlag;
-use crate::check::{batch_check, ensure_output_root, BatchCheckReport};
+use crate::check::{batch_check, ensure_output_root, ensure_run_root, BatchCheckReport};
 use crate::error::OrchestratorError;
 use crate::executor::{
     BatchExecutor, BatchExecutorConfig, BatchRunOutcome, DryRunReport, ExecutionMode,
@@ -19,7 +20,7 @@ use crate::plan::{build_batch_plan, BatchPlan};
 use crate::report::{
     build_aggregate_report, BatchVerificationSummary, BATCH_REPORT_SCHEMA_VERSION,
 };
-use crate::verify::{verify_batch, verify_results_map, BatchVerifyReport};
+use crate::verify::{verify_batch_with_run, verify_results_map, BatchVerifyReport};
 
 pub const RUNS_DIR: &str = ".parqonaut/runs";
 pub const JOURNAL_FILE: &str = "journal.sqlite";
@@ -74,8 +75,8 @@ pub struct BatchStatusReport {
     pub completed: bool,
 }
 
-pub fn run_directory(output_root: &Utf8Path, run_id: &RunId) -> Utf8PathBuf {
-    output_root.join(RUNS_DIR).join(&run_id.0)
+pub fn run_directory(run_root: &Utf8Path, run_id: &RunId) -> Utf8PathBuf {
+    run_root.join(RUNS_DIR).join(&run_id.0)
 }
 
 pub fn check_config(config_path: &Utf8Path) -> BatchCheckReport {
@@ -116,7 +117,8 @@ pub async fn resume_batch(
     assert_datasets_match_plan(&plan, &records)?;
 
     if options.dry_run {
-        let executor = BatchExecutor::new(RepairExecutor::default(), dry_run_config(&options));
+        let executor =
+            BatchExecutor::new(RepairExecutor::default(), dry_run_config(&plan, &options));
         let dry = executor.dry_run(&plan).await?;
         return Ok(BatchExecutionResult {
             run_id: identity.run_id.clone(),
@@ -149,7 +151,8 @@ pub async fn execute_batch_plan(
 ) -> Result<BatchExecutionResult, OrchestratorError> {
     options.validate()?;
     if options.dry_run {
-        let executor = BatchExecutor::new(RepairExecutor::default(), dry_run_config(&options));
+        let executor =
+            BatchExecutor::new(RepairExecutor::default(), dry_run_config(&plan, &options));
         let dry = executor.dry_run(&plan).await?;
         return Ok(BatchExecutionResult {
             run_id: RunId::new(),
@@ -160,10 +163,13 @@ pub async fn execute_batch_plan(
         });
     }
 
-    let output_root = Utf8Path::new(&plan.output_root);
-    ensure_output_root(output_root)?;
+    let run_root = plan.effective_run_root();
+    ensure_run_root(&run_root)?;
+    if let Ok(output_root) = DatasetLocation::parse(&plan.output_root) {
+        ensure_output_root(&output_root)?;
+    }
     let run_id = RunId::new();
-    let run_dir = run_directory(output_root, &run_id);
+    let run_dir = run_directory(&run_root, &run_id);
     fs::create_dir_all(run_dir.as_std_path())?;
     plan.write_json(&run_dir.join(PLAN_SNAPSHOT))?;
     execute_with_journal(plan, run_id, run_dir, options, false).await
@@ -210,6 +216,7 @@ async fn execute_with_journal(
 
     let exec_config = BatchExecutorConfig {
         interrupt_after_completed: options.interrupt_after_completed,
+        max_storage_requests: plan.max_storage_requests,
         ..BatchExecutorConfig::default()
     };
 
@@ -235,7 +242,7 @@ async fn execute_with_journal(
         journal.mark_run_completed(Utc::now())?;
     }
 
-    let verify = verify_batch(&plan, &records).ok();
+    let verify = verify_batch_with_run(&plan, &records, Some(&run_id)).ok();
     let verify_map = verify.as_ref().map(verify_results_map).unwrap_or_default();
     let identity = journal.run_identity()?.unwrap_or(identity);
     let verification_summary = verify.as_ref().map(|v| BatchVerificationSummary {
@@ -334,7 +341,7 @@ pub fn verify_run(run_dir: &Utf8Path) -> Result<BatchVerifyReport, OrchestratorE
     assert_plan_matches_identity(&plan, &identity)?;
     let records = journal.list_datasets()?;
     assert_datasets_match_plan(&plan, &records)?;
-    verify_batch(&plan, &records)
+    verify_batch_with_run(&plan, &records, Some(&identity.run_id))
 }
 
 fn placeholder_plan(identity: &RunIdentity) -> BatchPlan {
@@ -344,15 +351,18 @@ fn placeholder_plan(identity: &RunIdentity) -> BatchPlan {
         config_fingerprint: identity.config_fingerprint.clone(),
         batch_name: identity.batch_name.clone(),
         max_concurrency: 1,
+        max_storage_requests: 8,
         output_root: identity.output_root.clone(),
+        run_root: identity.output_root.clone(),
         parqonaut_version: identity.parqonaut_version.clone(),
         datasets: vec![],
     }
 }
 
-fn dry_run_config(options: &BatchRunOptions) -> BatchExecutorConfig {
+fn dry_run_config(plan: &BatchPlan, options: &BatchRunOptions) -> BatchExecutorConfig {
     BatchExecutorConfig {
         interrupt_after_completed: options.interrupt_after_completed,
+        max_storage_requests: plan.max_storage_requests,
         ..BatchExecutorConfig::default()
     }
 }

@@ -44,13 +44,22 @@ fn run_batch(args: &[&str]) -> assert_cmd::assert::Assert {
     cmd.args(args).current_dir(repo_root().as_std_path()).assert()
 }
 
+fn strip_file_prefix(uri: &str) -> &str {
+    uri.strip_prefix("file://").unwrap_or(uri)
+}
+
 fn rewrite_plan_outputs(plan: &mut BatchPlan, out: &Path) {
-    let old_root = plan.output_root.clone();
+    let old_root = strip_file_prefix(&plan.output_root).to_string();
     let new_root = out.join("repaired");
-    fs::create_dir_all(&new_root).unwrap();
-    plan.output_root = new_root.to_string_lossy().into_owned();
+    let new_root_str = new_root.to_string_lossy().into_owned();
+    plan.output_root = new_root_str.clone();
+    plan.run_root = new_root_str.clone();
     for ds in &mut plan.datasets {
-        ds.output_path = ds.output_path.replace(&old_root, &plan.output_root);
+        let rel = strip_file_prefix(&ds.output_path)
+            .strip_prefix(&old_root)
+            .unwrap_or(strip_file_prefix(&ds.output_path))
+            .trim_start_matches('/');
+        ds.output_path = format!("{new_root_str}/{rel}");
     }
 }
 
@@ -155,12 +164,12 @@ fn jobs_equivalence() {
     generate_fixtures();
     let tmp = TempDir::new().unwrap();
     let out1 = tmp.path().join("run-j1");
-    let out2 = tmp.path().join("run-j4");
+    let out2 = tmp.path().join("run-j2");
     fs::create_dir_all(&out1).unwrap();
     fs::create_dir_all(&out2).unwrap();
 
     let shared_plan = plan_and_rewrite(&tmp.path().join("shared-plan"));
-    for (out, jobs) in [(&out1, "1"), (&out2, "4")] {
+    for (out, jobs) in [(&out1, "1"), (&out2, "2")] {
         let plan_path = out.join("batch-plan.json");
         let mut plan: BatchPlan =
             serde_json::from_str(&fs::read_to_string(&shared_plan).unwrap()).unwrap();
@@ -282,10 +291,7 @@ path = "stale-src"
     .success();
     let mut plan: BatchPlan =
         serde_json::from_str(&fs::read_to_string(&plan_path).unwrap()).unwrap();
-    plan.output_root = out.join("repaired").to_string_lossy().into_owned();
-    for ds in &mut plan.datasets {
-        ds.output_path = format!("{}/{}", plan.output_root, ds.dataset_id.0);
-    }
+    rewrite_plan_outputs(&mut plan, &out);
     fs::write(&plan_path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
 
     fs::copy(stale_src.join("snapshot-00.parquet"), stale_src.join("snapshot-03.parquet")).unwrap();
@@ -326,10 +332,7 @@ fn dry_run_has_no_persistent_side_effects() {
     .success();
     let mut plan: BatchPlan =
         serde_json::from_str(&fs::read_to_string(&plan_path).unwrap()).unwrap();
-    plan.output_root = out.join("repaired").to_string_lossy().into_owned();
-    for ds in &mut plan.datasets {
-        ds.output_path = format!("{}/{}", plan.output_root, ds.dataset_id.0);
-    }
+    rewrite_plan_outputs(&mut plan, &out);
     fs::write(&plan_path, serde_json::to_string_pretty(&plan).unwrap()).unwrap();
 
     run_batch(&["batch", "repair", "--plan", plan_path.to_str().unwrap(), "--dry-run"]).success();
@@ -382,6 +385,9 @@ fn concurrent_destination_lock_rejection() {
     let plan: BatchPlan = serde_json::from_str(&fs::read_to_string(&plan_path).unwrap()).unwrap();
     let target = plan.datasets[0].output_path.clone();
     let lock_path = format!("{target}.parqonaut.lock");
+    if let Some(parent) = Path::new(&lock_path).parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
     fs::write(&lock_path, "foreign-run-id\n").unwrap();
 
     run_batch(&["batch", "repair", "--plan", plan_path.to_str().unwrap(), "--jobs", "1"]).code(2);

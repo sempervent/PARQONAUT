@@ -10,6 +10,10 @@ description = "Evidence-driven Parquet dataset repair planning, execution, and v
 paraclete-core = { path = "../paraclete-core" }
 paraclete-types = { path = "../paraclete-types" }
 parqonaut-transform = { path = "../parqonaut-transform" }
+parqonaut-storage = { path = "../parqonaut-storage" }
+async-trait = "0.1"
+bytes = "1.9"
+url = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -24,6 +28,10 @@ parquet = { version = "54", features = ["arrow"] }
 tokio = { version = "1.43", features = ["rt-multi-thread", "macros"] }
 toml = "0.8"
 walkdir = "2.5"
+
+[features]
+default = []
+s3 = ["parqonaut-storage/s3"]
 
 [[bin]]
 name = "generate-phase2-fixtures"
@@ -42,4 +50,5 @@ tempfile = "3"
 arrow = "54"
 parquet = { version = "54", features = ["arrow"] }
 parqonaut-transform = { path = "../parqonaut-transform" }
+parqonaut-storage = { path = "../parqonaut-storage" }
 

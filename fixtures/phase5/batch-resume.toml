@@ -1,0 +1,15 @@
+schema_version = 1
+
+[batch]
+name = "phase5-resume"
+max_concurrency = 1
+output_root = "s3://fogbank/phase5-resume/"
+run_root = "../../target/phase5-resume-journal"
+
+[[datasets]]
+id = "remote-a"
+path = "s3://fogbank/datasets/healthy/"
+
+[[datasets]]
+id = "remote-b"
+path = "s3://fogbank/datasets/healthy/"

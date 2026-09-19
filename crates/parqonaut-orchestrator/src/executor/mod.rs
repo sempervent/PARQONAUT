@@ -3,12 +3,13 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use camino::Utf8Path;
 use chrono::Utc;
 use parqonaut_repair::{
-    compute_dataset_fingerprint, scan_directory, DatasetInventory, RepairAuthorization,
-    RepairError, RepairExecutor,
+    compute_dataset_fingerprint, requires_storage_execution, scan_directory, DatasetInventory,
+    RepairAuthorization, RepairError, RepairExecutor,
 };
+use parqonaut_storage::location::DatasetLocation;
+use parqonaut_storage::publication::PublicationState;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
 
@@ -16,11 +17,12 @@ use crate::cancel::CancelFlag;
 use crate::error::{FailureClass, OrchestratorError};
 use crate::ids::{DatasetId, RunId};
 use crate::journal::{DatasetRunRecord, RunJournal};
-use crate::lock::DatasetLock;
+use crate::lock::OutputLock;
 use crate::overlap::validate_batch_plan;
 use crate::plan::{BatchPlan, DatasetPlan};
 use crate::scheduler::{BatchScheduler, ConcurrencyMetrics};
 use crate::state::DatasetState;
+use crate::storage::{remote_output_committed, remote_publication_state, BatchStorageRuntime};
 
 pub const DEFAULT_MAX_RETRIES: u32 = 2;
 
@@ -35,11 +37,22 @@ pub enum ExecutionMode {
 pub struct BatchExecutorConfig {
     pub max_retries: u32,
     pub interrupt_after_completed: Option<usize>,
+    pub max_storage_requests: u32,
 }
 
 impl Default for BatchExecutorConfig {
     fn default() -> Self {
-        Self { max_retries: DEFAULT_MAX_RETRIES, interrupt_after_completed: None }
+        Self {
+            max_retries: DEFAULT_MAX_RETRIES,
+            interrupt_after_completed: None,
+            max_storage_requests: crate::storage::default_max_storage_requests(),
+        }
+    }
+}
+
+impl BatchExecutorConfig {
+    pub fn storage_runtime(&self) -> BatchStorageRuntime {
+        BatchStorageRuntime::new(self.max_storage_requests)
     }
 }
 
@@ -297,8 +310,17 @@ async fn execute_dataset_with_retries(
             );
         }
 
-        match execute_dataset_once(dataset, run_id, journal.clone(), repair, attempts, started)
-            .await
+        let storage = config.storage_runtime();
+        match execute_dataset_once(
+            dataset,
+            run_id,
+            journal.clone(),
+            repair,
+            &storage,
+            attempts,
+            started,
+        )
+        .await
         {
             Ok(outcome) => {
                 info!(dataset = %dataset.dataset_id.0, attempts, "dataset execution finished");
@@ -333,9 +355,21 @@ async fn execute_dataset_with_retries(
                 );
             }
             Err(final_failure) => {
+                let state = failure_state(final_failure.class);
+                upsert_record(
+                    &journal,
+                    dataset,
+                    state,
+                    attempts,
+                    None,
+                    Some(final_failure.class),
+                    Some(final_failure.message.clone()),
+                    Some(started),
+                    Some(Utc::now()),
+                );
                 return DatasetExecutionOutcome {
                     dataset_id: dataset.dataset_id.clone(),
-                    state: failure_state(final_failure.class),
+                    state,
                     attempts,
                     error_class: Some(final_failure.class),
                     error_message: Some(final_failure.message),
@@ -357,70 +391,93 @@ async fn execute_dataset_once(
     run_id: &RunId,
     journal: Arc<dyn RunJournal>,
     repair: &RepairExecutor,
+    storage: &BatchStorageRuntime,
     attempts: u32,
     started: chrono::DateTime<Utc>,
 ) -> Result<DatasetExecutionOutcome, DatasetFailure> {
-    let output = Utf8Path::new(&dataset.output_path);
-    let _lock = match DatasetLock::acquire(output, run_id) {
-        Ok(lock) => lock,
-        Err(err) => {
-            let message = err.to_string();
-            let class = FailureClass::Permanent;
-            upsert_record(
-                &journal,
-                dataset,
-                failure_state(class),
-                attempts,
-                None,
-                Some(class),
-                Some(message.clone()),
-                Some(started),
-                Some(Utc::now()),
-            );
-            return Err(DatasetFailure { class, message });
-        }
-    };
+    let source = parse_location(&dataset.source_path)?;
+    let output = parse_location(&dataset.output_path)?;
+    let dataset_id = dataset.dataset_id.clone();
 
-    let source = Utf8Path::new(&dataset.source_path);
-    let scan = match scan_directory(source) {
-        Ok(scan) => scan,
-        Err(err) => {
-            return fail_dataset(journal, dataset, attempts, started, &err);
-        }
-    };
-
-    let current_fp = match DatasetInventory::from_scan_report(source, &scan)
-        .and_then(|inventory| compute_dataset_fingerprint(source, &inventory))
-    {
-        Ok(fp) => fp,
-        Err(err) => {
-            return fail_dataset(journal, dataset, attempts, started, &err);
-        }
-    };
-
-    if let Err(err) = dataset.repair_plan.dataset_fingerprint.verify_against(&current_fp) {
-        let class = FailureClass::StaleSource;
-        let message = err.to_string();
+    if remote_output_committed(storage, &output, &run_id.0).await.unwrap_or(false) {
+        info!(dataset = %dataset_id.0, run_id = %run_id.0, "remote output already committed; skipping");
         upsert_record(
             &journal,
             dataset,
-            DatasetState::StaleSource,
+            DatasetState::Succeeded,
             attempts,
-            Some(current_fp.digest.clone()),
-            Some(class),
-            Some(message.clone()),
+            Some(dataset.repair_plan.dataset_fingerprint.digest.clone()),
+            None,
+            None,
             Some(started),
             Some(Utc::now()),
         );
-        return Err(DatasetFailure { class, message });
+        return Ok(DatasetExecutionOutcome {
+            dataset_id,
+            state: DatasetState::Succeeded,
+            attempts,
+            error_class: None,
+            error_message: None,
+            skipped: true,
+        });
     }
+
+    let use_storage_execution = requires_storage_execution(&source, &output);
+    let output_lock = if use_storage_execution {
+        None
+    } else {
+        Some(OutputLock::acquire(&output, run_id, storage).await.map_err(|err| DatasetFailure {
+            class: FailureClass::Permanent,
+            message: err.to_string(),
+        })?)
+    };
+
+    if matches!(output, DatasetLocation::S3(_)) {
+        if let Ok(Some(state)) = remote_publication_state(storage, &output, &run_id.0).await {
+            info!(dataset = %dataset_id.0, ?state, "observed remote publication state");
+            if matches!(state, PublicationState::Current | PublicationState::Committed) {
+                upsert_record(
+                    &journal,
+                    dataset,
+                    DatasetState::Succeeded,
+                    attempts,
+                    Some(dataset.repair_plan.dataset_fingerprint.digest.clone()),
+                    None,
+                    None,
+                    Some(started),
+                    Some(Utc::now()),
+                );
+                if let Some(lock) = output_lock {
+                    let _ = lock.release_for(storage, &output).await;
+                }
+                return Ok(DatasetExecutionOutcome {
+                    dataset_id,
+                    state: DatasetState::Succeeded,
+                    attempts,
+                    error_class: None,
+                    error_message: None,
+                    skipped: true,
+                });
+            }
+        }
+    }
+
+    let current_fp = match verify_source_fingerprint(storage, &source, dataset).await {
+        Ok(fp) => fp,
+        Err(err) => {
+            if let Some(lock) = output_lock {
+                let _ = lock.release_for(storage, &output).await;
+            }
+            return Err(err);
+        }
+    };
 
     upsert_record(
         &journal,
         dataset,
         DatasetState::Running,
         attempts,
-        Some(current_fp.digest.clone()),
+        Some(current_fp.clone()),
         None,
         None,
         Some(started),
@@ -431,31 +488,60 @@ async fn execute_dataset_once(
     executor.authorization = RepairAuthorization::from_ids(dataset.authorize.clone());
     let repair_plan = dataset.repair_plan.clone();
     let source_digest = repair_plan.dataset_fingerprint.digest.clone();
-    let output_path = output.to_path_buf();
-    let dataset_id = dataset.dataset_id.clone();
-    let repair_plan_for_exec = repair_plan.clone();
 
-    let execution = tokio::task::spawn_blocking(move || {
-        executor.execute(&repair_plan_for_exec, &output_path, &scan)
-    })
-    .await
-    .map_err(|err| DatasetFailure {
-        class: FailureClass::Permanent,
-        message: format!("dataset task join error: {err}"),
-    })?;
+    let execution = if use_storage_execution {
+        let source_backend = storage.repair_backend_for(&source);
+        let output_backend = storage.repair_backend_for(&output);
+        let scan = storage
+            .with_request_permit(|| async {
+                source_backend.scan(&source).await.map_err(|e| DatasetFailure {
+                    class: classify_repair_error(&e),
+                    message: e.to_string(),
+                })
+            })
+            .await?;
+        source_backend
+            .execute_plan(&executor, &repair_plan, &output, &scan, &output_backend, &run_id.0)
+            .await
+            .map_err(|err| DatasetFailure {
+                class: classify_repair_error(&err),
+                message: err.to_string(),
+            })
+    } else {
+        let local_source = match &source {
+            DatasetLocation::Local(l) => l.path.clone(),
+            _ => unreachable!("local execution requires local source"),
+        };
+        let local_output = match &output {
+            DatasetLocation::Local(l) => l.path.clone(),
+            _ => unreachable!("local execution requires local output"),
+        };
+        let scan = scan_directory(&local_source).map_err(|err| DatasetFailure {
+            class: classify_repair_error(&err),
+            message: err.to_string(),
+        })?;
+        tokio::task::spawn_blocking(move || executor.execute(&repair_plan, &local_output, &scan))
+            .await
+            .map_err(|err| DatasetFailure {
+                class: FailureClass::Permanent,
+                message: format!("dataset task join error: {err}"),
+            })?
+            .map_err(|err| DatasetFailure {
+                class: classify_repair_error(&err),
+                message: err.to_string(),
+            })
+    };
+
+    if let Some(lock) = output_lock {
+        let _ = lock.release_for(storage, &output).await;
+    }
 
     match execution {
         Ok(report) => {
             let completed = Utc::now();
             upsert_record(
                 &journal,
-                &DatasetPlan {
-                    dataset_id: dataset_id.clone(),
-                    source_path: dataset.source_path.clone(),
-                    output_path: dataset.output_path.clone(),
-                    repair_plan: repair_plan.clone(),
-                    authorize: dataset.authorize.clone(),
-                },
+                dataset,
                 DatasetState::Succeeded,
                 attempts,
                 Some(source_digest),
@@ -478,31 +564,73 @@ async fn execute_dataset_once(
                 skipped: false,
             })
         }
-        Err(err) => fail_dataset(journal, dataset, attempts, started, &err),
+        Err(DatasetFailure { class, message }) => {
+            upsert_record(
+                &journal,
+                dataset,
+                failure_state(class),
+                attempts,
+                None,
+                Some(class),
+                Some(message.clone()),
+                Some(started),
+                Some(Utc::now()),
+            );
+            Err(DatasetFailure { class, message })
+        }
     }
 }
 
-fn fail_dataset(
-    journal: Arc<dyn RunJournal>,
+async fn verify_source_fingerprint(
+    storage: &BatchStorageRuntime,
+    source: &DatasetLocation,
     dataset: &DatasetPlan,
-    attempts: u32,
-    started: chrono::DateTime<Utc>,
-    err: &RepairError,
-) -> Result<DatasetExecutionOutcome, DatasetFailure> {
-    let class = classify_repair_error(err);
-    let message = err.to_string();
-    upsert_record(
-        &journal,
-        dataset,
-        failure_state(class),
-        attempts,
-        None,
-        Some(class),
-        Some(message.clone()),
-        Some(started),
-        Some(Utc::now()),
-    );
-    Err(DatasetFailure { class, message })
+) -> Result<String, DatasetFailure> {
+    match source {
+        DatasetLocation::Local(path) => {
+            let scan = scan_directory(&path.path).map_err(|err| DatasetFailure {
+                class: classify_repair_error(&err),
+                message: err.to_string(),
+            })?;
+            let current_fp = DatasetInventory::from_scan_report(&path.path, &scan)
+                .and_then(|inventory| compute_dataset_fingerprint(&path.path, &inventory))
+                .map_err(|err| DatasetFailure {
+                    class: classify_repair_error(&err),
+                    message: err.to_string(),
+                })?;
+            dataset.repair_plan.dataset_fingerprint.verify_against(&current_fp).map_err(|err| {
+                DatasetFailure { class: FailureClass::StaleSource, message: err.to_string() }
+            })?;
+            Ok(current_fp.digest)
+        }
+        DatasetLocation::S3(_) => {
+            let backend = storage.repair_backend_for(source);
+            let scan = storage
+                .with_request_permit(|| async {
+                    backend.scan(source).await.map_err(|err| DatasetFailure {
+                        class: classify_repair_error(&err),
+                        message: err.to_string(),
+                    })
+                })
+                .await?;
+            let root = parqonaut_repair::location_root(source);
+            let current_fp = DatasetInventory::from_scan_report(&root, &scan)
+                .and_then(|inventory| compute_dataset_fingerprint(&root, &inventory))
+                .map_err(|err| DatasetFailure {
+                    class: classify_repair_error(&err),
+                    message: err.to_string(),
+                })?;
+            dataset.repair_plan.dataset_fingerprint.verify_against(&current_fp).map_err(|err| {
+                DatasetFailure { class: FailureClass::StaleSource, message: err.to_string() }
+            })?;
+            Ok(current_fp.digest)
+        }
+    }
+}
+
+fn parse_location(raw: &str) -> Result<DatasetLocation, DatasetFailure> {
+    DatasetLocation::parse(raw)
+        .map_err(|e| DatasetFailure { class: FailureClass::Permanent, message: e.to_string() })
 }
 
 fn classify_repair_error(err: &RepairError) -> FailureClass {
@@ -513,7 +641,9 @@ fn classify_repair_error(err: &RepairError) -> FailureClass {
         RepairError::VerificationInvariantFailed { .. } => FailureClass::VerificationFailed,
         RepairError::PartialExecution { .. }
         | RepairError::Io(_)
-        | RepairError::TransformFailed(_) => FailureClass::Recoverable,
+        | RepairError::TransformFailed(_)
+        | RepairError::Storage(_)
+        | RepairError::Publication(_) => FailureClass::Recoverable,
         RepairError::OutputExists(_)
         | RepairError::SourceDestinationOverlap(_)
         | RepairError::UnsupportedOperation { .. }

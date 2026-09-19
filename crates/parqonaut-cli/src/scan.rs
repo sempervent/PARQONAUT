@@ -1,15 +1,36 @@
-use camino::Utf8PathBuf;
-use paraclete_core::ScanEngine;
-use paraclete_types::{ScanProfile, ScanRequest, ScanTarget};
-use std::path::PathBuf;
+use paraclete_types::ScanReport;
+
+use crate::location::{parse_dataset_location, resolve_backend};
 
 pub async fn run_scan(
-    path: PathBuf,
+    path: String,
     profile: &str,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let utf8_path = Utf8PathBuf::from_path_buf(path.clone())
-        .map_err(|_| format!("non-UTF8 path: {}", path.display()))?;
+    let location = parse_dataset_location(&path)?;
+    if location.backend_name() == "local" {
+        let report = run_local_scan(&location, profile)?;
+        print_scan_report(&report, json)?;
+        return Ok(());
+    }
+
+    let backend = resolve_backend(&location).await?;
+    let report = backend.scan(&location).await?;
+    print_scan_report(&report, json)?;
+    Ok(())
+}
+
+fn run_local_scan(
+    location: &parqonaut_storage::location::DatasetLocation,
+    profile: &str,
+) -> Result<ScanReport, Box<dyn std::error::Error>> {
+    use paraclete_core::ScanEngine;
+    use paraclete_types::{ScanProfile, ScanRequest, ScanTarget};
+
+    let root = match location {
+        parqonaut_storage::location::DatasetLocation::Local(l) => l.path.clone(),
+        _ => unreachable!("local scan requested for non-local location"),
+    };
 
     let scan_profile = match profile {
         "quick" => ScanProfile::Quick,
@@ -17,17 +38,19 @@ pub async fn run_scan(
         _ => ScanProfile::Standard,
     };
 
-    let target = if utf8_path.is_file() {
-        ScanTarget::LocalFile { path: utf8_path }
+    let target = if root.is_file() {
+        ScanTarget::LocalFile { path: root }
     } else {
-        ScanTarget::LocalDirectory { path: utf8_path }
+        ScanTarget::LocalDirectory { path: root }
     };
 
     let request = ScanRequest::new(target, scan_profile);
-    let report = ScanEngine::run(&request)?;
+    Ok(ScanEngine::run(&request)?)
+}
 
+fn print_scan_report(report: &ScanReport, json: bool) -> Result<(), Box<dyn std::error::Error>> {
     if json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        println!("{}", serde_json::to_string_pretty(report)?);
     } else {
         println!("Scan complete: {}", report.request.scan_id);
         println!("  Files scanned: {}", report.summary.files_scanned);
@@ -38,6 +61,5 @@ pub async fn run_scan(
             println!("  [{:?}] {} — {}", finding.severity, finding.code, finding.summary);
         }
     }
-
     Ok(())
 }

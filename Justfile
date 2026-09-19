@@ -99,6 +99,7 @@ phase4-demo:
     out = pathlib.Path("target/phase4-shipwreck-out").resolve()
     out.mkdir(parents=True, exist_ok=True)
     plan["output_root"] = str(out / "repaired")
+    plan["run_root"] = plan["output_root"]
     for ds in plan["datasets"]:
         ds_id = ds["dataset_id"]["0"] if isinstance(ds["dataset_id"], dict) else ds["dataset_id"]
         ds["output_path"] = str(out / "repaired" / ds_id)
@@ -115,6 +116,44 @@ phase4-demo:
     test -f "$run_dir/report.json"
     head -40 "$run_dir/report.json"
 
+phase5-up:
+    scripts/phase5/up.sh
+
+phase5-down:
+    scripts/phase5/down.sh
+
+phase5-fixtures:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/phase5/env.sh
+    scripts/phase5/fixtures.sh
+
+phase5-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/phase5/env.sh
+    cargo test -p parqonaut-storage --features s3 fogbank -- --nocapture
+
+phase5-demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just phase5-up
+    source scripts/phase5/env.sh
+    just phase5-fixtures
+    echo "=== scan remote healthy dataset ==="
+    cargo run -p parqonaut-cli --features s3 -- scan "s3://${FOGBANK_BUCKET}/datasets/healthy/"
+    echo "=== plan remote repair ==="
+    cargo run -p parqonaut-cli --features s3 -- plan "s3://${FOGBANK_BUCKET}/datasets/healthy/" \
+        --output target/phase5-plan.json
+    echo "=== fogbank integration tests ==="
+    just phase5-test
+
+phase5-resume-demo:
+    scripts/phase5/resume-demo.sh
+
+phase5-batch-demo:
+    scripts/phase5/batch-demo.sh
+
 phase4-resume-demo:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -128,6 +167,7 @@ phase4-resume-demo:
     out = pathlib.Path("target/phase4-resume-out").resolve()
     out.mkdir(parents=True, exist_ok=True)
     plan["output_root"] = str(out / "repaired")
+    plan["run_root"] = plan["output_root"]
     for ds in plan["datasets"]:
         ds_id = ds["dataset_id"]["0"] if isinstance(ds["dataset_id"], dict) else ds["dataset_id"]
         ds["output_path"] = str(out / "repaired" / ds_id)

@@ -1,4 +1,5 @@
 mod batch;
+mod location;
 mod repair;
 mod scan;
 mod stream;
@@ -23,10 +24,10 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Forensic scan of local files or directories (Paraclete engine)
+    /// Forensic scan of local paths or s3:// dataset prefixes (Paraclete engine)
     Scan {
-        /// File or directory to scan
-        path: PathBuf,
+        /// Local path or s3:// URI to scan
+        path: String,
         #[arg(short, long, default_value = "standard")]
         profile: String,
     },
@@ -52,10 +53,14 @@ enum Command {
         rebuild_stats: bool,
     },
     /// Diagnose dataset repair opportunities from scan evidence
-    Diagnose { path: PathBuf },
+    Diagnose {
+        /// Local path or s3:// dataset URI
+        path: String,
+    },
     /// Generate an evidence-bound repair plan
     Plan {
-        path: PathBuf,
+        /// Local path or s3:// dataset URI
+        path: String,
         #[arg(long)]
         output: Option<PathBuf>,
         #[arg(long, help = "TOML policy file path")]
@@ -69,36 +74,42 @@ enum Command {
     PlanDiff { left: PathBuf, right: PathBuf },
     /// CI-oriented policy compliance check (non-mutating)
     Check {
-        path: PathBuf,
+        /// Local path or s3:// dataset URI
+        path: String,
         #[arg(long, help = "TOML CI policy file")]
         policy: Option<PathBuf>,
     },
-    /// Execute a repair plan to a separate output directory
+    /// Execute a repair plan to a separate output directory or s3:// prefix
     Repair {
-        path: PathBuf,
+        /// Source dataset local path or s3:// URI
+        path: String,
         #[arg(long)]
         plan: PathBuf,
+        /// Output local directory or s3:// dataset prefix
         #[arg(long)]
-        output: PathBuf,
+        output: String,
         #[arg(long = "authorize", help = "Explicitly authorize a ReviewRequired operation ID")]
         authorize: Vec<String>,
     },
     /// Verify repaired dataset against a before scan
     Verify {
-        before: PathBuf,
+        /// Before dataset local path or s3:// URI
+        before: String,
         after: PathBuf,
         #[arg(long, help = "Optional execution manifest path")]
         manifest: Option<PathBuf>,
     },
     /// Integrated scan → diagnose → plan (optional safe repair)
     Doctor {
-        path: PathBuf,
+        /// Local path or s3:// dataset URI
+        path: String,
         #[arg(long, help = "TOML policy file path (same as plan)")]
         policy: Option<PathBuf>,
         #[arg(long, help = "Execute authorized repairs after showing the plan")]
         repair: bool,
+        /// Output local directory or s3:// dataset prefix
         #[arg(long)]
-        output: Option<PathBuf>,
+        output: Option<String>,
         #[arg(long = "authorize")]
         authorize: Vec<String>,
     },

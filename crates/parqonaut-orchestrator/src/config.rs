@@ -5,8 +5,11 @@ use std::fs;
 
 use crate::error::OrchestratorError;
 use crate::ids::DatasetId;
+use crate::location::{local_path_for_policy, ConfigLocation};
+use crate::storage::default_max_storage_requests;
 use crate::BATCH_CONFIG_SCHEMA_VERSION;
 use parqonaut_repair::{stable_hex_id, EffectivePolicy};
+use parqonaut_storage::location::DatasetLocation;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BatchConfig {
@@ -21,9 +24,15 @@ pub struct BatchSection {
     pub name: String,
     #[serde(default = "default_concurrency")]
     pub max_concurrency: u32,
-    /// Root directory for repaired dataset outputs (relative to batch.toml unless absolute).
+    /// Root for repaired dataset outputs (local path or `s3://` URI).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_root: Option<Utf8PathBuf>,
+    pub output_root: Option<ConfigLocation>,
+    /// Local directory for run journals when `output_root` is remote.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_root: Option<Utf8PathBuf>,
+    /// Upper bound on concurrent storage backend requests (separate from `--jobs`).
+    #[serde(default = "default_max_storage_requests")]
+    pub max_storage_requests: u32,
 }
 
 fn default_concurrency() -> u32 {
@@ -33,14 +42,14 @@ fn default_concurrency() -> u32 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DatasetConfig {
     pub id: String,
-    pub path: Utf8PathBuf,
+    pub path: ConfigLocation,
     #[serde(default)]
     pub policy: Option<Utf8PathBuf>,
     #[serde(default)]
     pub target_schema: Option<Utf8PathBuf>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub authorize: Vec<String>,
-    /// Output subdirectory under `batch.output_root` (defaults to dataset `id`).
+    /// Output subdirectory under `batch.output_root`, or absolute/`s3://` override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<Utf8PathBuf>,
 }
@@ -70,17 +79,19 @@ impl BatchConfig {
                 "batch.max_concurrency must be >= 1".into(),
             ));
         }
+        if self.batch.max_storage_requests == 0 {
+            return Err(OrchestratorError::InvalidConfig(
+                "batch.max_storage_requests must be >= 1".into(),
+            ));
+        }
         let mut seen = BTreeSet::new();
         for ds in &self.datasets {
             if !seen.insert(ds.id.clone()) {
                 return Err(OrchestratorError::DuplicateDatasetId(ds.id.clone()));
             }
-            if ds.path.as_str().is_empty() {
-                return Err(OrchestratorError::InvalidConfig(format!(
-                    "dataset `{}` has empty path",
-                    ds.id
-                )));
-            }
+        }
+        if self.batch.output_root.is_none() {
+            return Err(OrchestratorError::InvalidConfig("batch.output_root is required".into()));
         }
         Ok(())
     }
@@ -95,11 +106,7 @@ impl BatchConfig {
     }
 
     pub fn resolve_path(base: &Utf8Path, path: &Utf8Path) -> Utf8PathBuf {
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            base.join(path)
-        }
+        local_path_for_policy(base, path)
     }
 
     pub fn resolve_policy(
@@ -145,10 +152,26 @@ impl BatchConfig {
             .map_err(|_| OrchestratorError::InvalidConfig("non-UTF8 path".into()))?;
         Ok(canonical)
     }
+
+    pub fn require_output_root(&self) -> Result<&ConfigLocation, OrchestratorError> {
+        self.batch.output_root.as_ref().ok_or_else(|| {
+            OrchestratorError::InvalidConfig(
+                "batch.output_root is required for planning and execution".into(),
+            )
+        })
+    }
+
+    pub fn max_storage_requests(&self) -> u32 {
+        self.batch.max_storage_requests
+    }
 }
 
 impl DatasetConfig {
     pub fn id(&self) -> DatasetId {
         DatasetId(self.id.clone())
+    }
+
+    pub fn source_location(&self) -> &DatasetLocation {
+        self.path.as_location()
     }
 }

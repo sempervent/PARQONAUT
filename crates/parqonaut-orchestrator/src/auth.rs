@@ -73,7 +73,9 @@ mod tests {
             config_fingerprint: "cfg".into(),
             batch_name: "t".into(),
             max_concurrency: 1,
+            max_storage_requests: 8,
             output_root: "/out".into(),
+            run_root: "/out".into(),
             parqonaut_version: "0.3.0".into(),
             datasets: vec![],
         };

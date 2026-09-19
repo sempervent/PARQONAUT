@@ -10,8 +10,6 @@ description = "Parquet transformation engine (parqknife lineage)"
 arrow = { version = "54", features = [] }
 parquet = { version = "54", features = ["arrow"] }
 clap = { version = "4.5", features = ["derive", "env"] }
-aws-sdk-s3 = { version = "1", features = ["rustls"] }
-aws-config = { version = "1", features = ["rustls"] }
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }

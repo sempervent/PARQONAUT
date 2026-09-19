@@ -10,12 +10,17 @@ description = "Unified PARQONAUT CLI — scan, transform, stream"
 name = "parqonaut"
 path = "src/main.rs"
 
+[features]
+default = ["s3"]
+s3 = ["parqonaut-repair/s3", "parqonaut-storage/s3"]
+
 [dependencies]
 paraclete-core = { path = "../paraclete-core" }
 paraclete-types = { path = "../paraclete-types" }
 parqonaut-transform = { path = "../parqonaut-transform" }
 parqonaut-stream = { path = "../parqonaut-stream" }
 parqonaut-repair = { path = "../parqonaut-repair" }
+parqonaut-storage = { path = "../parqonaut-storage" }
 parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
 clap.workspace = true
 tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "signal"] }
