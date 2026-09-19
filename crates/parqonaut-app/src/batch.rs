@@ -31,12 +31,12 @@ pub async fn batch_repair(
         dry_run: req.dry_run,
         jobs: req.jobs,
         cancel,
-        interrupt_after_completed: None,
+        interrupt_after_completed: req.interrupt_after_completed,
     };
-    let outcome = execute_batch(&req.plan_path, options)
+    let execution = execute_batch(&req.plan_path, options)
         .await
         .map_err(|e| ApplicationError::BatchFailed(e.to_string()))?;
-    Ok(BatchRepairResult { run_dir: outcome.run_dir.clone(), run_id: outcome.run_id.0.clone() })
+    Ok(BatchRepairResult { execution })
 }
 
 pub fn batch_status(req: &BatchStatusRequest) -> Result<BatchStatusResult, ApplicationError> {
@@ -55,10 +55,10 @@ pub async fn batch_resume(
         cancel,
         interrupt_after_completed: None,
     };
-    let outcome = resume_batch(&req.run_dir, options)
+    let execution = resume_batch(&req.run_dir, options)
         .await
         .map_err(|e| ApplicationError::BatchFailed(e.to_string()))?;
-    Ok(BatchRepairResult { run_dir: outcome.run_dir.clone(), run_id: outcome.run_id.0.clone() })
+    Ok(BatchRepairResult { execution })
 }
 
 pub fn batch_verify(req: &BatchVerifyRequest) -> Result<BatchVerifyResult, ApplicationError> {

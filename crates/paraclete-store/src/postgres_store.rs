@@ -492,26 +492,39 @@ impl PostgresScanStore {
         Ok(())
     }
 
-    pub async fn insert_scan_job_queued(
+    pub async fn insert_application_job(
         &self,
         job_id: JobId,
+        kind: paraclete_types::JobKind,
         identity: &TargetIdentity,
         request_json: &str,
     ) -> Result<(), StoreError> {
         let now = Utc::now().to_rfc3339();
         sqlx::query(
             r#"INSERT INTO application_jobs (
-                job_id, submitted_at, status, target_kind, normalized_target_key, request_json, attempt_count
-            ) VALUES ($1, $2, 'queued', $3, $4, $5, 0)"#,
+                job_id, submitted_at, status, target_kind, normalized_target_key, request_json,
+                attempt_count, job_kind, payload_schema_version
+            ) VALUES ($1, $2, 'queued', $3, $4, $5, 0, $6, 1)"#,
         )
         .bind(job_id.0.to_string())
         .bind(&now)
         .bind(&identity.target_kind)
         .bind(&identity.normalized_key)
         .bind(request_json)
+        .bind(kind.as_str())
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    pub async fn insert_scan_job_queued(
+        &self,
+        job_id: JobId,
+        identity: &TargetIdentity,
+        request_json: &str,
+    ) -> Result<(), StoreError> {
+        self.insert_application_job(job_id, paraclete_types::JobKind::Scan, identity, request_json)
+            .await
     }
 
     /// Claims the next queued job using `FOR UPDATE SKIP LOCKED` (concurrent workers).
@@ -639,23 +652,112 @@ impl PostgresScanStore {
         job_id: JobId,
         run_id: RunId,
     ) -> Result<(), StoreError> {
+        self.complete_application_job_success(job_id, Some(run_id), None).await
+    }
+
+    pub async fn complete_application_job_success(
+        &self,
+        job_id: JobId,
+        run_id: Option<RunId>,
+        result_ref_json: Option<&str>,
+    ) -> Result<(), StoreError> {
         let completed = Utc::now().to_rfc3339();
         let res = sqlx::query(
             r#"UPDATE application_jobs SET status = 'succeeded', completed_at = $1, run_id = $2,
-               worker_id = NULL, heartbeat_at = NULL, leased_until = NULL
-               WHERE job_id = $3 AND status = 'running'"#,
+               result_ref_json = $3, worker_id = NULL, heartbeat_at = NULL, leased_until = NULL,
+               cancel_requested = 0
+               WHERE job_id = $4 AND status = 'running'"#,
         )
         .bind(&completed)
-        .bind(run_id.0.to_string())
+        .bind(run_id.map(|r| r.0.to_string()))
+        .bind(result_ref_json)
         .bind(job_id.0.to_string())
         .execute(&self.pool)
         .await?;
         if res.rows_affected() == 0 {
             return Err(StoreError::ReportValidation(
-                "scan job not running or missing when completing success".into(),
+                "application job not running or missing when completing success".into(),
             ));
         }
         Ok(())
+    }
+
+    pub async fn complete_application_job_canceled(&self, job_id: JobId) -> Result<(), StoreError> {
+        let completed = Utc::now().to_rfc3339();
+        let res = sqlx::query(
+            r#"UPDATE application_jobs SET status = 'canceled', completed_at = $1,
+               failure_code = 'canceled', failure_message = 'job canceled by client request',
+               worker_id = NULL, heartbeat_at = NULL, leased_until = NULL, cancel_requested = 0
+               WHERE job_id = $2 AND status = 'running'"#,
+        )
+        .bind(&completed)
+        .bind(job_id.0.to_string())
+        .execute(&self.pool)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(StoreError::ReportValidation(
+                "application job not running or missing when completing cancel".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub async fn request_cancel_job(
+        &self,
+        job_id: JobId,
+    ) -> Result<crate::models::JobCancelOutcome, StoreError> {
+        let row = self.get_scan_job(job_id).await?;
+        let now = Utc::now().to_rfc3339();
+        match row.status.as_str() {
+            "queued" => {
+                let res = sqlx::query(
+                    r#"UPDATE application_jobs SET status = 'canceled', completed_at = $1,
+                       failure_code = 'canceled', failure_message = 'job canceled before start'
+                       WHERE job_id = $2 AND status = 'queued'"#,
+                )
+                .bind(&now)
+                .bind(job_id.0.to_string())
+                .execute(&self.pool)
+                .await?;
+                if res.rows_affected() == 0 {
+                    return Err(StoreError::ReportValidation(
+                        "job left queued before cancel could apply".into(),
+                    ));
+                }
+                Ok(crate::models::JobCancelOutcome::CanceledFromQueued)
+            }
+            "running" => {
+                let res = sqlx::query(
+                    r#"UPDATE application_jobs SET cancel_requested = 1
+                       WHERE job_id = $1 AND status = 'running'"#,
+                )
+                .bind(job_id.0.to_string())
+                .execute(&self.pool)
+                .await?;
+                if res.rows_affected() == 0 {
+                    return Err(StoreError::ReportValidation(
+                        "job left running before cancel could apply".into(),
+                    ));
+                }
+                Ok(crate::models::JobCancelOutcome::CancelRequestedForRunning)
+            }
+            "canceled" => Ok(crate::models::JobCancelOutcome::AlreadyCanceled),
+            "succeeded" | "failed" => Err(StoreError::ReportValidation(format!(
+                "job {} is already terminal ({})",
+                job_id.0, row.status
+            ))),
+            other => Err(StoreError::ReportValidation(format!("unknown job status `{other}`"))),
+        }
+    }
+
+    pub async fn job_cancel_requested(&self, job_id: JobId) -> Result<bool, StoreError> {
+        let v: Option<i64> = sqlx::query_scalar(
+            "SELECT cancel_requested FROM application_jobs WHERE job_id = $1 AND status = 'running'",
+        )
+        .bind(job_id.0.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(v.unwrap_or(0) != 0)
     }
 
     pub async fn complete_scan_job_failure(

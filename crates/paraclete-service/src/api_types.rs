@@ -2,8 +2,8 @@
 
 use chrono::{DateTime, Utc};
 use paraclete_types::{
-    AuthRole, AuthTokenStatus, JobErrorCode, JobStatus, RedactionPolicy, RunOutcome, ScanOptions,
-    ScanProfile, ScanSummary, ScanTarget,
+    AuthRole, AuthTokenStatus, JobErrorCode, JobKind, JobStatus, RedactionPolicy, RunOutcome,
+    ScanOptions, ScanProfile, ScanSummary, ScanTarget,
 };
 use serde::{Deserialize, Serialize};
 #[allow(unused_imports)]
@@ -220,6 +220,7 @@ pub struct JobFailureBody {
 }))]
 pub struct ScanJobView {
     pub job_id: Uuid,
+    pub job_kind: JobKind,
     pub status: JobStatus,
     pub submitted_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
@@ -238,6 +239,9 @@ pub struct ScanJobView {
     pub recovery_note: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_ref: Option<serde_json::Value>,
+    pub cancel_requested: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure: Option<JobFailureBody>,
     pub job_url: String,

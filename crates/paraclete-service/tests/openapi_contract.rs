@@ -1,11 +1,52 @@
 //! OpenAPI document structure and schema presence (OpenAPI).
 
+use std::path::PathBuf;
+
 use paraclete_service::openapi_spec;
 use paraclete_service::{ErrorBody, ErrorCode, ErrorEnvelope};
 use serde_json::Value;
 
 fn openapi_json() -> Value {
     serde_json::to_value(openapi_spec()).expect("openapi serializes to JSON")
+}
+
+fn sort_json_value(v: Value) -> Value {
+    match v {
+        Value::Object(map) => {
+            let mut keys: Vec<_> = map.keys().cloned().collect();
+            keys.sort();
+            let mut out = serde_json::Map::new();
+            for k in keys {
+                out.insert(k.clone(), sort_json_value(map[&k].clone()));
+            }
+            Value::Object(out)
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(sort_json_value).collect()),
+        other => other,
+    }
+}
+
+fn normalize_openapi_document(v: Value) -> String {
+    let mut sorted = sort_json_value(v);
+    if let Some(info) = sorted.get_mut("info").and_then(|i| i.as_object_mut()) {
+        info.insert("version".into(), Value::String(env!("CARGO_PKG_VERSION").into()));
+    }
+    serde_json::to_string_pretty(&sorted).expect("normalized openapi serializes")
+}
+
+#[test]
+fn openapi_matches_print_openapi_golden() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/api/openapi-v1.json");
+    let golden_text = std::fs::read_to_string(&golden_path)
+        .unwrap_or_else(|_| panic!("missing golden OpenAPI at {}", golden_path.display()));
+    let golden: Value = serde_json::from_str(&golden_text).expect("golden OpenAPI JSON");
+    let live = normalize_openapi_document(openapi_json());
+    let expected = normalize_openapi_document(golden);
+    assert_eq!(
+        live, expected,
+        "OpenAPI drift — refresh fixtures/api/openapi-v1.json via `prqnt serve --print-openapi`"
+    );
 }
 
 #[test]

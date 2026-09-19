@@ -112,12 +112,13 @@ pub struct BatchRepairRequest {
     pub plan_path: Utf8PathBuf,
     pub jobs: Option<u32>,
     pub dry_run: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interrupt_after_completed: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct BatchRepairResult {
-    pub run_dir: Utf8PathBuf,
-    pub run_id: String,
+    pub execution: parqonaut_orchestrator::BatchExecutionResult,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

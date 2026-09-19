@@ -2,14 +2,15 @@
 
 use chrono::{DateTime, Utc};
 use paraclete_types::{
-    AuthPrincipal, AuthRole, AuthTokenId, JobId, JobRecoveryPolicy, RedactionPolicy, RunId,
-    ScanReport, ScanRun, ScanRunListItem, ScanSummary, TargetIdentity,
+    AuthPrincipal, AuthRole, AuthTokenId, JobId, JobKind, JobRecoveryPolicy, RedactionPolicy,
+    RunId, ScanReport, ScanRun, ScanRunListItem, ScanSummary, TargetIdentity,
 };
 
 use crate::auth_store::AuthTokenSummary;
 use crate::error::StoreError;
 use crate::models::{
-    RunPublicMeta, ScanJobRow, StaleRecoveryStats, StoredAssetRow, StoredFindingRow,
+    JobCancelOutcome, RunPublicMeta, ScanJobRow, StaleRecoveryStats, StoredAssetRow,
+    StoredFindingRow,
 };
 use crate::postgres_store::PostgresScanStore;
 use crate::sqlite_store::SqliteScanStore;
@@ -157,6 +158,23 @@ impl StoreBackend {
         }
     }
 
+    pub async fn insert_application_job(
+        &self,
+        job_id: JobId,
+        kind: JobKind,
+        identity: &TargetIdentity,
+        request_json: &str,
+    ) -> Result<(), StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.insert_application_job(job_id, kind, identity, request_json).await
+            }
+            StoreBackend::Postgres(p) => {
+                p.insert_application_job(job_id, kind, identity, request_json).await
+            }
+        }
+    }
+
     pub async fn insert_scan_job_queued(
         &self,
         job_id: JobId,
@@ -225,6 +243,43 @@ impl StoreBackend {
         match self {
             StoreBackend::Sqlite(s) => s.complete_scan_job_success(job_id, run_id).await,
             StoreBackend::Postgres(p) => p.complete_scan_job_success(job_id, run_id).await,
+        }
+    }
+
+    pub async fn complete_application_job_success(
+        &self,
+        job_id: JobId,
+        run_id: Option<RunId>,
+        result_ref_json: Option<&str>,
+    ) -> Result<(), StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.complete_application_job_success(job_id, run_id, result_ref_json).await
+            }
+            StoreBackend::Postgres(p) => {
+                p.complete_application_job_success(job_id, run_id, result_ref_json).await
+            }
+        }
+    }
+
+    pub async fn complete_application_job_canceled(&self, job_id: JobId) -> Result<(), StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => s.complete_application_job_canceled(job_id).await,
+            StoreBackend::Postgres(p) => p.complete_application_job_canceled(job_id).await,
+        }
+    }
+
+    pub async fn request_cancel_job(&self, job_id: JobId) -> Result<JobCancelOutcome, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => s.request_cancel_job(job_id).await,
+            StoreBackend::Postgres(p) => p.request_cancel_job(job_id).await,
+        }
+    }
+
+    pub async fn job_cancel_requested(&self, job_id: JobId) -> Result<bool, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => s.job_cancel_requested(job_id).await,
+            StoreBackend::Postgres(p) => p.job_cancel_requested(job_id).await,
         }
     }
 

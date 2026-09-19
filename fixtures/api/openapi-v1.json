@@ -1,0 +1,4380 @@
+{
+  "components": {
+    "schemas": {
+      "AssetRecord": {
+        "description": "One resolved file with durable inspection outcome (distinct from forensic [`crate::Finding`]).",
+        "properties": {
+          "dataset_id": {
+            "description": "When this asset is a member of an inferred Parquet dataset inventory.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failure_kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FailureKind",
+                "description": "When status is `Failed`, machine-readable failure class."
+              }
+            ]
+          },
+          "failure_message": {
+            "description": "When status is `Failed`, human-readable detail (may be truncated at persistence).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "$ref": "#/components/schemas/DataFormat"
+          },
+          "inspection_hints": {
+            "description": "Shallow text hints JSON (delimiter, keys, etc.); Parquet remains in `Dataset` schema."
+          },
+          "inspection_status": {
+            "$ref": "#/components/schemas/InspectionStatus"
+          },
+          "path": {
+            "example": "fixtures/data.parquet",
+            "type": "string"
+          },
+          "probe": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProbeMetadata",
+                "description": "Populated for successful shallow text probes."
+              }
+            ]
+          },
+          "size_bytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "format",
+          "size_bytes",
+          "inspection_status"
+        ],
+        "type": "object"
+      },
+      "AuthRole": {
+        "description": "Authorization role for API requests (least privilege first).",
+        "enum": [
+          "reader",
+          "operator",
+          "admin"
+        ],
+        "type": "string"
+      },
+      "AuthTokenCreateRequest": {
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/AuthRole"
+          }
+        },
+        "required": [
+          "label",
+          "role"
+        ],
+        "type": "object"
+      },
+      "AuthTokenCreateResponse": {
+        "example": {
+          "created_at": "2026-04-15T12:00:00Z",
+          "label": "ci-deploy",
+          "note": null,
+          "role": "operator",
+          "token_id": "880e8400-e29b-41d4-a716-446655440003",
+          "token_prefix": "plct_live_",
+          "token_secret": "plct_live_xxxxxxxxxxxxxxxx"
+        },
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/AuthRole"
+          },
+          "token_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "token_prefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_secret": {
+            "description": "Shown exactly once; never stored in plaintext.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "label",
+          "role",
+          "created_at",
+          "token_secret"
+        ],
+        "type": "object"
+      },
+      "AuthTokenListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuthTokenSummaryView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "AuthTokenRotateResponse": {
+        "description": "Response for `POST /api/v1/admin/tokens/{token_id}/rotate` (admin only; new secret once).",
+        "example": {
+          "created_at": "2026-04-15T12:00:00Z",
+          "label": "ci-deploy",
+          "note": null,
+          "previous_disabled_at": "2026-04-15T12:00:00Z",
+          "previous_token_id": "880e8400-e29b-41d4-a716-446655440001",
+          "role": "operator",
+          "token_id": "880e8400-e29b-41d4-a716-446655440099",
+          "token_prefix": "plc_xxxxxx",
+          "token_secret": "plc_xxxxxxxx"
+        },
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous_disabled_at": {
+            "description": "When the previous token row was disabled (same transaction as minting the new token).",
+            "format": "date-time",
+            "type": "string"
+          },
+          "previous_token_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AuthRole"
+          },
+          "token_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "token_prefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "token_secret": {
+            "description": "New bearer secret; shown once (only a hash is stored).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "previous_token_id",
+          "label",
+          "role",
+          "created_at",
+          "token_secret",
+          "previous_disabled_at"
+        ],
+        "type": "object"
+      },
+      "AuthTokenStatus": {
+        "description": "Whether a stored token row is still usable for authentication.",
+        "enum": [
+          "active",
+          "disabled"
+        ],
+        "type": "string"
+      },
+      "AuthTokenSummaryView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "disabled_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "description": "Last successful bearer authentication (updated on each verified request).",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "replaced_by_token_id": {
+            "description": "If this row was rotated out, the new token id.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/AuthRole"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AuthTokenStatus"
+          },
+          "token_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "token_prefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "token_id",
+          "label",
+          "role",
+          "status",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "BatchCheckResponse": {
+        "properties": {
+          "report": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "report"
+        ],
+        "type": "object"
+      },
+      "BatchConfigBody": {
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "config_path"
+        ],
+        "type": "object"
+      },
+      "BatchPlanResponse": {
+        "properties": {
+          "plan": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "plan"
+        ],
+        "type": "object"
+      },
+      "BatchRepairJobBody": {
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "jobs": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "plan_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_path"
+        ],
+        "type": "object"
+      },
+      "BatchResumeBody": {
+        "properties": {
+          "dry_run": {
+            "type": "boolean"
+          },
+          "jobs": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "BatchStatusResponse": {
+        "properties": {
+          "status": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "BatchVerifyResponse": {
+        "properties": {
+          "report": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "report"
+        ],
+        "type": "object"
+      },
+      "CheckResponse": {
+        "properties": {
+          "report": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "report"
+        ],
+        "type": "object"
+      },
+      "ColumnProfile": {
+        "description": "Placeholder for future column-level statistics and histograms.",
+        "properties": {
+          "distinct_estimate": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "null_fraction": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "ContractSchemaVersion": {
+        "description": "Newtype wrapper for contract schema version strings.",
+        "type": "string"
+      },
+      "DataFormat": {
+        "description": "Detected or declared on-disk / logical data format.",
+        "enum": [
+          "parquet",
+          "csv",
+          "json",
+          "ndjson",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "Dataset": {
+        "description": "A logical dataset grouping one or more files under a single identity.",
+        "properties": {
+          "column_profiles": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnProfile"
+            },
+            "type": "array"
+          },
+          "dataset_id": {
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetFile"
+            },
+            "type": "array"
+          },
+          "grouping_kind": {
+            "$ref": "#/components/schemas/GroupingKind",
+            "description": "Why these files were grouped together (path anchor, schema split, etc.)."
+          },
+          "partition_layout": {
+            "$ref": "#/components/schemas/PartitionLayout",
+            "description": "Whether Hive directory partition keys appear on paths (distinct from grouping)."
+          },
+          "schema": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SchemaSnapshot"
+              }
+            ]
+          }
+        },
+        "required": [
+          "dataset_id",
+          "grouping_kind",
+          "partition_layout",
+          "files"
+        ],
+        "type": "object"
+      },
+      "DatasetFile": {
+        "description": "One file discovered as part of a dataset inventory.",
+        "properties": {
+          "byte_length": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "format": {
+            "$ref": "#/components/schemas/DataFormat"
+          },
+          "partitions": {
+            "items": {
+              "$ref": "#/components/schemas/PartitionSegment"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "format"
+        ],
+        "type": "object"
+      },
+      "DatasetSummary": {
+        "description": "High-level view of a single dataset within the report.",
+        "properties": {
+          "dataset_id": {
+            "type": "string"
+          },
+          "dominant_format": {
+            "$ref": "#/components/schemas/DataFormat"
+          },
+          "file_count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "file_count",
+          "dominant_format"
+        ],
+        "type": "object"
+      },
+      "DiagnoseResponse": {
+        "properties": {
+          "report": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "report"
+        ],
+        "type": "object"
+      },
+      "ErrorBody": {
+        "example": {
+          "error": {
+            "code": "run_not_found",
+            "details": {},
+            "message": "run not found"
+          }
+        },
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorEnvelope"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "description": "Wire-level error codes (stable strings).",
+        "enum": [
+          "invalid_request",
+          "invalid_json_request",
+          "run_not_found",
+          "job_not_found",
+          "token_not_found",
+          "target_not_found",
+          "scan_failed",
+          "store_error",
+          "internal_error",
+          "unauthorized",
+          "forbidden",
+          "location_not_allowed"
+        ],
+        "type": "string"
+      },
+      "ErrorEnvelope": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "details": {},
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "Evidence": {
+        "description": "Evidence record: kind + summary + optional stable location + optional structured payload.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EvidenceKind"
+          },
+          "location_ref": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EvidenceLocationRef"
+              }
+            ]
+          },
+          "payload": {},
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceReference"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "EvidenceKind": {
+        "description": "Stable evidence classification for archival and diffing.",
+        "enum": [
+          "file_slice",
+          "column_stats",
+          "schema_fragment",
+          "metadata_table",
+          "parquet_footer",
+          "partition_layout",
+          "custom"
+        ],
+        "type": "string"
+      },
+      "EvidenceLocationRef": {
+        "description": "Stable location reference for evidence (paths as UTF-8 strings for JSON portability).",
+        "properties": {
+          "partition": {
+            "items": {
+              "$ref": "#/components/schemas/PartitionSegment"
+            },
+            "type": "array"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "row_group_index": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "EvidenceReference": {
+        "description": "Supplementary pointer-style references (labels, URIs, row-group hints).",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "type": "object"
+      },
+      "FailureKind": {
+        "description": "Typed failure classes for assets and projections (human `failure_message` complements this).",
+        "enum": [
+          "io_error",
+          "format_read_error",
+          "unsupported_format",
+          "probe_decode_error",
+          "truncated_by_policy",
+          "internal_engine_error"
+        ],
+        "type": "string"
+      },
+      "FieldDefinition": {
+        "description": "Field definition within a schema snapshot.",
+        "properties": {
+          "logical_type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "nullable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "logical_type",
+          "nullable"
+        ],
+        "type": "object"
+      },
+      "Finding": {
+        "description": "A single structured issue discovered during a scan.",
+        "properties": {
+          "attributes": {
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "category": {
+            "$ref": "#/components/schemas/FindingCategory"
+          },
+          "code": {
+            "$ref": "#/components/schemas/FindingCode"
+          },
+          "detail": {
+            "description": "Long-form human-readable text (product term: \u201cdetail\u201d).",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "type": "array"
+          },
+          "fingerprint": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FindingFingerprint"
+              }
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/FindingLocation"
+            },
+            "type": "array"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/Recommendation"
+            },
+            "type": "array"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/FindingSeverity"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "severity",
+          "category",
+          "summary",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "FindingCategory": {
+        "description": "Taxonomy bucket for analytics, dashboards, and policy routing.",
+        "enum": [
+          "format",
+          "target",
+          "schema",
+          "partitioning",
+          "metadata",
+          "integrity",
+          "quality",
+          "performance",
+          "coverage",
+          "plugin"
+        ],
+        "type": "string"
+      },
+      "FindingCode": {
+        "description": "Machine-facing finding code with enforced namespace policy.\n\nAllowed forms:\n- `system.<domain>.<name>[.<sub>...]` \u2014 at least three dot segments after `system`.\n- `plugin.<plugin_id>.<name>[.<sub>...]` \u2014 `plugin_id` must be `[a-z0-9_-]+`.\n- `user.<name>[.<sub>...]` \u2014 at least two segments total.",
+        "type": "string"
+      },
+      "FindingDelta": {
+        "description": "Per-finding fingerprint change (digest strings).",
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "added",
+          "removed"
+        ],
+        "type": "object"
+      },
+      "FindingFingerprint": {
+        "description": "Dedupe-friendly fingerprint derived from stable finding fields.",
+        "properties": {
+          "algorithm": {
+            "$ref": "#/components/schemas/FingerprintAlgorithm"
+          },
+          "digest": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "algorithm",
+          "digest"
+        ],
+        "type": "object"
+      },
+      "FindingLocation": {
+        "description": "Where a finding applies within a dataset surface.",
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "file": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "partition": {
+            "items": {
+              "$ref": "#/components/schemas/PartitionSegment"
+            },
+            "type": "array"
+          },
+          "row_group": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "FindingSeverity": {
+        "description": "Severity guides triage ordering; it is not a substitute for human judgment.",
+        "enum": [
+          "info",
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ],
+        "type": "string"
+      },
+      "FingerprintAlgorithm": {
+        "description": "Algorithm identifier for fingerprint digests.",
+        "enum": [
+          "v1_canonical_json_sha256",
+          "v2_canonical_sorted_json_sha256"
+        ],
+        "type": "string"
+      },
+      "FormatSummary": {
+        "description": "Per-format counts for quick triage.",
+        "properties": {
+          "file_count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "format": {
+            "$ref": "#/components/schemas/DataFormat"
+          }
+        },
+        "required": [
+          "format",
+          "file_count"
+        ],
+        "type": "object"
+      },
+      "GroupingKind": {
+        "description": "How the engine grouped files into a logical Parquet dataset (co-location / inference signal).",
+        "enum": [
+          "single_file",
+          "path_anchor",
+          "path_anchor_schema_split",
+          "path_anchor_part_file_pattern"
+        ],
+        "type": "string"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "example": "ok",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "InspectionStatus": {
+        "description": "Terminal state of format-specific inspection for one discovered asset.",
+        "enum": [
+          "inspected",
+          "failed",
+          "skipped"
+        ],
+        "type": "string"
+      },
+      "JobCancelResponse": {
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "message"
+        ],
+        "type": "object"
+      },
+      "JobErrorCode": {
+        "description": "Machine-readable job failure class (parallel to HTTP `AppError` codes where applicable).",
+        "enum": [
+          "invalid_request",
+          "target_not_found",
+          "scan_failed",
+          "store_error",
+          "internal_error",
+          "worker_lost",
+          "job_retries_exhausted"
+        ],
+        "type": "string"
+      },
+      "JobFailureBody": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/JobErrorCode"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "JobKind": {
+        "description": "Durable application job kind (v0.7 generic job model).",
+        "enum": [
+          "scan",
+          "repair",
+          "batch_repair",
+          "batch_resume"
+        ],
+        "type": "string"
+      },
+      "JobStatus": {
+        "description": "Job lifecycle state persisted in SQLite and returned over HTTP.",
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "canceled"
+        ],
+        "type": "string"
+      },
+      "LocationPolicyBody": {
+        "properties": {
+          "location": {
+            "description": "Dataset location (`/path`, `file://\u2026`, `s3://bucket/prefix`).",
+            "type": "string"
+          },
+          "policy_toml": {
+            "description": "Optional repair policy TOML; default policy when omitted.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "location"
+        ],
+        "type": "object"
+      },
+      "LogicalDatasetTarget": {
+        "description": "Logical dataset identifier used when files are resolved indirectly.",
+        "properties": {
+          "dataset_id": {
+            "type": "string"
+          },
+          "resolver_hint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "dataset_id"
+        ],
+        "type": "object"
+      },
+      "ObjectStoreTargetPlaceholder": {
+        "description": "Placeholder for future object-store-backed scans (S3-compatible, GCS, etc.).",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uri": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uri"
+        ],
+        "type": "object"
+      },
+      "PagedAssetsResponse": {
+        "example": {
+          "items": [
+            {
+              "dataset_id": null,
+              "failure_kind": null,
+              "failure_message": null,
+              "format": "parquet",
+              "inspection_status": "inspected",
+              "path": "/data/sample.parquet"
+            }
+          ],
+          "limit": 50,
+          "offset": 0,
+          "total": 1
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StoredAssetRow"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "offset": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "PagedFindingsResponse": {
+        "example": {
+          "items": [
+            {
+              "asset_path": "/data/sample.parquet",
+              "category": "format",
+              "code": "system.format.unknown",
+              "dataset_id": null,
+              "fingerprint": "a1b2c3",
+              "severity": "low"
+            }
+          ],
+          "limit": 50,
+          "offset": 0,
+          "total": 1
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StoredFindingRow"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "offset": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "ParseConfidence": {
+        "enum": [
+          "high",
+          "partial",
+          "low"
+        ],
+        "type": "string"
+      },
+      "PartitionLayout": {
+        "description": "Hive-style directory partitioning vs co-located files without partition columns.",
+        "enum": [
+          "unpartitioned",
+          "hive_directory_keys"
+        ],
+        "type": "string"
+      },
+      "PartitionSegment": {
+        "description": "A single partition key/value pair.",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "PlanBody": {
+        "properties": {
+          "location": {
+            "type": "string"
+          },
+          "policy_toml": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_schema_path": {
+            "description": "Optional JSON file containing target schema field descriptors.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "location"
+        ],
+        "type": "object"
+      },
+      "PlanResponse": {
+        "properties": {
+          "plan": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "plan"
+        ],
+        "type": "object"
+      },
+      "ProbeDepth": {
+        "enum": [
+          "full_within_cap",
+          "partial_head"
+        ],
+        "type": "string"
+      },
+      "ProbeMetadata": {
+        "description": "Bounded shallow-text probe limits and honesty signals.",
+        "properties": {
+          "bytes_sampled": {
+            "description": "Bytes actually read from disk for this probe (may be less than file size).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "encoding_assumption": {
+            "description": "Character decoding policy applied to sampled bytes.",
+            "type": "string"
+          },
+          "file_size_bytes": {
+            "description": "Total file size when known from resolution metadata.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "notes": {
+            "description": "Human notes (for example NDJSON first-record-only semantics).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parse_confidence": {
+            "$ref": "#/components/schemas/ParseConfidence",
+            "description": "Parser / structural confidence for what was inferred."
+          },
+          "probe_depth": {
+            "$ref": "#/components/schemas/ProbeDepth",
+            "description": "Whether the probe covered the whole file within the cap or only a prefix."
+          }
+        },
+        "required": [
+          "bytes_sampled",
+          "encoding_assumption",
+          "probe_depth",
+          "parse_confidence"
+        ],
+        "type": "object"
+      },
+      "Recommendation": {
+        "description": "Optional remediation guidance separate from neutral detail text.",
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "type": "object"
+      },
+      "RedactionPolicy": {
+        "description": "Policy applied before persisting blobs/projections (baseline; expand later).",
+        "properties": {
+          "strip_finding_evidence_payloads": {
+            "description": "Remove `Finding.evidence[].payload` (summaries and locations retained).",
+            "type": "boolean"
+          },
+          "strip_probe_inspection_hints": {
+            "description": "Remove `AssetRecord.inspection_hints` before persistence.",
+            "type": "boolean"
+          },
+          "strip_probe_metadata": {
+            "description": "Remove `AssetRecord.probe` before persistence.",
+            "type": "boolean"
+          },
+          "truncate_failure_messages_to": {
+            "description": "Truncate `failure_message` on assets to this many UTF-8 chars (if set).",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "strip_probe_inspection_hints",
+          "strip_probe_metadata",
+          "strip_finding_evidence_payloads"
+        ],
+        "type": "object"
+      },
+      "RepairJobBody": {
+        "properties": {
+          "authorize": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "output": {
+            "type": "string"
+          },
+          "plan": {
+            "type": "object"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "output",
+          "plan"
+        ],
+        "type": "object"
+      },
+      "ReportFormatVersion": {
+        "description": "Newtype wrapper for report format version strings.",
+        "type": "string"
+      },
+      "ReportMetadata": {
+        "description": "Provenance and versioning for a serialized report.",
+        "properties": {
+          "contract_schema": {
+            "$ref": "#/components/schemas/ContractSchemaVersion"
+          },
+          "engine_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "generated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "report_format": {
+            "$ref": "#/components/schemas/ReportFormatVersion"
+          },
+          "scan_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_id",
+          "generated_at",
+          "contract_schema",
+          "report_format"
+        ],
+        "type": "object"
+      },
+      "RunDiff": {
+        "description": "First-class diff between two materialized reports (deterministic ordering).",
+        "properties": {
+          "datasets_added": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "datasets_removed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "findings": {
+            "$ref": "#/components/schemas/FindingDelta"
+          },
+          "run_a": {
+            "$ref": "#/components/schemas/RunId"
+          },
+          "run_b": {
+            "$ref": "#/components/schemas/RunId"
+          },
+          "summary_delta": {
+            "$ref": "#/components/schemas/SummaryDelta"
+          }
+        },
+        "required": [
+          "run_a",
+          "run_b",
+          "findings",
+          "datasets_added",
+          "datasets_removed",
+          "summary_delta"
+        ],
+        "type": "object"
+      },
+      "RunId": {
+        "description": "Stable identifier for one persisted scan execution (distinct from `ScanRequest.scan_id`).",
+        "format": "uuid",
+        "type": "string"
+      },
+      "RunOutcome": {
+        "description": "High-level completion status for a stored run.",
+        "enum": [
+          "completed",
+          "completed_partial"
+        ],
+        "type": "string"
+      },
+      "RunSummaryView": {
+        "example": {
+          "completed_at": "2026-04-15T12:00:05Z",
+          "contract_schema_version": "0.5.0",
+          "engine_revision": "paraclete-test",
+          "normalized_target_key": "/data/sample.parquet",
+          "report_format_version": "0.5.0",
+          "report_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "request_scan_id": "770e8400-e29b-41d4-a716-446655440002",
+          "run_id": "660e8400-e29b-41d4-a716-446655440001",
+          "run_outcome": "completed",
+          "started_at": "2026-04-15T12:00:01Z",
+          "summary": {
+            "dataset_count": 0,
+            "dataset_member_assets": 0,
+            "discovered_assets": 1,
+            "failed_inspection_assets": 0,
+            "files_scanned": 1,
+            "findings_by_severity": {},
+            "findings_total": 0,
+            "inspected_assets": 1,
+            "partial_inspection": false,
+            "scan_truncated": false,
+            "skipped_inspection_assets": 0
+          },
+          "target_kind": "local_file"
+        },
+        "properties": {
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "contract_schema_version": {
+            "type": "string"
+          },
+          "engine_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "normalized_target_key": {
+            "type": "string"
+          },
+          "report_format_version": {
+            "type": "string"
+          },
+          "report_sha256": {
+            "type": "string"
+          },
+          "request_scan_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "run_outcome": {
+            "$ref": "#/components/schemas/RunOutcome"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ScanSummary"
+          },
+          "target_kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "request_scan_id",
+          "target_kind",
+          "normalized_target_key",
+          "started_at",
+          "completed_at",
+          "run_outcome",
+          "contract_schema_version",
+          "report_format_version",
+          "report_sha256",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "ScanJobListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScanJobView"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "offset": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "type": "object"
+      },
+      "ScanJobSubmissionResponse": {
+        "description": "Response for `POST /api/v1/jobs/scans` and async `POST /api/v1/scans` (202 Accepted).",
+        "example": {
+          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "job_url": "/api/v1/jobs/550e8400-e29b-41d4-a716-446655440000",
+          "normalized_target_key": "/data/sample.parquet",
+          "status": "queued",
+          "submitted_at": "2026-04-15T12:00:00Z",
+          "target_kind": "local_file"
+        },
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "job_url": {
+            "type": "string"
+          },
+          "normalized_target_key": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "target_kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "submitted_at",
+          "target_kind",
+          "normalized_target_key",
+          "job_url"
+        ],
+        "type": "object"
+      },
+      "ScanJobView": {
+        "example": {
+          "attempt_count": 1,
+          "completed_at": "2026-04-15T12:00:05Z",
+          "failure": null,
+          "job_id": "550e8400-e29b-41d4-a716-446655440000",
+          "job_url": "/api/v1/jobs/550e8400-e29b-41d4-a716-446655440000",
+          "normalized_target_key": "/data/sample.parquet",
+          "run_id": "660e8400-e29b-41d4-a716-446655440001",
+          "started_at": "2026-04-15T12:00:01Z",
+          "status": "succeeded",
+          "submitted_at": "2026-04-15T12:00:00Z",
+          "target_kind": "local_file"
+        },
+        "properties": {
+          "attempt_count": {
+            "description": "Monotonic claim count for this job (each dequeue from `queued` increments).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "cancel_requested": {
+            "type": "boolean"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failure": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobFailureBody"
+              }
+            ]
+          },
+          "heartbeat_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "job_kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "job_url": {
+            "type": "string"
+          },
+          "leased_until": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "normalized_target_key": {
+            "type": "string"
+          },
+          "recovery_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result_ref": {},
+          "run_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "target_kind": {
+            "type": "string"
+          },
+          "worker_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "job_id",
+          "job_kind",
+          "status",
+          "submitted_at",
+          "target_kind",
+          "normalized_target_key",
+          "attempt_count",
+          "cancel_requested",
+          "job_url"
+        ],
+        "type": "object"
+      },
+      "ScanMode": {
+        "description": "How a scan should treat incremental state (placeholder for later phases).",
+        "enum": [
+          "full",
+          "incremental"
+        ],
+        "type": "string"
+      },
+      "ScanOptions": {
+        "description": "Tunables that influence engine behavior without changing the target identity.",
+        "properties": {
+          "format_hints": {
+            "description": "Optional hint to restrict detection to a subset of formats.",
+            "items": {
+              "$ref": "#/components/schemas/DataFormat"
+            },
+            "type": "array"
+          },
+          "max_files": {
+            "description": "Maximum files to enumerate in this scan (safety valve).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ScanMode"
+          }
+        },
+        "type": "object"
+      },
+      "ScanProfile": {
+        "description": "Coarse scan depth presets.",
+        "enum": [
+          "quick",
+          "standard",
+          "deep",
+          "baseline"
+        ],
+        "type": "string"
+      },
+      "ScanReport": {
+        "description": "Top-level scan output suitable for archival and downstream rendering.",
+        "properties": {
+          "assets": {
+            "description": "Per-asset inspection outcomes (execution truth); reconcile with `summary`.",
+            "items": {
+              "$ref": "#/components/schemas/AssetRecord"
+            },
+            "type": "array"
+          },
+          "dataset_summaries": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetSummary"
+            },
+            "type": "array"
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/Dataset"
+            },
+            "type": "array"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "type": "array"
+          },
+          "format_summaries": {
+            "items": {
+              "$ref": "#/components/schemas/FormatSummary"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ReportMetadata"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ScanRequest"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ScanSummary"
+          }
+        },
+        "required": [
+          "request",
+          "metadata",
+          "summary",
+          "assets"
+        ],
+        "type": "object"
+      },
+      "ScanRequest": {
+        "description": "A complete request to execute a scan against a target.",
+        "properties": {
+          "options": {
+            "$ref": "#/components/schemas/ScanOptions"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ScanProfile"
+          },
+          "scan_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ScanTarget"
+          }
+        },
+        "required": [
+          "scan_id",
+          "target",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "ScanRunListItem": {
+        "description": "Lightweight row for listing runs.",
+        "properties": {
+          "completed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "request_scan_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "run_id": {
+            "$ref": "#/components/schemas/RunId"
+          },
+          "run_outcome": {
+            "$ref": "#/components/schemas/RunOutcome"
+          },
+          "target_identity": {
+            "$ref": "#/components/schemas/TargetIdentity"
+          }
+        },
+        "required": [
+          "run_id",
+          "request_scan_id",
+          "completed_at",
+          "run_outcome",
+          "target_identity"
+        ],
+        "type": "object"
+      },
+      "ScanSummary": {
+        "description": "Aggregate statistics for a completed scan.",
+        "properties": {
+          "dataset_count": {
+            "description": "Logical Parquet datasets inferred for this scan.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "dataset_member_assets": {
+            "description": "Count of assets listed as members of at least one inferred Parquet dataset.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "discovered_assets": {
+            "description": "Total assets discovered during resolution (equals `files_scanned` for local scans).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "failed_inspection_assets": {
+            "description": "Assets where inspection was attempted and failed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "files_scanned": {
+            "description": "Legacy alias for `discovered_assets` (kept for stable JSON field names).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "findings_by_severity": {
+            "additionalProperties": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "findings_total": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "inspected_assets": {
+            "description": "Assets that completed a format-specific inspection pass.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "partial_inspection": {
+            "description": "True when truncation or one or more inspection failures occurred.",
+            "type": "boolean"
+          },
+          "scan_truncated": {
+            "description": "True when resolution stopped early because `max_files` was reached.",
+            "type": "boolean"
+          },
+          "skipped_inspection_assets": {
+            "description": "Assets where no format-specific probe ran (for example unknown extension).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "discovered_assets",
+          "files_scanned",
+          "inspected_assets",
+          "failed_inspection_assets",
+          "skipped_inspection_assets",
+          "dataset_member_assets",
+          "dataset_count",
+          "partial_inspection",
+          "scan_truncated",
+          "findings_total"
+        ],
+        "type": "object"
+      },
+      "ScanTarget": {
+        "description": "Concrete scan target with mutually consistent fields.",
+        "oneOf": [
+          {
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "local_file"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "type"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "local_directory"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "type"
+            ],
+            "type": "object"
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LogicalDatasetTarget"
+              },
+              {
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "logical_dataset"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ObjectStoreTargetPlaceholder"
+              },
+              {
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "object_store_placeholder"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        ]
+      },
+      "SchemaSnapshot": {
+        "description": "Captured schema view at scan time.",
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldDefinition"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "type": "object"
+      },
+      "StartScanRequest": {
+        "properties": {
+          "options": {
+            "$ref": "#/components/schemas/ScanOptions"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ScanProfile"
+          },
+          "redaction": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RedactionPolicy",
+                "description": "When omitted, [`paraclete_types::RedactionPolicy::transport_safe_persist`] is applied before persistence."
+              }
+            ]
+          },
+          "scan_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "$ref": "#/components/schemas/ScanTarget"
+          }
+        },
+        "required": [
+          "target",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "StartScanResponse": {
+        "properties": {
+          "normalized_target_key": {
+            "type": "string"
+          },
+          "report_url": {
+            "description": "Relative URL to fetch the canonical stored report.",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "run_outcome": {
+            "$ref": "#/components/schemas/RunOutcome"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ScanSummary"
+          },
+          "target_kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "target_kind",
+          "normalized_target_key",
+          "run_outcome",
+          "summary",
+          "report_url"
+        ],
+        "type": "object"
+      },
+      "StoredAssetRow": {
+        "description": "One row from `scan_assets` (projection; reload full `ScanReport` for complete `AssetRecord`).",
+        "properties": {
+          "dataset_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "failure_kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FailureKind"
+              }
+            ]
+          },
+          "failure_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "format": {
+            "$ref": "#/components/schemas/DataFormat"
+          },
+          "inspection_status": {
+            "$ref": "#/components/schemas/InspectionStatus"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "format",
+          "inspection_status"
+        ],
+        "type": "object"
+      },
+      "StoredFindingRow": {
+        "description": "One row from `scan_findings` (projection; not a full [`paraclete_types::Finding`]).",
+        "properties": {
+          "asset_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "dataset_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint",
+          "code",
+          "severity",
+          "category"
+        ],
+        "type": "object"
+      },
+      "SummaryDelta": {
+        "properties": {
+          "dataset_count_delta": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "dataset_member_assets_delta": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "discovered_assets_delta": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "failed_inspection_assets_delta": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "findings_total_delta": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "inspected_assets_delta": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "skipped_inspection_assets_delta": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "discovered_assets_delta",
+          "inspected_assets_delta",
+          "failed_inspection_assets_delta",
+          "skipped_inspection_assets_delta",
+          "dataset_member_assets_delta",
+          "dataset_count_delta",
+          "findings_total_delta"
+        ],
+        "type": "object"
+      },
+      "TargetIdentity": {
+        "description": "Normalized identity for listing history of the \u201csame\u201d target across runs (local paths only today).",
+        "properties": {
+          "normalized_key": {
+            "description": "Canonical UTF-8 path or logical key used for equality (no symlinks resolved here).",
+            "type": "string"
+          },
+          "target_kind": {
+            "description": "Stable discriminator, for example `local_file`, `local_directory`, `logical_dataset`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_kind",
+          "normalized_key"
+        ],
+        "type": "object"
+      },
+      "VerifyBody": {
+        "properties": {
+          "after_local_path": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "manifest_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "policy_toml": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "before",
+          "after_local_path"
+        ],
+        "type": "object"
+      },
+      "VerifyResponse": {
+        "properties": {
+          "report": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "report"
+        ],
+        "type": "object"
+      },
+      "WhoAmIResponse": {
+        "description": "Response for `GET /api/v1/whoami` (authenticated).",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AuthRole"
+          },
+          "token_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token_id",
+          "label",
+          "role"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "description": "Opaque API token; set `Authorization: Bearer <token>`. Tokens are stored hashed in SQLite.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "Joshua Grant"
+    },
+    "description": "PARQONAUT HTTP API for scan jobs, persisted runs, diffing, and bearer-token administration. Successful JSON responses and application-level errors use the `{ \"error\": { \"code\", \"message\", \"details\" } }` envelope for failures. JSON request bodies use a shared extractor so malformed JSON, wrong JSON shape, missing `Content-Type: application/json`, and related body-buffer failures map to `invalid_json_request` with appropriate HTTP status codes (`400`, `415`, `422`, `413` where applicable).",
+    "license": {
+      "identifier": "MIT",
+      "name": "MIT"
+    },
+    "title": "PARQONAUT API",
+    "version": "0.7.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/admin/tokens": {
+      "get": {
+        "operationId": "get_admin_tokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenListResponse"
+                }
+              }
+            },
+            "description": "All API tokens (metadata only; no secrets)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Admin role required"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "post_admin_tokens",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthTokenCreateRequest"
+              }
+            }
+          },
+          "description": "Label, role, optional note",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenCreateResponse"
+                }
+              }
+            },
+            "description": "Token created; secret returned once"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid JSON request body (`invalid_json_request`; e.g. syntax, body buffer)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Admin role required"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request body exceeded configured limit while buffering (`invalid_json_request`)"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or non-JSON `Content-Type` (`invalid_json_request`)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "JSON value did not match the expected request shape (`invalid_json_request`)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/tokens/{token_id}": {
+      "get": {
+        "operationId": "get_admin_token_by_id",
+        "parameters": [
+          {
+            "description": "Token row id",
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenSummaryView"
+                }
+              }
+            },
+            "description": "Token metadata (no secret)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Admin role required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown token id"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/tokens/{token_id}/disable": {
+      "post": {
+        "operationId": "post_admin_token_disable",
+        "parameters": [
+          {
+            "description": "Token row id",
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenSummaryView"
+                }
+              }
+            },
+            "description": "Updated token metadata (`status=disabled`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Admin role required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown token id"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/tokens/{token_id}/rotate": {
+      "post": {
+        "operationId": "post_admin_token_rotate",
+        "parameters": [
+          {
+            "description": "Active token id to rotate (disabled; new token replaces it)",
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenRotateResponse"
+                }
+              }
+            },
+            "description": "New token minted; previous secret invalidated; `token_secret` shown once"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Admin role required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown or already-disabled token id"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/batches/check": {
+      "post": {
+        "operationId": "post_batch_check",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchConfigBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchCheckResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "batch"
+        ]
+      }
+    },
+    "/api/v1/batches/plans": {
+      "post": {
+        "operationId": "post_batch_plans",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchConfigBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchPlanResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "batch"
+        ]
+      }
+    },
+    "/api/v1/batches/repairs": {
+      "post": {
+        "operationId": "post_batch_repairs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRepairJobBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJobSubmissionResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "batch"
+        ]
+      }
+    },
+    "/api/v1/batches/{run_dir}": {
+      "get": {
+        "operationId": "get_batch_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_dir",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStatusResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "batch"
+        ]
+      }
+    },
+    "/api/v1/batches/{run_dir}/resume": {
+      "post": {
+        "operationId": "post_batch_resume",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchResumeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJobSubmissionResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "batch"
+        ]
+      }
+    },
+    "/api/v1/batches/{run_dir}/verify": {
+      "post": {
+        "operationId": "post_batch_verify",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchVerifyResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "batch"
+        ]
+      }
+    },
+    "/api/v1/checks": {
+      "post": {
+        "operationId": "post_checks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationPolicyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResponse"
+                }
+              }
+            },
+            "description": "Check report"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "repair"
+        ]
+      }
+    },
+    "/api/v1/diagnose": {
+      "post": {
+        "operationId": "post_diagnose",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationPolicyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnoseResponse"
+                }
+              }
+            },
+            "description": "Diagnosis report"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "repair"
+        ]
+      }
+    },
+    "/api/v1/diff": {
+      "get": {
+        "operationId": "get_diff",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "left_run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "right_run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDiff"
+                }
+              }
+            },
+            "description": "Deterministic diff between two materialized reports"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "One or both runs not found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "get_health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Process is reachable"
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/jobs": {
+      "get": {
+        "operationId": "list_jobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJobListResponse"
+                }
+              }
+            },
+            "description": "Recent jobs (newest first)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/scans": {
+      "post": {
+        "operationId": "post_jobs_scans",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartScanRequest"
+              }
+            }
+          },
+          "description": "Same payload as `POST /api/v1/scans`",
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJobSubmissionResponse"
+                }
+              }
+            },
+            "description": "Async scan job accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid JSON request body (`invalid_json_request`; e.g. syntax, body buffer)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Insufficient role (operator required)"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request body exceeded configured limit while buffering (`invalid_json_request`)"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or non-JSON `Content-Type` (`invalid_json_request`)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "JSON value did not match the expected request shape (`invalid_json_request`)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job_by_id",
+        "parameters": [
+          {
+            "description": "Scan job id",
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJobView"
+                }
+              }
+            },
+            "description": "Job status and outcome"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown job id"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "post_job_cancel",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCancelResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "operationId": "get_api_metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus text exposition (authenticated alias of `/metrics`)"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "operationId": "get_openapi_json",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 JSON document (`application/json`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/api/v1/plans": {
+      "post": {
+        "operationId": "post_plans",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            },
+            "description": "Repair plan"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "repair"
+        ]
+      }
+    },
+    "/api/v1/repairs": {
+      "post": {
+        "operationId": "post_repairs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairJobBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJobSubmissionResponse"
+                }
+              }
+            },
+            "description": "Repair job accepted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "repair"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_by_id",
+        "parameters": [
+          {
+            "description": "Persisted run id",
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSummaryView"
+                }
+              }
+            },
+            "description": "Run header and summary (no full report blob)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown run id"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}/assets": {
+      "get": {
+        "operationId": "get_run_assets",
+        "parameters": [
+          {
+            "description": "Persisted run id",
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inspection_status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedAssetsResponse"
+                }
+              }
+            },
+            "description": "Paginated asset projections"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown run id"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}/findings": {
+      "get": {
+        "operationId": "get_run_findings",
+        "parameters": [
+          {
+            "description": "Persisted run id",
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inspection_status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PagedFindingsResponse"
+                }
+              }
+            },
+            "description": "Paginated finding projections"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown run id"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}/report": {
+      "get": {
+        "operationId": "get_run_report",
+        "parameters": [
+          {
+            "description": "Persisted run id",
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanReport"
+                }
+              }
+            },
+            "description": "Full canonical `ScanReport` JSON"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown run id"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/scans": {
+      "post": {
+        "operationId": "post_scans_async",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartScanRequest"
+              }
+            }
+          },
+          "description": "Scan target, profile, and options",
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJobSubmissionResponse"
+                }
+              }
+            },
+            "description": "Async scan job accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid JSON request body (`invalid_json_request`; e.g. syntax, body buffer)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Insufficient role (operator required)"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request body exceeded configured limit while buffering (`invalid_json_request`)"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or non-JSON `Content-Type` (`invalid_json_request`)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "JSON value did not match the expected request shape (`invalid_json_request`)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/scans/sync": {
+      "post": {
+        "operationId": "post_scans_sync",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartScanRequest"
+              }
+            }
+          },
+          "description": "Scan target, profile, and options",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartScanResponse"
+                }
+              }
+            },
+            "description": "Run persisted synchronously (dev/tests)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid JSON request body (`invalid_json_request`; e.g. syntax, body buffer)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Insufficient role (operator required)"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Request body exceeded configured limit while buffering (`invalid_json_request`)"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or non-JSON `Content-Type` (`invalid_json_request`)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Invalid JSON shape (`invalid_json_request`) or scan engine failure (`scan_failed`)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Store or internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/targets/{target_kind}/runs": {
+      "get": {
+        "operationId": "list_target_runs",
+        "parameters": [
+          {
+            "description": "Target discriminator (`local_file`, `local_directory`, \u2026)",
+            "in": "path",
+            "name": "target_kind",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "normalized_key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ScanRunListItem"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Runs for the given target identity"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing `normalized_key` or invalid filter"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unknown `target_kind`"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Internal error"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/verifications": {
+      "post": {
+        "operationId": "post_verifications",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResponse"
+                }
+              }
+            },
+            "description": "Verification report"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "repair"
+        ]
+      }
+    },
+    "/api/v1/whoami": {
+      "get": {
+        "operationId": "get_whoami",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoAmIResponse"
+                }
+              }
+            },
+            "description": "Authenticated token identity"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "get_metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus text exposition (`text/plain`; unauthenticated \u2014 protect at the edge in production)"
+          }
+        },
+        "tags": [
+          "meta"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Liveness and identity",
+      "name": "health"
+    },
+    {
+      "description": "Async and synchronous scans",
+      "name": "jobs"
+    },
+    {
+      "description": "Persisted runs, reports, projections, diff",
+      "name": "runs"
+    },
+    {
+      "description": "Bearer token administration (admin role)",
+      "name": "admin"
+    },
+    {
+      "description": "Metrics and API contract",
+      "name": "meta"
+    },
+    {
+      "description": "Diagnose, plan, check, repair, verify",
+      "name": "repair"
+    },
+    {
+      "description": "Batch orchestration control plane",
+      "name": "batch"
+    }
+  ]
+}

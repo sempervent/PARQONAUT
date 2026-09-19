@@ -7,7 +7,7 @@ Release-specific coordination history. Move to `docs/history/v0.7.0/` at tag.
 After commit `feat: define shared application and job contracts`, record:
 
 ```text
-APPLICATION_CONTRACT_SHA=<git rev-parse HEAD>
+APPLICATION_CONTRACT_SHA=134b828679b4f1e648bb8336e77fd1378bcc04a2
 ```
 
 Parallel workstreams start from that SHA.

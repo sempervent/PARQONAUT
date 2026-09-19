@@ -11,8 +11,13 @@ use uuid::Uuid;
 use crate::api_types::{
     AuthTokenCreateRequest, AuthTokenCreateResponse, AuthTokenListResponse,
     AuthTokenRotateResponse, AuthTokenSummaryView, DiffQuery, HealthResponse, JobListQuery,
-    PageQuery, PagedAssetsResponse, PagedFindingsResponse, StartScanRequest, TargetRunsQuery,
-    WhoAmIResponse,
+    PageQuery, PagedAssetsResponse, PagedFindingsResponse, ScanJobSubmissionResponse,
+    StartScanRequest, TargetRunsQuery, WhoAmIResponse,
+};
+use crate::application_http::{
+    BatchCheckResponse, BatchConfigBody, BatchPlanResponse, BatchRepairJobBody, BatchResumeBody,
+    BatchStatusResponse, BatchVerifyResponse, CheckResponse, DiagnoseResponse, JobCancelResponse,
+    LocationPolicyBody, PlanBody, PlanResponse, RepairJobBody, VerifyBody, VerifyResponse,
 };
 use crate::error::AppError;
 use crate::http::extract::ApiJson;
@@ -186,6 +191,100 @@ pub async fn post_admin_token_disable(
 }
 
 /// Rotate a token (admin): new secret once; previous token disabled in the same transaction.
+pub async fn post_diagnose(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<LocationPolicyBody>,
+) -> Result<Json<DiagnoseResponse>, AppError> {
+    Ok(Json(state.service.diagnose_sync(body).await?))
+}
+
+pub async fn post_plan(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<PlanBody>,
+) -> Result<Json<PlanResponse>, AppError> {
+    Ok(Json(state.service.plan_sync(body).await?))
+}
+
+pub async fn post_check(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<LocationPolicyBody>,
+) -> Result<Json<CheckResponse>, AppError> {
+    Ok(Json(state.service.check_sync(body).await?))
+}
+
+pub async fn post_verify(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<VerifyBody>,
+) -> Result<Json<VerifyResponse>, AppError> {
+    Ok(Json(state.service.verify_sync(body).await?))
+}
+
+pub async fn post_repair_job(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<RepairJobBody>,
+) -> Result<(StatusCode, Json<ScanJobSubmissionResponse>), AppError> {
+    let out = state.service.submit_repair_job(body).await?;
+    Ok((StatusCode::ACCEPTED, Json(out)))
+}
+
+pub async fn post_batch_check(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<BatchConfigBody>,
+) -> Result<Json<BatchCheckResponse>, AppError> {
+    Ok(Json(state.service.batch_check_sync(body).await?))
+}
+
+pub async fn post_batch_plan(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<BatchConfigBody>,
+) -> Result<Json<BatchPlanResponse>, AppError> {
+    Ok(Json(state.service.batch_plan_sync(body).await?))
+}
+
+pub async fn post_batch_repair_job(
+    State(state): State<AppState>,
+    ApiJson(body): ApiJson<BatchRepairJobBody>,
+) -> Result<(StatusCode, Json<ScanJobSubmissionResponse>), AppError> {
+    let out = state.service.submit_batch_repair_job(body).await?;
+    Ok((StatusCode::ACCEPTED, Json(out)))
+}
+
+fn batch_run_dir(segment: &str) -> Result<camino::Utf8PathBuf, AppError> {
+    let decoded = urlencoding::decode(segment)
+        .map_err(|_| AppError::InvalidRequest("invalid batch run_dir encoding".into()))?;
+    Ok(camino::Utf8PathBuf::from(decoded.as_ref()))
+}
+
+pub async fn get_batch_status(
+    State(state): State<AppState>,
+    Path(run_dir): Path<String>,
+) -> Result<Json<BatchStatusResponse>, AppError> {
+    Ok(Json(state.service.batch_status_sync(batch_run_dir(&run_dir)?).await?))
+}
+
+pub async fn post_batch_resume(
+    State(state): State<AppState>,
+    Path(run_dir): Path<String>,
+    ApiJson(body): ApiJson<BatchResumeBody>,
+) -> Result<(StatusCode, Json<ScanJobSubmissionResponse>), AppError> {
+    let out = state.service.submit_batch_resume_job(batch_run_dir(&run_dir)?, body).await?;
+    Ok((StatusCode::ACCEPTED, Json(out)))
+}
+
+pub async fn post_batch_verify(
+    State(state): State<AppState>,
+    Path(run_dir): Path<String>,
+) -> Result<Json<BatchVerifyResponse>, AppError> {
+    Ok(Json(state.service.batch_verify_sync(batch_run_dir(&run_dir)?).await?))
+}
+
+pub async fn post_job_cancel(
+    State(state): State<AppState>,
+    Path(job_id): Path<Uuid>,
+) -> Result<Json<JobCancelResponse>, AppError> {
+    Ok(Json(state.service.cancel_job(JobId(job_id)).await?))
+}
+
 pub async fn post_admin_token_rotate(
     State(state): State<AppState>,
     Extension(actor): Extension<AuthPrincipal>,

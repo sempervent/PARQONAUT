@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::ApplicationError;
 
 /// Where durable server artifacts (plans, manifests) may be written.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StoragePolicy {
     /// When true, any local path is accepted (CLI default).
     #[serde(default)]
@@ -19,17 +19,6 @@ pub struct StoragePolicy {
     /// `bucket/prefix` entries; empty prefix means whole bucket.
     #[serde(default)]
     pub allowed_s3_prefixes: Vec<String>,
-}
-
-impl Default for StoragePolicy {
-    fn default() -> Self {
-        Self {
-            allow_unrestricted_local: false,
-            allowed_local_roots: Vec::new(),
-            allowed_s3_buckets: Vec::new(),
-            allowed_s3_prefixes: Vec::new(),
-        }
-    }
 }
 
 impl StoragePolicy {

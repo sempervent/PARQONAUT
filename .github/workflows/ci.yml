@@ -32,6 +32,46 @@ jobs:
           cargo xtask fixtures repair
           cargo test --workspace
 
+  api-integration:
+    name: API integration (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: API tests and smoke
+        run: just api-test
+
+  postgres-integration:
+    name: Postgres integration
+    runs-on: ubuntu-latest
+    env:
+      PARACLETE_TEST_PG_URL: postgres://postgres:postgres@localhost:5432/paraclete_test
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: paraclete_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d paraclete_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Store and job tests (Postgres)
+        run: |
+          cargo test -p paraclete-store --test postgres_store_integration -- --ignored --test-threads=1
+      - name: HTTP API smoke (Postgres)
+        run: |
+          cargo test -p paraclete-service --test http_api_postgres -- --ignored
+
   s3-integration:
     name: S3 integration (RustFS)
     runs-on: ubuntu-latest

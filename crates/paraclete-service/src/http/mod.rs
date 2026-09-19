@@ -5,6 +5,7 @@ pub mod extract;
 pub mod handlers;
 pub mod http_layers;
 
+use axum::extract::DefaultBodyLimit;
 use axum::http::StatusCode;
 use axum::middleware::{from_fn, from_fn_with_state};
 use axum::routing::{get, post};
@@ -31,6 +32,8 @@ pub struct AppState {
 ///
 /// All routes except [`handlers::health`] require `Authorization: Bearer <token>` and a sufficient role.
 const DEFAULT_WORKERS: usize = 2;
+/// Maximum JSON request body size for `/api/v1` mutation endpoints (~2 MiB).
+const MAX_JSON_BODY_BYTES: usize = 2 * 1024 * 1024;
 
 pub fn build_router(service: ParacleteService) -> Router {
     build_router_with_workers(service, DEFAULT_WORKERS)
@@ -59,6 +62,20 @@ pub fn build_router_with_workers(service: ParacleteService, workers: usize) -> R
         .route("/admin/tokens/{token_id}", get(handlers::get_admin_token))
         .route("/admin/tokens/{token_id}/rotate", post(handlers::post_admin_token_rotate))
         .route("/admin/tokens/{token_id}/disable", post(handlers::post_admin_token_disable))
+        .route("/diagnose", post(handlers::post_diagnose))
+        .route("/plans", post(handlers::post_plan))
+        .route("/checks", post(handlers::post_check))
+        .route("/repairs", post(handlers::post_repair_job))
+        .route("/verifications", post(handlers::post_verify))
+        .route("/batches/check", post(handlers::post_batch_check))
+        .route("/batches/plans", post(handlers::post_batch_plan))
+        .route("/batches/repairs", post(handlers::post_batch_repair_job))
+        .route("/batches/{run_dir}", get(handlers::get_batch_status))
+        .route("/batches/{run_dir}/resume", post(handlers::post_batch_resume))
+        .route("/batches/{run_dir}/verify", post(handlers::post_batch_verify))
+        .route("/jobs/{job_id}/cancel", post(handlers::post_job_cancel))
+        .route("/metrics", get(handlers::prometheus_metrics))
+        .layer(DefaultBodyLimit::max(MAX_JSON_BODY_BYTES))
         .layer(from_fn_with_state(state.clone(), auth::auth_middleware))
         .with_state(state.clone());
 

@@ -135,6 +135,11 @@ impl From<StoreError> for AppError {
             StoreError::RunNotFound(_) => AppError::RunNotFound,
             StoreError::JobNotFound(_) => AppError::JobNotFound,
             StoreError::AuthTokenNotFound(_) => AppError::TokenNotFound,
+            StoreError::ReportValidation(msg)
+                if msg.contains("already terminal") || msg.contains("already canceled") =>
+            {
+                AppError::InvalidRequest(msg)
+            }
             other => AppError::Store(other.to_string()),
         }
     }

@@ -1,19 +1,25 @@
 use std::path::PathBuf;
 
-use camino::Utf8PathBuf;
-use parqonaut_orchestrator::{
-    check_config, execute_batch, plan_batch, read_status, resume_batch, verify_run, write_plan,
-    BatchRunOptions, CancelFlag,
+use parqonaut_app::{
+    BatchCheckRequest, BatchPlanRequest, BatchRepairRequest, BatchResumeRequest,
+    BatchStatusRequest, BatchVerifyRequest, ParqonautApp, APP_REQUEST_SCHEMA_VERSION,
 };
+
+use crate::repair::map_application_error;
+use parqonaut_orchestrator::{write_plan, CancelFlag};
 use tokio::signal;
 
-fn to_utf8(path: PathBuf) -> Result<Utf8PathBuf, Box<dyn std::error::Error>> {
+fn to_utf8(path: PathBuf) -> Result<camino::Utf8PathBuf, Box<dyn std::error::Error>> {
     path.try_into().map_err(|_| "path must be valid UTF-8".into())
 }
 
 pub async fn run_check(config: PathBuf, json: bool) -> Result<(), Box<dyn std::error::Error>> {
     let path = to_utf8(config)?;
-    let report = check_config(&path);
+    let app = ParqonautApp::cli();
+    let report = app.batch_check(BatchCheckRequest {
+        schema_version: APP_REQUEST_SCHEMA_VERSION,
+        config_path: path,
+    });
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else if report.ok {
@@ -35,7 +41,14 @@ pub async fn run_plan(
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let path = to_utf8(config)?;
-    let plan = plan_batch(&path)?;
+    let app = ParqonautApp::cli();
+    let plan = app
+        .batch_plan(BatchPlanRequest {
+            schema_version: APP_REQUEST_SCHEMA_VERSION,
+            config_path: path,
+        })
+        .map_err(map_application_error)?
+        .plan;
     if let Some(out) = output {
         let out_path = to_utf8(out)?;
         write_plan(&plan, &out_path)?;
@@ -73,22 +86,28 @@ pub async fn run_repair(
         }
     });
 
-    let options = BatchRunOptions {
-        dry_run,
-        jobs,
-        cancel: cancel.clone(),
-        interrupt_after_completed: interrupt_after,
-    };
-
-    let result = execute_batch(&to_utf8(plan_path)?, options).await?;
-    print_execution_result(&result, json)?;
-    if result.already_completed {
+    let app = ParqonautApp::cli();
+    let result = app
+        .batch_repair(
+            BatchRepairRequest {
+                schema_version: APP_REQUEST_SCHEMA_VERSION,
+                plan_path: to_utf8(plan_path)?,
+                jobs,
+                dry_run,
+                interrupt_after_completed: interrupt_after,
+            },
+            cancel.clone(),
+        )
+        .await
+        .map_err(map_application_error)?;
+    print_execution_result(&result.execution, json)?;
+    if result.execution.already_completed {
         return Ok(());
     }
     if cancel.is_cancelled() {
         std::process::exit(130);
     }
-    if let Some(outcome) = &result.outcome {
+    if let Some(outcome) = &result.execution.outcome {
         let all_ok =
             outcome.datasets.iter().all(|d| d.state.is_terminal() && d.error_class.is_none());
         if !all_ok {
@@ -113,11 +132,21 @@ pub async fn run_resume(
         }
     });
 
-    let options =
-        BatchRunOptions { dry_run, jobs, cancel: cancel.clone(), interrupt_after_completed: None };
-    let result = resume_batch(&to_utf8(run_dir)?, options).await?;
-    print_execution_result(&result, json)?;
-    if result.already_completed {
+    let app = ParqonautApp::cli();
+    let result = app
+        .batch_resume(
+            BatchResumeRequest {
+                schema_version: APP_REQUEST_SCHEMA_VERSION,
+                run_dir: to_utf8(run_dir)?,
+                jobs,
+                dry_run,
+            },
+            cancel.clone(),
+        )
+        .await
+        .map_err(map_application_error)?;
+    print_execution_result(&result.execution, json)?;
+    if result.execution.already_completed {
         if !json {
             println!("Run already completed; resume is a no-op");
         }
@@ -126,7 +155,7 @@ pub async fn run_resume(
     if cancel.is_cancelled() {
         std::process::exit(130);
     }
-    if let Some(outcome) = &result.outcome {
+    if let Some(outcome) = &result.execution.outcome {
         let all_ok =
             outcome.datasets.iter().all(|d| d.state.is_terminal() && d.error_class.is_none());
         if !all_ok {
@@ -137,7 +166,14 @@ pub async fn run_resume(
 }
 
 pub async fn run_status(run_dir: PathBuf, json: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let status = read_status(&to_utf8(run_dir)?)?;
+    let app = ParqonautApp::cli();
+    let status = app
+        .batch_status(BatchStatusRequest {
+            schema_version: APP_REQUEST_SCHEMA_VERSION,
+            run_dir: to_utf8(run_dir)?,
+        })
+        .map_err(map_application_error)?
+        .status;
     if json {
         println!("{}", serde_json::to_string_pretty(&status)?);
     } else {
@@ -165,7 +201,14 @@ pub async fn run_status(run_dir: PathBuf, json: bool) -> Result<(), Box<dyn std:
 }
 
 pub async fn run_verify(run_dir: PathBuf, json: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let report = verify_run(&to_utf8(run_dir)?)?;
+    let app = ParqonautApp::cli();
+    let report = app
+        .batch_verify(BatchVerifyRequest {
+            schema_version: APP_REQUEST_SCHEMA_VERSION,
+            run_dir: to_utf8(run_dir)?,
+        })
+        .map_err(map_application_error)?
+        .report;
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {

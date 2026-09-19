@@ -22,7 +22,10 @@ mod store_backend;
 
 pub use auth_store::AuthTokenSummary;
 pub use error::StoreError;
-pub use models::{RunPublicMeta, ScanJobRow, StaleRecoveryStats, StoredAssetRow, StoredFindingRow};
+pub use models::{
+    JobCancelOutcome, RunPublicMeta, ScanJobRow, StaleRecoveryStats, StoredAssetRow,
+    StoredFindingRow,
+};
 pub use paraclete_types::{
     apply_redaction_policy, diff_reports, RedactionPolicy, RetentionPolicy, RunDiff, RunId,
     RunOutcome, ScanRun, ScanRunListItem, StoredReportRef, SummaryDelta, TargetIdentity,

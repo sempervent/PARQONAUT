@@ -2,11 +2,13 @@ use std::fs;
 use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
+use parqonaut_app::{
+    ApplicationError, CheckRequest, DiagnoseRequest, ParqonautApp, PlanRequest, RepairRequest,
+    VerifyRequest, APP_REQUEST_SCHEMA_VERSION,
+};
 use parqonaut_repair::{
-    canonical_plan_json, diagnose_location, diff_plans, evaluate_check_for_location, fmt,
-    generate_plan_for_location, location_root, requires_storage_execution, verify_repair,
-    EffectivePolicy, ExecutionManifest, ExecutionReport, RepairAuthorization, RepairBackend,
-    RepairExecutor, RepairPlan,
+    canonical_plan_json, diff_plans, fmt, location_root, verify_repair, EffectivePolicy,
+    ExecutionManifest, RepairAuthorization, RepairExecutor, RepairPlan,
 };
 use parqonaut_storage::location::DatasetLocation;
 use uuid::Uuid;
@@ -24,8 +26,12 @@ pub async fn run_plan(
     let location = parse_dataset_location(&path)?;
     let policy = EffectivePolicy::from_toml(policy_toml.as_deref())?;
     let target = load_target_schema(target_schema)?;
-    let backend = resolve_backend(&location).await?;
-    let plan = generate_plan_for_location(&location, &backend, &policy, target).await?;
+    let app = ParqonautApp::cli();
+    let plan = app
+        .plan(PlanRequest::new(location, policy, target))
+        .await
+        .map_err(map_application_error)?
+        .plan;
 
     if let Some(out) = output {
         fs::write(&out, plan.to_json_pretty()?)?;
@@ -72,8 +78,9 @@ pub async fn run_check(
     let location = parse_dataset_location(&path)?;
     let policy_toml = policy_path.map(fs::read_to_string).transpose()?;
     let policy = EffectivePolicy::from_toml(policy_toml.as_deref())?;
-    let backend = resolve_backend(&location).await?;
-    let report = evaluate_check_for_location(&location, &backend, &policy).await?;
+    let app = ParqonautApp::cli();
+    let report =
+        app.check(CheckRequest::new(location, policy)).await.map_err(map_application_error)?.report;
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
@@ -84,9 +91,12 @@ pub async fn run_check(
 
 pub async fn run_diagnose(path: String, json: bool) -> Result<(), Box<dyn std::error::Error>> {
     let location = parse_dataset_location(&path)?;
-    let policy = EffectivePolicy::default();
-    let backend = resolve_backend(&location).await?;
-    let dx = diagnose_location(&location, &backend, &policy).await?;
+    let app = ParqonautApp::cli();
+    let dx = app
+        .diagnose(DiagnoseRequest::new(location, EffectivePolicy::default()))
+        .await
+        .map_err(map_application_error)?
+        .report;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&dx)?);
@@ -111,31 +121,18 @@ pub async fn run_repair(
     let source = parse_dataset_location(&path)?;
     let output_loc = parse_dataset_location(&output)?;
     let plan = load_plan(plan_path)?;
-    let source_backend = resolve_backend(&source).await?;
-    let scan = source_backend.scan(&source).await?;
-
-    let executor = RepairExecutor {
-        authorization: RepairAuthorization::from_ids(authorize),
-        verify_before_publish: true,
-    };
-
-    let report = if requires_storage_execution(&source, &output_loc) {
-        let output_backend = resolve_backend(&output_loc).await?;
-        let run_id = Uuid::new_v4().to_string();
-        execute_storage_with_backends(
-            &executor,
-            &plan,
-            &output_loc,
-            &scan,
-            &source_backend,
-            &output_backend,
-            &run_id,
-        )
-        .await?
-    } else {
-        let out = location_root(&output_loc);
-        executor.execute(&plan, &out, &scan)?
-    };
+    let app = ParqonautApp::cli();
+    let report = app
+        .repair(RepairRequest {
+            schema_version: APP_REQUEST_SCHEMA_VERSION,
+            source,
+            output: output_loc,
+            plan,
+            authorize,
+        })
+        .await
+        .map_err(map_application_error)?
+        .execution;
 
     println!("Repair execution complete");
     println!("  Plan: {}", report.plan_id);
@@ -154,23 +151,19 @@ pub async fn run_verify(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let before_location = parse_dataset_location(&before)?;
     let after_root = to_utf8(after)?;
-    let before_root = location_root(&before_location);
-    let policy = EffectivePolicy::default();
-    let backend = resolve_backend(&before_location).await?;
-    let before_scan = backend.scan(&before_location).await?;
-    let after_scan = parqonaut_repair::scan_directory(&after_root)?;
-    let manifest_obj = match manifest {
-        Some(p) => Some(ExecutionManifest::read_json(&to_utf8(p)?)?),
-        None => None,
-    };
-    let report = verify_repair(
-        &before_scan,
-        &after_scan,
-        &before_root,
-        &after_root,
-        &policy.repair,
-        manifest_obj.as_ref(),
-    )?;
+    let manifest_path = manifest.map(to_utf8).transpose()?;
+    let app = ParqonautApp::cli();
+    let report = app
+        .verify(VerifyRequest {
+            schema_version: APP_REQUEST_SCHEMA_VERSION,
+            before: before_location,
+            after_local_path: after_root,
+            manifest_path,
+            policy: EffectivePolicy::default(),
+        })
+        .await
+        .map_err(map_application_error)?
+        .report;
 
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -230,19 +223,12 @@ pub async fn run_doctor(
             authorization: RepairAuthorization::from_ids(authorize),
             verify_before_publish: true,
         };
-        let exec_report = if requires_storage_execution(&location, &output_loc) {
+        let exec_report = if parqonaut_repair::requires_storage_execution(&location, &output_loc) {
             let output_backend = resolve_backend(&output_loc).await?;
             let run_id = Uuid::new_v4().to_string();
-            execute_storage_with_backends(
-                &executor,
-                &plan,
-                &output_loc,
-                &scan,
-                &backend,
-                &output_backend,
-                &run_id,
-            )
-            .await?
+            backend
+                .execute_plan(&executor, &plan, &output_loc, &scan, &output_backend, &run_id)
+                .await?
         } else {
             let out = location_root(&output_loc);
             executor.execute(&plan, &out, &scan)?
@@ -307,14 +293,21 @@ fn to_utf8(path: PathBuf) -> Result<Utf8PathBuf, Box<dyn std::error::Error>> {
     Utf8PathBuf::from_path_buf(path).map_err(|p| format!("non-UTF8 path: {}", p.display()).into())
 }
 
-async fn execute_storage_with_backends(
-    executor: &RepairExecutor,
-    plan: &RepairPlan,
-    output: &DatasetLocation,
-    scan: &paraclete_types::ScanReport,
-    source: &RepairBackend,
-    output_backend: &RepairBackend,
-    run_id: &str,
-) -> Result<ExecutionReport, parqonaut_repair::RepairError> {
-    source.execute_plan(executor, plan, output, scan, output_backend, run_id).await
+/// Preserve legacy CLI error strings from direct `parqonaut_repair` usage.
+pub(crate) fn map_application_error(e: ApplicationError) -> Box<dyn std::error::Error> {
+    match e {
+        ApplicationError::StaleSource(details) => {
+            format!("dataset changed since plan generation (expected fingerprint {details})").into()
+        }
+        ApplicationError::ReviewRequired => "review-required operation not authorized".into(),
+        ApplicationError::BlockedRepair(msg) => msg.into(),
+        ApplicationError::RepairFailed(msg) => msg.into(),
+        ApplicationError::ScanFailed(msg) => msg.into(),
+        ApplicationError::TargetNotFound(msg) => msg.into(),
+        ApplicationError::InvalidRequest(msg) => msg.into(),
+        ApplicationError::LocationNotAllowed(msg) => msg.into(),
+        ApplicationError::BatchFailed(msg) => msg.into(),
+        ApplicationError::Conflict(msg) => msg.into(),
+        ApplicationError::Internal(msg) => msg.into(),
+    }
 }

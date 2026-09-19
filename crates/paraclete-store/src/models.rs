@@ -39,6 +39,17 @@ pub struct StaleRecoveryStats {
     pub failed_retries_exhausted: u64,
 }
 
+/// Outcome of a client cancel request against a durable job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobCancelOutcome {
+    /// Job was `queued` and transitioned to `canceled` immediately.
+    CanceledFromQueued,
+    /// Job is `running`; cooperative cancel flag was persisted.
+    CancelRequestedForRunning,
+    /// Job was already in terminal `canceled` state (idempotent).
+    AlreadyCanceled,
+}
+
 /// One row from `scan_assets` (projection; reload full `ScanReport` for complete `AssetRecord`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct StoredAssetRow {

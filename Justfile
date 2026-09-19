@@ -41,9 +41,21 @@ naming-check:
 
 ci: fmt-check lint test naming-check
 
+api-demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scripts/api-test/start-server.sh
+    scripts/api-test/smoke.sh
+
+api-restart-demo:
+    bash scripts/api-test/restart-demo.sh
+
 api-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
     cargo test -p paraclete-service --tests
     cargo test -p paraclete-store --test auth_tokens
+    scripts/api-test/smoke.sh --start
 
 repair-fixtures:
     cargo xtask fixtures repair

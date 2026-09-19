@@ -73,7 +73,7 @@ fn required_role(path: &str, method: &Method) -> AuthRole {
     if path.starts_with("/admin/tokens") {
         return AuthRole::Admin;
     }
-    if method == Method::POST && matches!(path, "/scans" | "/scans/sync" | "/jobs/scans") {
+    if method == Method::POST {
         return AuthRole::Operator;
     }
     AuthRole::Reader

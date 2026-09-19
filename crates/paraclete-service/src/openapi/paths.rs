@@ -8,6 +8,11 @@ use crate::api_types::{
     ScanJobSubmissionResponse, ScanJobView, StartScanRequest, StartScanResponse, TargetRunsQuery,
     WhoAmIResponse,
 };
+use crate::application_http::{
+    BatchCheckResponse, BatchConfigBody, BatchPlanResponse, BatchRepairJobBody, BatchResumeBody,
+    BatchStatusResponse, BatchVerifyResponse, CheckResponse, DiagnoseResponse, JobCancelResponse,
+    LocationPolicyBody, PlanBody, PlanResponse, RepairJobBody, VerifyBody, VerifyResponse,
+};
 use crate::error::ErrorBody;
 use paraclete_types::{RunDiff, ScanReport, ScanRunListItem};
 
@@ -333,3 +338,152 @@ pub fn post_admin_token_rotate() {}
     security(("bearerAuth" = []))
 )]
 pub fn post_admin_token_disable() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/metrics",
+    tag = "meta",
+    responses(
+        (status = 200, description = "Prometheus text exposition (authenticated alias of `/metrics`)")
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn get_api_metrics() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/diagnose",
+    tag = "repair",
+    request_body(content = LocationPolicyBody),
+    responses(
+        (status = 200, description = "Diagnosis report", body = DiagnoseResponse),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn post_diagnose() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/plans",
+    tag = "repair",
+    request_body(content = PlanBody),
+    responses(
+        (status = 200, description = "Repair plan", body = PlanResponse),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn post_plans() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/checks",
+    tag = "repair",
+    request_body(content = LocationPolicyBody),
+    responses(
+        (status = 200, description = "Check report", body = CheckResponse),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn post_checks() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/repairs",
+    tag = "repair",
+    request_body(content = RepairJobBody),
+    responses(
+        (status = 202, description = "Repair job accepted", body = ScanJobSubmissionResponse),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn post_repairs() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/verifications",
+    tag = "repair",
+    request_body(content = VerifyBody),
+    responses(
+        (status = 200, description = "Verification report", body = VerifyResponse),
+        (status = 401, body = ErrorBody),
+        (status = 403, body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn post_verifications() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/batches/check",
+    tag = "batch",
+    request_body(content = BatchConfigBody),
+    responses((status = 200, body = BatchCheckResponse)),
+    security(("bearerAuth" = []))
+)]
+pub fn post_batch_check() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/batches/plans",
+    tag = "batch",
+    request_body(content = BatchConfigBody),
+    responses((status = 200, body = BatchPlanResponse)),
+    security(("bearerAuth" = []))
+)]
+pub fn post_batch_plans() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/batches/repairs",
+    tag = "batch",
+    request_body(content = BatchRepairJobBody),
+    responses((status = 202, body = ScanJobSubmissionResponse)),
+    security(("bearerAuth" = []))
+)]
+pub fn post_batch_repairs() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/batches/{run_dir}",
+    tag = "batch",
+    params(("run_dir" = String, Path)),
+    responses((status = 200, body = BatchStatusResponse)),
+    security(("bearerAuth" = []))
+)]
+pub fn get_batch_status() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/batches/{run_dir}/resume",
+    tag = "batch",
+    request_body(content = BatchResumeBody),
+    responses((status = 202, body = ScanJobSubmissionResponse)),
+    security(("bearerAuth" = []))
+)]
+pub fn post_batch_resume() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/batches/{run_dir}/verify",
+    tag = "batch",
+    responses((status = 200, body = BatchVerifyResponse)),
+    security(("bearerAuth" = []))
+)]
+pub fn post_batch_verify() {}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/jobs/{job_id}/cancel",
+    tag = "jobs",
+    responses((status = 200, body = JobCancelResponse)),
+    security(("bearerAuth" = []))
+)]
+pub fn post_job_cancel() {}
