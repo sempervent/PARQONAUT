@@ -2,6 +2,8 @@
 
 use clap::{Parser, Subcommand};
 
+mod docs_cli;
+mod docs_openapi;
 mod fixtures_object_storage;
 mod fixtures_orchestration;
 mod fixtures_repair;
@@ -24,6 +26,25 @@ enum Command {
     },
     /// Regenerate checked-in canonical repair-plan JSON under fixtures/plans/
     GoldenPlans,
+    /// Documentation generators (CLI reference, OpenAPI golden)
+    Docs {
+        #[command(subcommand)]
+        command: DocsCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum DocsCommand {
+    /// Regenerate `docs/reference/cli.md` from `prqnt --help`
+    Cli {
+        #[arg(long, help = "Verify committed reference is current (no write)")]
+        check: bool,
+    },
+    /// Regenerate or verify `fixtures/api/openapi-v1.json`
+    Openapi {
+        #[arg(long, help = "Verify golden OpenAPI is current (no write)")]
+        check: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -56,6 +77,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     match cli.command {
         Command::GoldenPlans => golden_plans::run(),
+        Command::Docs { command } => match command {
+            DocsCommand::Cli { check } => docs_cli::run(!check, check),
+            DocsCommand::Openapi { check } => docs_openapi::run(!check, check),
+        },
         Command::Fixtures { command } => match command {
             FixturesCommand::Scan { output } => {
                 eprintln!("scan fixtures: use scripts/fixtures/build_scan_fixtures.py ({output})");

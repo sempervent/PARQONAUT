@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { workspace = true }
 camino = { workspace = true }
+paraclete-service = { path = "../crates/paraclete-service" }
 parqonaut-repair = { path = "../crates/parqonaut-repair" }
 parqonaut-orchestrator = { path = "../crates/parqonaut-orchestrator" }
 parqonaut-storage = { path = "../crates/parqonaut-storage", features = ["s3", "fogbank-fixtures"] }
