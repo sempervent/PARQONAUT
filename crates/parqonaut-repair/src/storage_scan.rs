@@ -94,6 +94,7 @@ impl RepairBackend {
             (Self::S3(s), Self::Memory(o)) => {
                 executor.execute_storage(plan, output, scan, s.as_ref(), o, run_id).await
             }
+            #[cfg(not(feature = "s3"))]
             _ => Err(RepairError::Storage("unsupported cross-backend repair pairing".into())),
         }
     }

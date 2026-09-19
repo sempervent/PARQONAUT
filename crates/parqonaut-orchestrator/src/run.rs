@@ -20,7 +20,7 @@ use crate::plan::{build_batch_plan, BatchPlan};
 use crate::report::{
     build_aggregate_report, BatchVerificationSummary, BATCH_REPORT_SCHEMA_VERSION,
 };
-use crate::verify::{verify_batch, verify_results_map, BatchVerifyReport};
+use crate::verify::{verify_batch, verify_batch_with_run, verify_results_map, BatchVerifyReport};
 
 pub const RUNS_DIR: &str = ".parqonaut/runs";
 pub const JOURNAL_FILE: &str = "journal.sqlite";
@@ -341,7 +341,7 @@ pub fn verify_run(run_dir: &Utf8Path) -> Result<BatchVerifyReport, OrchestratorE
     assert_plan_matches_identity(&plan, &identity)?;
     let records = journal.list_datasets()?;
     assert_datasets_match_plan(&plan, &records)?;
-    verify_batch(&plan, &records)
+    verify_batch_with_run(&plan, &records, Some(&identity.run_id))
 }
 
 fn placeholder_plan(identity: &RunIdentity) -> BatchPlan {

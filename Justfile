@@ -149,14 +149,10 @@ phase5-demo:
     just phase5-test
 
 phase5-resume-demo:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "phase5-resume-demo: remote publication resume — run after publication integration lands"
+    scripts/phase5/resume-demo.sh
 
 phase5-batch-demo:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "phase5-batch-demo: mixed fleet batch — run after orchestrator MinIO E2E lands"
+    scripts/phase5/batch-demo.sh
 
 phase4-resume-demo:
     #!/usr/bin/env bash

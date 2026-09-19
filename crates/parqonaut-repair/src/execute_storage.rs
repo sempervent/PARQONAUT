@@ -17,7 +17,6 @@ use parqonaut_storage::publication::{
     is_version_committed, read_current_version, PublicationManifest, PublicationObjectRecord,
     PublicationVersionId, RemotePublicationSession, PUBLICATION_CONTRACT_VERSION,
 };
-use tokio::io::AsyncReadExt;
 use tracing::{info, instrument};
 use uuid::Uuid;
 

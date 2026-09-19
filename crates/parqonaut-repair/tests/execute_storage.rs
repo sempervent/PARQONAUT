@@ -10,7 +10,7 @@ use bytes::Bytes;
 use camino::Utf8Path;
 use chrono::Utc;
 use parqonaut_repair::{
-    compute_dataset_fingerprint, requires_storage_execution, scan_directory, DatasetFingerprint,
+    compute_dataset_fingerprint, requires_storage_execution, scan_directory,
     EffectivePolicy, RepairExecutor, RepairPlan, PARQONAUT_VERSION, PLAN_SCHEMA_VERSION,
 };
 use parqonaut_storage::backend::StorageBackend;
@@ -25,8 +25,6 @@ use parqonaut_storage::publication::{
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{Compression, ZstdLevel};
 use parquet::file::properties::WriterProperties;
-use uuid::Uuid;
-
 fn memory_backend() -> MemoryStorageBackend {
     MemoryStorageBackend::new(StorageCapabilities {
         range_reads: true,

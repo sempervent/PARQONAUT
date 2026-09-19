@@ -24,7 +24,6 @@ fn run_local_scan(
     location: &parqonaut_storage::location::DatasetLocation,
     profile: &str,
 ) -> Result<ScanReport, Box<dyn std::error::Error>> {
-    use camino::Utf8PathBuf;
     use paraclete_core::ScanEngine;
     use paraclete_types::{ScanProfile, ScanRequest, ScanTarget};
 

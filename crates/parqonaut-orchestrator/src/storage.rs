@@ -5,9 +5,11 @@ use std::sync::Arc;
 
 use parqonaut_repair::RepairBackend;
 use parqonaut_storage::backend::{ListOptions, StorageBackend};
+#[cfg(test)]
 use parqonaut_storage::capabilities::StorageCapabilities;
-use parqonaut_storage::location::DatasetLocation;
+#[cfg(test)]
 use parqonaut_storage::memory::MemoryStorageBackend;
+use parqonaut_storage::location::DatasetLocation;
 use parqonaut_storage::publication::{
     is_version_committed, observed_state, read_current_version, PublicationError, PublicationState,
     PublicationVersionId,
@@ -175,7 +177,7 @@ pub async fn dataset_exists(
 }
 
 pub async fn dataset_is_directory_like(
-    runtime: &BatchStorageRuntime,
+    _runtime: &BatchStorageRuntime,
     location: &DatasetLocation,
 ) -> Result<bool, OrchestratorError> {
     match location {
