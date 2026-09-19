@@ -115,6 +115,24 @@ phase4-demo:
     test -f "$run_dir/report.json"
     head -40 "$run_dir/report.json"
 
+phase5-up:
+    scripts/phase5/up.sh
+
+phase5-down:
+    scripts/phase5/down.sh
+
+phase5-fixtures:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/phase5/env.sh
+    scripts/phase5/fixtures.sh
+
+phase5-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/phase5/env.sh
+    cargo test -p parqonaut-storage --features s3 fogbank -- --nocapture
+
 phase4-resume-demo:
     #!/usr/bin/env bash
     set -euo pipefail

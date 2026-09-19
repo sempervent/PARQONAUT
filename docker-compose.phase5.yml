@@ -1,0 +1,44 @@
+# FOGBANK — Phase 5 MinIO laboratory (local-only; fake credentials).
+#
+# API:      http://127.0.0.1:9000
+# Console:  http://127.0.0.1:9001  (minioadmin / minioadmin)
+#
+# Start:  scripts/phase5/up.sh
+# Stop:   scripts/phase5/down.sh
+
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: parqonaut-phase5-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-phase5-data:/data
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: parqonaut-phase5-minio-init
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set fogbank http://minio:9000 minioadmin minioadmin; do
+        echo 'waiting for MinIO...';
+        sleep 2;
+      done &&
+      mc mb --ignore-existing fogbank/fogbank &&
+      mc mb --ignore-existing fogbank/parqonaut-test &&
+      mc anonymous set none fogbank/fogbank &&
+      mc anonymous set none fogbank/parqonaut-test &&
+      echo 'FOGBANK buckets ready: fogbank, parqonaut-test'
+      "
+    restart: "no"
+
+volumes:
+  minio-phase5-data:
+    name: parqonaut-phase5-minio-data
