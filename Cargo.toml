@@ -12,6 +12,7 @@ members = [
     "crates/parqonaut-repair",
     "crates/parqonaut-cli",
     "crates/parqonaut-orchestrator",
+    "crates/parqonaut-storage",
 ]
 
 [workspace.package]

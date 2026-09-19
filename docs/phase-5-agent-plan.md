@@ -5,116 +5,186 @@ Baseline: **lead-owned** on `feat/object-storage` from `v0.4.1` / `main` @ `480b
 Mission: first-class S3-compatible object storage with the same deterministic planning, authorization, repair, verification, failure-isolation, and recovery guarantees as local filesystem operation.
 
 See [phase-5-storage-recon.md](phase-5-storage-recon.md) for existing code assessment.
+See [storage-architecture.md](storage-architecture.md) for frozen interface contracts.
 
-## Shared contracts (lead-frozen before parallel implementation)
+## Contract freeze
 
-| Type | Location (planned) | Notes |
-|------|-------------------|-------|
-| `DatasetLocation` | `parqonaut-storage/location.rs` | Local + S3 variants; credential-free serialization |
-| `ObjectLocation` | `parqonaut-storage/location.rs` | Single object identity |
-| `StorageBackend` | `parqonaut-storage/backend.rs` | list, head, range_read, write, capabilities |
-| `StorageCapabilities` | `parqonaut-storage/backend.rs` | conditional create, multipart, etc. |
-| `RemoteFingerprint` | `parqonaut-storage/fingerprint.rs` | stale-source detection for object stores |
-| `PublicationVersion` | `parqonaut-storage/publication.rs` | immutable prefix + `_COMMITTED` marker |
-| `StorageMetrics` | `parqonaut-storage/metrics.rs` | LIST/HEAD/range/byte counters |
+| Item | Value |
+|------|-------|
+| `PHASE5_CONTRACT_SHA` | *(recorded after contract commit)* |
+| Contract commit message | `feat: define phase 5 storage contracts` |
+| Crate | `crates/parqonaut-storage/` |
+| Contract version | `STORAGE_CONTRACT_VERSION = 1` |
 
-Library boundaries unchanged in spirit:
+### Lead-frozen public types (do not modify without lead approval)
 
-```text
-parqonaut-storage   → bytes, objects, publication
-parqonaut-repair    → one dataset mechanics (via storage)
-parqonaut-orchestrator → many datasets (via storage + repair)
-parqonaut-cli       → command surface only
-```
+| Type | File |
+|------|------|
+| `DatasetLocation`, `ObjectLocation`, `LocalLocation`, `S3Location` | `location.rs` |
+| `ObjectMetadata` | `metadata.rs` |
+| `StorageBackend`, `ByteRange`, `ListOptions`, `ListPage` | `backend.rs` |
+| `StorageCapabilities` | `capabilities.rs` |
+| `StorageError`, `RetryClass` | `error.rs` |
+| `ConditionalCreate`, `ConditionalReplace` | `conditional.rs` |
+| `ObjectReadStream`, `ObjectWriteStream` | `stream.rs` |
+| `StorageMetrics`, `StorageMetricsCollector` | `metrics.rs` |
+| `RedactUri`, `Redacted` | `redact.rs` |
+| `storage_backend_contract` | `contract.rs` |
+| `lib.rs` exports | `lib.rs` |
+
+### Test-only / contract helpers (lead-owned)
+
+| Type | File |
+|------|------|
+| `MemoryStorageBackend` | `memory.rs` |
+| `NoopStorageBackend` | `noop.rs` |
 
 ## Agent ownership
 
 ### LEAD (integration)
 
-- Branch: `feat/object-storage`
-- Owns: workspace, shared contracts, merges, `docs/phase-5-agent-plan.md`, release
-- Must approve changes to `DatasetLocation`, `StorageBackend`, publication protocol
+| Field | Value |
+|-------|-------|
+| Branch | `feat/object-storage` |
+| Starting SHA | `PHASE5_CONTRACT_SHA` (for integration work) |
+| Owns | `lib.rs`, all contract files above, workspace `Cargo.toml`, cross-cutting integration, release |
+| Forbidden | Subagents must not edit lead-owned contract files |
+| Expected commits | integration commits, stub removal, release |
 
-### SUBAGENT A — storage contracts + local backend
+### SUBAGENT A — local backend
 
-- Worktree/branch: `phase5-storage-local`
-- Owns:
-  - `crates/parqonaut-storage/` (except `s3.rs`, `publication.rs` until interfaces frozen)
-  - `location.rs`, `backend.rs`, `local.rs`, `redact.rs`
-  - backend contract tests (local)
-- Must NOT edit: repair, orchestrator, CLI
-- Depends on: lead contract commit
+| Field | Value |
+|-------|-------|
+| Worktree | `.worktrees/phase5-local` |
+| Branch | `phase5-storage-local` |
+| Starting SHA | `PHASE5_CONTRACT_SHA` |
+| Owns | `crates/parqonaut-storage/src/local.rs`, local backend tests |
+| Read-only | all contract modules, `memory.rs`, `noop.rs` |
+| Forbidden | `s3.rs`, `s3/`, `publication.rs`, `locking.rs`, repair, orchestrator, CLI |
+| Expected commit | `feat: implement local storage backend` |
+| Tests | `cargo test -p parqonaut-storage local`, contract suite against `LocalStorageBackend` |
+| Integration order | 1 (first wave) |
 
-### SUBAGENT B — S3 backend
+### SUBAGENT B — S3 backend + MinIO primitives
 
-- Worktree/branch: `phase5-storage-s3`
-- Owns:
-  - `crates/parqonaut-storage/src/s3.rs`
-  - S3 error mapping, retry hooks, multipart upload
-  - MinIO compose file (with Agent F coordination)
-- Depends on: frozen `StorageBackend` trait from lead
-- Must NOT edit: local backend, publication protocol
+| Field | Value |
+|-------|-------|
+| Worktree | `.worktrees/phase5-s3` |
+| Branch | `phase5-storage-s3` |
+| Starting SHA | `PHASE5_CONTRACT_SHA` |
+| Owns | `crates/parqonaut-storage/src/s3.rs`, `crates/parqonaut-storage/src/s3/` |
+| Read-only | all contract modules |
+| Forbidden | `local.rs`, `publication.rs`, `locking.rs`, repair, orchestrator |
+| Expected commit | `feat: implement s3 storage backend` |
+| Tests | S3 unit tests, contract suite against MinIO |
+| Integration order | 1 (first wave, parallel with A) |
 
-### SUBAGENT C — fingerprints + remote metadata scan
+### SUBAGENT C — inventory + fingerprints + Parquet range reads
 
-- Worktree/branch: `phase5-fingerprint-scan`
-- Owns:
-  - `inventory.rs`, `fingerprint.rs`
-  - Parquet footer range reader
-  - storage-aware scan adapter in `paraclete-core` or thin wrapper crate
-- Depends on: A/B backend read paths
+| Field | Value |
+|-------|-------|
+| Worktree | `.worktrees/phase5-fingerprint` |
+| Branch | `phase5-fingerprint-scan` |
+| Starting SHA | `PHASE5_CONTRACT_SHA` |
+| Owns | `inventory.rs`, `fingerprint.rs`, `parquet_range.rs` |
+| Read-only | `StorageBackend` trait, contract modules |
+| Forbidden | `local.rs`, `s3.rs`, AWS SDK, repair, orchestrator |
+| Expected commit | `feat: add remote inventory fingerprints and parquet range reads` |
+| Integration order | 1 (first wave, after contract; uses `MemoryStorageBackend` until A/B land) |
 
-### SUBAGENT D — publication + locking
+### SUBAGENT D — publication + locks
 
-- Worktree/branch: `phase5-publication`
-- Owns:
-  - `publication.rs`, `lock.rs`
-  - immutable version layout, commit marker, CURRENT pointer
-  - conditional publication semantics
-- Depends on: frozen location + backend contracts
+| Field | Value |
+|-------|-------|
+| Worktree | `.worktrees/phase5-publication` |
+| Branch | `phase5-publication` |
+| Starting SHA | `PHASE5_CONTRACT_SHA` |
+| Owns | `publication.rs`, `locking.rs`, publication tests |
+| Read-only | contract modules, `StorageBackend` |
+| Forbidden | `local.rs`, `s3.rs`, AWS SDK, repair, orchestrator |
+| Expected commit | `feat: add transactional object-store publication` |
+| Integration order | 1 (first wave) |
 
-### SUBAGENT E — repair/orchestrator integration
+### SUBAGENT E — FOGBANK / MinIO laboratory
 
-- Worktree/branch: `phase5-integration`
-- Owns:
-  - `parqonaut-repair` storage hooks (minimal diffs)
-  - `parqonaut-orchestrator` mixed-backend batch
-  - cross-backend transfer paths
-- Begins after A–D interfaces land
+| Field | Value |
+|-------|-------|
+| Worktree | `.worktrees/phase5-fogbank` |
+| Branch | `phase5-fogbank` |
+| Starting SHA | `PHASE5_CONTRACT_SHA` |
+| Owns | `docker-compose.phase5.yml`, `fixtures/phase5/`, `scripts/phase5/`, integration test harness, Justfile snippets (propose if conflict) |
+| Read-only | production storage implementation |
+| Forbidden | modifying `local.rs`, `s3.rs` internals |
+| Expected commit | `test: add fogbank object-storage laboratory` |
+| Integration order | 1 (first wave; fixtures early, full tests after A/B) |
 
-### SUBAGENT F — FOGBANK / chaos tests
+### SUBAGENT F — scan/diagnosis integration (second wave)
 
-- Worktree/branch: `phase5-fogbank`
-- Owns:
-  - `fixtures/phase5/fogbank/`
-  - fixture generator binary
-  - fault-injection test backend wrapper
-  - `phase5_*` integration tests, Justfile recipes
-- Can start fixture design in parallel; full tests after public API freeze
+| Field | Value |
+|-------|-------|
+| Worktree | `.worktrees/phase5-scan` |
+| Branch | `phase5-scan-integration` |
+| Starting SHA | post first-wave integration SHA |
+| Owns | storage-aware scan/plan/check/doctor adapters |
+| Expected commit | `feat: make scanning and planning storage aware` |
+| Integration order | 2 |
 
-### SUBAGENT G — documentation
+### SUBAGENT G — repair integration (second wave)
 
-- Owns: `docs/phase-5.md`, `docs/storage-architecture.md`, `docs/s3.md`, `docs/remote-publication.md`, `docs/remote-recovery.md`, `docs/phase-5-security.md`, ADRs 0015–0019
-- Begins after behavior stabilizes
+| Field | Value |
+|-------|-------|
+| Worktree | `.worktrees/phase5-repair` |
+| Branch | `phase5-repair-integration` |
+| Starting SHA | post first-wave integration SHA |
+| Owns | remote/cross-backend repair adapters in `parqonaut-repair` |
+| Expected commit | `feat: add remote and cross-backend repairs` |
+| Integration order | 2 |
+
+### SUBAGENT H — orchestrator/resume integration (second wave)
+
+| Field | Value |
+|-------|-------|
+| Worktree | `.worktrees/phase5-orchestrator` |
+| Branch | `phase5-orchestrator-integration` |
+| Starting SHA | post first-wave integration SHA |
+| Owns | `parqonaut-orchestrator` Phase 5 extensions |
+| Expected commit | `feat: orchestrate remote and mixed-storage datasets` |
+| Integration order | 2 |
+
+### SUBAGENT I — remote chaos/fault tests (second wave)
+
+| Field | Value |
+|-------|-------|
+| Worktree | `.worktrees/phase5-chaos` |
+| Branch | `phase5-chaos-tests` |
+| Starting SHA | post second-wave API freeze |
+| Owns | test-only failure injection infrastructure |
+| Expected commit | `test: add remote storage fault injection coverage` |
+| Integration order | 2 (late) |
+
+### SUBAGENT G-docs — documentation (final wave)
+
+| Field | Value |
+|-------|-------|
+| Owns | `docs/phase-5.md`, `docs/s3.md`, `docs/remote-publication.md`, `docs/remote-recovery.md`, `docs/phase-5-security.md`, `docs/phase-5-acceptance.md`, ADRs 0015–0019, README, CHANGELOG |
+| Integration order | 3 (after behavior stabilizes) |
 
 ## Parallelization graph
 
 ```text
-LEAD contracts ──┬──► A local backend
-                 └──► B S3 backend (after trait freeze)
-A + B ──► C fingerprints / range scan
-A + B ──► D publication / locks
-C + D + E ──► repair + orchestrator integration
-All ──► F FOGBANK tests
-Stabilize ──► G docs
-Final ──► parallel read-only audit (5+ agents)
+LEAD contract freeze (PHASE5_CONTRACT_SHA)
+    ├──► A local backend
+    ├──► B S3 backend
+    ├──► C inventory/fingerprint/parquet_range
+    ├──► D publication/locking
+    └──► E FOGBANK fixtures
+First-wave integration + contract tests (local + MinIO)
+    ├──► F scan/diagnosis
+    ├──► G repair
+    ├──► H orchestrator
+    └──► I chaos tests
+Final audits (5+ read-only) → docs → release v0.5.0
 ```
-
-## Serialized intentionally
-
-- Publication protocol (D) before orchestrator resume semantics for remote outputs
-- Local backend contract tests (A) before ripping local assumptions out of repair
-- S3 backend (B) before FOGBANK integration tests assert real behavior
 
 ## Subagent deliverable format
 
@@ -129,7 +199,8 @@ known limitations
 ```
 
 Lead reviews every diff before merge. No concurrent edits to lead-owned contract files.
+Interface change requests must be returned as a proposed note; lead applies centrally.
 
 ## Acceptance reference
 
-See Phase 5 specification acceptance criteria (82 items). Tracked in `docs/phase-5-acceptance.md` (to be created during implementation).
+See Phase 5 specification acceptance criteria. Tracked in `docs/phase-5-acceptance.md`.

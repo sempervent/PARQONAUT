@@ -1,0 +1,41 @@
+[package]
+name = "parqonaut-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Storage abstraction for local filesystem and S3-compatible object stores"
+
+[dependencies]
+async-trait = "0.1"
+bytes = "1.9"
+camino = { workspace = true, features = ["serde1"] }
+chrono = { workspace = true, features = ["serde"] }
+futures = "0.3"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "fs", "macros", "rt-multi-thread"] }
+tokio-util = { version = "0.7", features = ["io"] }
+tracing = { workspace = true }
+url = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
+
+[features]
+default = []
+s3 = ["dep:aws-config", "dep:aws-sdk-s3"]
+test-util = []
+
+[dependencies.aws-config]
+version = "1"
+optional = true
+features = ["behavior-version-latest", "rustls"]
+
+[dependencies.aws-sdk-s3]
+version = "1"
+optional = true
+features = ["rustls"]
