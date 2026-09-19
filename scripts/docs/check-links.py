@@ -20,6 +20,8 @@ def targets_from_summary() -> list[Path]:
         href = m.group(1).strip()
         if href.startswith(SKIP_PREFIXES):
             continue
+        if href.startswith("rustdoc/"):
+            continue
         path = href.split("#", 1)[0]
         if not path:
             continue
@@ -32,6 +34,8 @@ def scan_file(md: Path, errors: list[str]) -> None:
     for m in LINK_RE.finditer(md.read_text(encoding="utf-8")):
         href = m.group(1).strip()
         if href.startswith(SKIP_PREFIXES):
+            continue
+        if href.startswith("rustdoc/"):
             continue
         path_part, _, anchor = href.partition("#")
         if not path_part:
