@@ -10,7 +10,7 @@ small_file_threshold_mb = 16
 merge_target_mb = 256
 ```
 
-Optional override file (TOML) may be passed to `parqonaut plan --policy path.toml`.
+Optional override file (TOML) may be passed to `prqnt plan --policy path.toml`.
 
 | Setting | Meaning |
 |---------|---------|

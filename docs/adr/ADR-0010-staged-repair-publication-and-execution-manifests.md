@@ -10,7 +10,7 @@ Partial repair failures must not masquerade as valid datasets. Operators need ma
 
 ## Decision
 
-Repairs write to `.parqonaut-staging-<execution-id>/` under the output parent, run verification, then promote to the final destination. Each successful repair emits `.parqonaut-manifest.json` with fingerprints, policy fingerprint, operation audit records, and optional verification report. `parqonaut verify --manifest` checks output fingerprint against the manifest.
+Repairs write to `.parqonaut-staging-<execution-id>/` under the output parent, run verification, then promote to the final destination. Each successful repair emits `.parqonaut-manifest.json` with fingerprints, policy fingerprint, operation audit records, and optional verification report. `prqnt verify --manifest` checks output fingerprint against the manifest.
 
 ## Consequences
 

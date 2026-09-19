@@ -11,9 +11,9 @@ use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "parqonaut",
+    name = "prqnt",
     version,
-    about = "Parquet Analysis, Rewriting, Quality, Orchestration, Navigation, Auditing, Unification & Transformation"
+    about = "PARQONAUT — Parquet Analysis, Rewriting, Quality, Orchestration, Navigation, Auditing, Unification & Transformation"
 )]
 struct Cli {
     #[arg(long, global = true, help = "Emit JSON where supported")]
@@ -24,20 +24,20 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Forensic scan of local paths or s3:// dataset prefixes (Paraclete engine)
+    /// Forensic scan of local paths or s3:// dataset prefixes
     Scan {
         /// Local path or s3:// URI to scan
         path: String,
         #[arg(short, long, default_value = "standard")]
         profile: String,
     },
-    /// Inspect Parquet file metadata (parqknife engine)
+    /// Inspect Parquet schema and row-group metadata
     Inspect {
         input: PathBuf,
         #[arg(long, help = "Show detailed column statistics")]
         stats: bool,
     },
-    /// Rewrite Parquet with optional recompression (parqknife engine)
+    /// Rewrite or recompress a Parquet file
     Rewrite {
         input: PathBuf,
         output: PathBuf,
@@ -113,12 +113,12 @@ enum Command {
         #[arg(long = "authorize")]
         authorize: Vec<String>,
     },
-    /// Multi-dataset batch orchestration (Phase 4)
+    /// Multi-dataset batch orchestration
     Batch {
         #[command(subcommand)]
         command: BatchCommand,
     },
-    /// Stream-convert CSV/Parquet inputs (maw engine)
+    /// Stream-convert CSV/Parquet inputs
     Convert {
         /// Input file(s), directories, or globs
         #[arg(required = true)]
@@ -187,9 +187,7 @@ enum BatchCommand {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env().add_directive("parqonaut=info".parse().unwrap()),
-        )
+        .with_env_filter(EnvFilter::from_default_env().add_directive("prqnt=info".parse().unwrap()))
         .init();
 
     let cli = Cli::parse();

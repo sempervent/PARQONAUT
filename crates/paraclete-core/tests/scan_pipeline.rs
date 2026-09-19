@@ -33,7 +33,7 @@ fn codes(report: &paraclete_types::ScanReport) -> Vec<String> {
 
 #[test]
 fn scan_single_parquet_produces_valid_report() {
-    let req = request_for_file("phase1/single_parquet/data.parquet");
+    let req = request_for_file("scan/single_parquet/data.parquet");
     let report = ScanEngine::scan(&req).expect("scan");
     paraclete_types::validate_report(&report).unwrap();
     assert_eq!(report.summary.files_scanned, 1);
@@ -47,7 +47,7 @@ fn scan_single_parquet_produces_valid_report() {
 
 #[test]
 fn scan_parquet_dataset_directory() {
-    let req = request_for_dir("phase1/parquet_dataset");
+    let req = request_for_dir("scan/parquet_dataset");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert!(report.summary.files_scanned >= 2);
@@ -56,7 +56,7 @@ fn scan_parquet_dataset_directory() {
 
 #[test]
 fn mixed_format_emits_mixed_dataset() {
-    let req = request_for_dir("phase1/mixed_dir");
+    let req = request_for_dir("scan/mixed_dir");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert!(codes(&report).contains(&system::FORMAT_MIXED_DATASET.to_string()));
@@ -64,7 +64,7 @@ fn mixed_format_emits_mixed_dataset() {
 
 #[test]
 fn tiny_parquet_emits_file_too_small() {
-    let req = request_for_file("phase1/tiny_parquet/micro.parquet");
+    let req = request_for_file("scan/tiny_parquet/micro.parquet");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert!(codes(&report).contains(&system::METADATA_FILE_TOO_SMALL.to_string()));
@@ -72,7 +72,7 @@ fn tiny_parquet_emits_file_too_small() {
 
 #[test]
 fn fragmented_row_groups_emit_finding() {
-    let req = request_for_file("phase1/fragmented_rg/fragmented.parquet");
+    let req = request_for_file("scan/fragmented_rg/fragmented.parquet");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert!(codes(&report).contains(&system::METADATA_ROW_GROUP_SUSPICIOUSLY_SMALL.to_string()));
@@ -80,7 +80,7 @@ fn fragmented_row_groups_emit_finding() {
 
 #[test]
 fn hive_inconsistent_partition_keys() {
-    let req = request_for_dir("phase1/hive_inconsistent");
+    let req = request_for_dir("scan/hive_inconsistent");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert!(codes(&report).contains(&system::PARTITION_INCONSISTENT_KEYS.to_string()));
@@ -109,7 +109,7 @@ fn validate(report: &paraclete_types::ScanReport) {
 
 #[test]
 fn local_scan_plan_counts_parquet_files() {
-    let target = ScanTarget::LocalDirectory { path: fixture("phase1/parquet_dataset") };
+    let target = ScanTarget::LocalDirectory { path: fixture("scan/parquet_dataset") };
     let plan =
         resolve_local_scan_plan(&target, &paraclete_types::ScanOptions::default()).expect("plan");
     assert_eq!(plan.assets.len(), 2);
@@ -118,7 +118,7 @@ fn local_scan_plan_counts_parquet_files() {
 
 #[test]
 fn single_parquet_scan_json_roundtrips() {
-    let req = request_for_file("phase1/single_parquet/data.parquet");
+    let req = request_for_file("scan/single_parquet/data.parquet");
     let report = ScanEngine::scan(&req).expect("scan");
     let v = serde_json::to_value(&report).unwrap();
     let back: paraclete_types::ScanReport = serde_json::from_value(v.clone()).unwrap();
@@ -128,7 +128,7 @@ fn single_parquet_scan_json_roundtrips() {
 
 #[test]
 fn corrupt_parquet_surfaces_read_failure() {
-    let req = request_for_file("phase2/corrupt_parquet/bad.parquet");
+    let req = request_for_file("repair/corrupt_parquet/bad.parquet");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert!(codes(&report).contains(&system::FORMAT_PARQUET_READ_FAILED.to_string()));
@@ -139,7 +139,7 @@ fn corrupt_parquet_surfaces_read_failure() {
 
 #[test]
 fn multi_dataset_detection() {
-    let req = request_for_dir("phase2/multi_dataset");
+    let req = request_for_dir("repair/multi_dataset");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert!(report.datasets.len() >= 2);
@@ -149,7 +149,7 @@ fn multi_dataset_detection() {
 
 #[test]
 fn shallow_csv_and_json_in_mixed_siblings() {
-    let req = request_for_dir("phase2/mixed_siblings");
+    let req = request_for_dir("repair/mixed_siblings");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     let c = codes(&report);
@@ -167,7 +167,7 @@ fn shallow_csv_and_json_in_mixed_siblings() {
 
 #[test]
 fn unpartitioned_collection_finding() {
-    let req = request_for_dir("phase2/unpartitioned_pair");
+    let req = request_for_dir("repair/unpartitioned_pair");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert!(codes(&report).contains(&system::PARTITION_UNPARTITIONED_COLLECTION.to_string()));
@@ -175,7 +175,7 @@ fn unpartitioned_collection_finding() {
 
 #[test]
 fn ndjson_shallow_inspection() {
-    let req = request_for_dir("phase2/shallow_text");
+    let req = request_for_dir("repair/shallow_text");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     let c = codes(&report);
@@ -204,7 +204,7 @@ fn truncation_emits_scan_truncated_finding() {
 
 #[test]
 fn mixed_multi_dataset_report_summary_stable() {
-    let req = request_for_dir("phase2/mixed_siblings");
+    let req = request_for_dir("repair/mixed_siblings");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert_eq!(report.summary.files_scanned, 3);
@@ -214,7 +214,7 @@ fn mixed_multi_dataset_report_summary_stable() {
 
 #[test]
 fn schema_split_flat_emits_grouping_ambiguous() {
-    let req = request_for_dir("phase3/schema_split_flat");
+    let req = request_for_dir("schema/schema_split_flat");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert!(report.datasets.len() >= 2);
@@ -223,7 +223,7 @@ fn schema_split_flat_emits_grouping_ambiguous() {
 
 #[test]
 fn nested_anchor_produces_multiple_datasets() {
-    let req = request_for_dir("phase3/nested_mixed_anchor");
+    let req = request_for_dir("schema/nested_mixed_anchor");
     let report = ScanEngine::scan(&req).expect("scan");
     validate(&report);
     assert!(report.datasets.len() >= 2);

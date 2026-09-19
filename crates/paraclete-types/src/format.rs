@@ -42,7 +42,7 @@ pub enum FormatSupportTier {
 }
 
 impl DataFormat {
-    /// Default support tier for this format in Phase 0 policy.
+    /// Default support tier for this format in policy.
     pub fn default_support_tier(self) -> FormatSupportTier {
         match self {
             DataFormat::Parquet => FormatSupportTier::FirstClass,

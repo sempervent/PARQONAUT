@@ -15,4 +15,4 @@ Plans use `schema_version: 1` with deterministic `plan_id`, embedded `policy_fin
 ## Consequences
 
 - Breaking plan changes require incrementing `schema_version`.
-- `parqonaut plan diff` and `--canonical` support review workflows.
+- `prqnt plan diff` and `--canonical` support review workflows.

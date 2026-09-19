@@ -1,4 +1,4 @@
-//! Bearer token storage: SHA-256 hashes only; optional note and display prefix (Phase 11).
+//! Bearer token storage: SHA-256 hashes only; optional note and display prefix.
 
 use chrono::{DateTime, Utc};
 use hex::encode as hex_encode;
@@ -133,7 +133,7 @@ impl SqliteScanStore {
 
     /// Validates a bearer secret and returns the principal, or `None` if invalid or disabled.
     ///
-    /// On success, sets **`last_used_at`** to the current time (Phase 16: one row update per successful auth).
+    /// On success, sets **`last_used_at`** to the current time (one row update per successful auth).
     pub async fn verify_bearer_token(
         &self,
         plaintext: &str,

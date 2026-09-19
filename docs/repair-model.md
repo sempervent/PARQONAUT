@@ -1,7 +1,7 @@
-# PARQONAUT repair model (Phase 2)
+# PARQONAUT repair model 
 
-Phase 2 adds an evidence-driven **diagnose → plan → repair → verify** pipeline on top of the
-Phase 1 scan and transform engines.
+Repair adds an evidence-driven **diagnose → plan → repair → verify** pipeline on top of the
+scan and transform engines.
 
 ## Flow
 
@@ -22,23 +22,23 @@ No operation is emitted from policy alone without a matching diagnosed condition
 
 | Command | Role |
 |---------|------|
-| `parqonaut diagnose` | Scan + repair-oriented findings |
-| `parqonaut plan` | Structured repair plan (JSON or human) |
-| `parqonaut repair` | Execute plan to a separate output directory |
-| `parqonaut verify` | Compare before/after scans |
-| `parqonaut doctor` | Diagnose + plan; with `--repair`, run Safe ops and verify |
+| `prqnt diagnose` | Scan + repair-oriented findings |
+| `prqnt plan` | Structured repair plan (JSON or human) |
+| `prqnt repair` | Execute plan to a separate output directory |
+| `prqnt verify` | Compare before/after scans |
+| `prqnt doctor` | Diagnose + plan; with `--repair`, run Safe ops and verify |
 
 ## Safety classes
 
 See [ADR-0005](../docs/adr/ADR-0005-repair-safety-classification.md).
 
-- **Safe** — auto-executable in Phase 2 (recompress, merge compatible small files, resize row groups).
+- **Safe** — auto-executable (recompress, merge compatible small files, resize row groups).
 - **ReviewRequired** — present in plans; never auto-executed (schema alignment, casts, renames).
 - **Destructive** — represented only; never auto-executed (drops, filters, deletes).
 
 ## Source immutability
 
-Phase 2 **never** mutates the source dataset. All repairs write to a user-specified output tree.
+Repair **never** mutates the source dataset. All repairs write to a user-specified output tree.
 Staging directories (`.parqonaut-staging-<uuid>/`) are retained on failure.
 
 ## Determinism

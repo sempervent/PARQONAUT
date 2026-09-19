@@ -10,7 +10,7 @@ use paraclete_types::{
 
 use crate::parquet_inspect::ParquetInspection;
 
-/// Notes from anchor-level inference (for Phase 3 findings).
+/// Notes from anchor-level inference (for findings).
 #[derive(Debug, Clone)]
 pub enum AnchorInferenceNote {
     /// Multiple schema signatures under one anchor were split into separate datasets.

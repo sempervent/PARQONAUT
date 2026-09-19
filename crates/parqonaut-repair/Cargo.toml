@@ -33,18 +33,6 @@ walkdir = "2.5"
 default = []
 s3 = ["parqonaut-storage/s3"]
 
-[[bin]]
-name = "generate-phase2-fixtures"
-path = "src/bin/generate_phase2_fixtures.rs"
-
-[[bin]]
-name = "generate-phase3-fixtures"
-path = "src/bin/generate_phase3_fixtures.rs"
-
-[[bin]]
-name = "generate-golden-plans"
-path = "src/bin/generate_golden_plans.rs"
-
 [dev-dependencies]
 tempfile = "3"
 arrow = "54"

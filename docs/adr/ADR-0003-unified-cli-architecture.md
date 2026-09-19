@@ -6,11 +6,11 @@ Accepted (2026-09-17)
 
 ## Context
 
-Users need one tool (`parqonaut`) for scan, transform, and stream operations inherited from three binaries (`paraclete`, `parqknife`, `maw`).
+Users need one tool (`prqnt`) for scan, transform, and stream operations inherited from three binaries (`paraclete`, `parqknife`, `maw`).
 
 ## Decision
 
-1. Single binary: `parqonaut` in `parqonaut-cli`.
+1. Single binary: `prqnt` in `parqonaut-cli`.
 2. Top-level subcommands map to engines:
    - `scan` → `paraclete_core::ScanEngine` (local, no HTTP required in Phase 1)
    - `inspect` / `rewrite` → `parqonaut_transform`

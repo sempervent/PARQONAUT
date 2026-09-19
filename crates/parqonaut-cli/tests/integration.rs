@@ -13,10 +13,26 @@ fn data_fixture(name: &str) -> PathBuf {
 }
 
 #[test]
+fn prqnt_version_and_help() {
+    Command::cargo_bin("prqnt")
+        .unwrap()
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("0.6.0"));
+    Command::cargo_bin("prqnt")
+        .unwrap()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("PARQONAUT"));
+}
+
+#[test]
 fn scan_dummy_parquet_data_fixture() {
     let path = data_fixture("dummy.parquet");
     assert!(path.exists(), "missing committed data fixture: {}", path.display());
-    Command::cargo_bin("parqonaut")
+    Command::cargo_bin("prqnt")
         .unwrap()
         .args(["scan", path.to_str().unwrap()])
         .assert()
@@ -27,7 +43,7 @@ fn scan_dummy_parquet_data_fixture() {
 #[test]
 fn inspect_dummy_parquet_data_fixture() {
     let path = data_fixture("dummy.parquet");
-    Command::cargo_bin("parqonaut")
+    Command::cargo_bin("prqnt")
         .unwrap()
         .args(["inspect", path.to_str().unwrap()])
         .assert()
@@ -45,8 +61,8 @@ fn dummy_parquet_has_expected_row_count() {
 
 #[test]
 fn scan_parquet_fixture() {
-    let path = fixture("phase1/single_parquet/data.parquet");
-    Command::cargo_bin("parqonaut")
+    let path = fixture("scan/single_parquet/data.parquet");
+    Command::cargo_bin("prqnt")
         .unwrap()
         .args(["scan", path.to_str().unwrap()])
         .assert()
@@ -57,10 +73,10 @@ fn scan_parquet_fixture() {
 #[test]
 fn rewrite_compression() {
     let temp = tempdir().unwrap();
-    let input = fixture("phase1/single_parquet/data.parquet");
+    let input = fixture("scan/single_parquet/data.parquet");
     let output = temp.path().join("rewritten.parquet");
 
-    Command::cargo_bin("parqonaut")
+    Command::cargo_bin("prqnt")
         .unwrap()
         .args([
             "rewrite",
@@ -85,7 +101,7 @@ fn convert_csv_to_parquet() {
 
     fs::write(&csv, "x,y\n1,2\n3,4\n").unwrap();
 
-    Command::cargo_bin("parqonaut")
+    Command::cargo_bin("prqnt")
         .unwrap()
         .args([
             "convert",

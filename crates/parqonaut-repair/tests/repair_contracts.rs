@@ -4,7 +4,7 @@ use parqonaut_repair::{canonical_plan_json, generate_plan, EffectivePolicy, PLAN
 fn plan_json_has_schema_version() {
     let json = include_str!("../../../fixtures/reports/minimal_report.json");
     let scan: paraclete_types::ScanReport = serde_json::from_str(json).unwrap();
-    let root = camino::Utf8Path::new("fixtures/phase1/single_parquet");
+    let root = camino::Utf8Path::new("fixtures/scan/single_parquet");
     if !root.exists() {
         return;
     }
@@ -17,7 +17,7 @@ fn plan_json_has_schema_version() {
 
 #[test]
 fn deterministic_plan_ids() {
-    let root = camino::Utf8Path::new("fixtures/phase2/small-files");
+    let root = camino::Utf8Path::new("fixtures/repair/small-files");
     if !root.exists() {
         return;
     }

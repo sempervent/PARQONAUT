@@ -16,12 +16,12 @@ pub struct ScanOrchestrator<'a> {
     pub formats: &'a dyn FormatDetector,
     pub datasets: &'a dyn DatasetInspector,
     pub rules: &'a dyn RuleEngine,
-    /// Reserved for upcoming plugin phases; not invoked by Phase 0 orchestration helpers.
+    /// Reserved for upcoming future plugins; not invoked by orchestration helpers.
     pub plugins: &'a dyn PluginExecutor,
 }
 
 impl<'a> ScanOrchestrator<'a> {
-    /// Phase 0 smoke path: resolve targets and classify formats by extension.
+    /// smoke path: resolve targets and classify formats by extension.
     #[instrument(skip(self), fields(scan_id = %request.scan_id))]
     pub fn classify_formats(&self, request: &ScanRequest) -> Result<Vec<DataFormat>, CoreError> {
         let paths = self.targets.resolve(&request.target)?;

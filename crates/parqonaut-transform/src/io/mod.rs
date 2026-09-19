@@ -25,8 +25,7 @@ pub trait OutputSink: Send + Sync {
 pub fn resolve_inputs(pattern: &str) -> Result<Vec<String>> {
     if pattern.starts_with("s3://") {
         Err(ParqknifeError::InvalidInput(
-            "s3:// inputs are not supported in parqonaut-transform; use parqonaut scan/repair"
-                .into(),
+            "s3:// inputs are not supported in parqonaut-transform; use prqnt scan/repair".into(),
         ))
     } else {
         let paths: Result<Vec<_>> = glob::glob(pattern)

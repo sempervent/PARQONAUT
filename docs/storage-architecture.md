@@ -1,4 +1,4 @@
-# Storage architecture (Phase 5 contract)
+# Storage architecture
 
 Contract version: `STORAGE_CONTRACT_VERSION = 1` in `parqonaut-storage`.
 

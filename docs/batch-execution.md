@@ -18,7 +18,7 @@ policy = "policies/telemetry.toml"
 
 ## Planning
 
-`parqonaut batch plan` scans each dataset, builds embedded `RepairPlan` objects, assigns deterministic output paths under `output_root`, and emits a durable `BatchPlan` JSON artifact.
+`prqnt batch plan` scans each dataset, builds embedded `RepairPlan` objects, assigns deterministic output paths under `output_root`, and emits a durable `BatchPlan` JSON artifact.
 
 Plan identity includes:
 

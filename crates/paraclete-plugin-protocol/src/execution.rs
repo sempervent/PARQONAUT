@@ -4,7 +4,7 @@ use crate::{PluginRequest, PluginResponse};
 pub trait PluginExecutor {
     /// Invokes a plugin for the supplied request.
     ///
-    /// Phase 0 ships no concrete executor; engine crates may provide stubs in tests.
+    /// ships no concrete executor; engine crates may provide stubs in tests.
     fn execute(&self, request: &PluginRequest) -> Result<PluginResponse, PluginExecutorError>;
 }
 

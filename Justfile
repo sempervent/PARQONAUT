@@ -36,28 +36,37 @@ bench:
 docs:
     @echo "See docs/architecture.md and docs/adr/"
 
-ci: fmt-check lint test
+naming-check:
+    scripts/check-active-naming.sh
 
-phase2-fixtures:
-    cargo run -p parqonaut-repair --bin generate-phase2-fixtures -- fixtures/phase2
+ci: fmt-check lint test naming-check
 
-phase3-fixtures:
-    cargo run -p parqonaut-repair --bin generate-phase3-fixtures -- fixtures/phase3
+repair-fixtures:
+    cargo xtask fixtures repair
 
-phase3-demo:
+schema-fixtures:
+    cargo xtask fixtures schema
+
+orchestration-fixtures:
+    cargo xtask fixtures orchestration
+
+golden-plans:
+    cargo xtask golden-plans
+
+schema-demo:
     #!/usr/bin/env bash
     set -euo pipefail
-    just phase3-fixtures
+    just schema-fixtures
     echo "=== doctor ==="
-    cargo run -p parqonaut-cli -- doctor fixtures/phase3/frankenlake-v2 \
-        --policy fixtures/phase3/policy.toml
+    cargo run -p parqonaut-cli --bin prqnt -- doctor fixtures/schema/frankenlake-v2 \
+        --policy fixtures/schema/policy.toml
     echo "=== plan ==="
-    cargo run -p parqonaut-cli -- plan fixtures/phase3/frankenlake-v2 \
-        --policy fixtures/phase3/policy.toml \
+    cargo run -p parqonaut-cli --bin prqnt -- plan fixtures/schema/frankenlake-v2 \
+        --policy fixtures/schema/policy.toml \
         --output target/frankenlake-v2.plan.json
     echo "=== repair (safe only, no authorization) ==="
     rm -rf target/frankenlake-v2-repaired target/frankenlake-v2-repaired-safe
-    cargo run -p parqonaut-cli -- repair fixtures/phase3/frankenlake-v2 \
+    cargo run -p parqonaut-cli --bin prqnt -- repair fixtures/schema/frankenlake-v2 \
         --plan target/frankenlake-v2.plan.json \
         --output target/frankenlake-v2-repaired-safe
     echo "=== repair (authorized schema ops) ==="
@@ -70,33 +79,30 @@ phase3-demo:
             print(op["operation_id"])
     PY
     )
-    repair_args=(repair fixtures/phase3/frankenlake-v2 --plan target/frankenlake-v2.plan.json --output target/frankenlake-v2-repaired)
+    repair_args=(repair fixtures/schema/frankenlake-v2 --plan target/frankenlake-v2.plan.json --output target/frankenlake-v2-repaired)
     for id in $review_ids; do repair_args+=(--authorize "$id"); done
-    cargo run -p parqonaut-cli -- "${repair_args[@]}"
+    cargo run -p parqonaut-cli --bin prqnt -- "${repair_args[@]}"
     echo "=== verify ==="
-    cargo run -p parqonaut-cli -- verify fixtures/phase3/frankenlake-v2 target/frankenlake-v2-repaired \
+    cargo run -p parqonaut-cli --bin prqnt -- verify fixtures/schema/frankenlake-v2 target/frankenlake-v2-repaired \
         --manifest target/frankenlake-v2-repaired/.parqonaut-manifest.json
     echo "=== check (expect exit 4: blocked schema conflict remains) ==="
-    cargo run -p parqonaut-cli -- check target/frankenlake-v2-repaired \
-        --policy fixtures/phase3/ci-policy.toml || test $? -eq 4
+    cargo run -p parqonaut-cli --bin prqnt -- check target/frankenlake-v2-repaired \
+        --policy fixtures/schema/ci-policy.toml || test $? -eq 4
 
-phase4-fixtures:
-    cargo run -p parqonaut-orchestrator --bin generate-phase4-fixtures -- fixtures/phase4/shipwreck
-
-phase4-demo:
+batch-demo:
     #!/usr/bin/env bash
     set -euo pipefail
-    just phase4-fixtures
-    rm -rf target/phase4-shipwreck-out
+    just orchestration-fixtures
+    rm -rf target/batch-shipwreck-out
     echo "=== batch check (SHIPWRECK includes intentionally bad datasets) ==="
-    cargo run -p parqonaut-cli -- batch check --config fixtures/phase4/shipwreck/batch.toml || test $? -eq 1
+    cargo run -p parqonaut-cli --bin prqnt -- batch check --config fixtures/orchestration/shipwreck/batch.toml || test $? -eq 1
     echo "=== batch plan ==="
-    cargo run -p parqonaut-cli -- batch plan --config fixtures/phase4/shipwreck/batch.toml \
+    cargo run -p parqonaut-cli --bin prqnt -- batch plan --config fixtures/orchestration/shipwreck/batch.toml \
         --output target/shipwreck.batch-plan.json
     python3 - <<'PY'
     import json, pathlib
     plan = json.load(open("target/shipwreck.batch-plan.json"))
-    out = pathlib.Path("target/phase4-shipwreck-out").resolve()
+    out = pathlib.Path("target/batch-shipwreck-out").resolve()
     out.mkdir(parents=True, exist_ok=True)
     plan["output_root"] = str(out / "repaired")
     plan["run_root"] = plan["output_root"]
@@ -106,65 +112,65 @@ phase4-demo:
     json.dump(plan, open("target/shipwreck.batch-plan.json", "w"), indent=2)
     PY
     echo "=== batch repair ==="
-    cargo run -p parqonaut-cli -- batch repair --plan target/shipwreck.batch-plan.json --jobs 2 || test $? -eq 2
-    run_dir=$(find target/phase4-shipwreck-out/repaired/.parqonaut/runs -mindepth 1 -maxdepth 1 -type d | head -1)
+    cargo run -p parqonaut-cli --bin prqnt -- batch repair --plan target/shipwreck.batch-plan.json --jobs 2 || test $? -eq 2
+    run_dir=$(find target/batch-shipwreck-out/repaired/.parqonaut/runs -mindepth 1 -maxdepth 1 -type d | head -1)
     echo "=== batch status ==="
-    cargo run -p parqonaut-cli -- batch status --run-dir "$run_dir"
+    cargo run -p parqonaut-cli --bin prqnt -- batch status --run-dir "$run_dir"
     echo "=== batch verify ==="
-    cargo run -p parqonaut-cli -- batch verify --run-dir "$run_dir" || true
+    cargo run -p parqonaut-cli --bin prqnt -- batch verify --run-dir "$run_dir" || true
     echo "=== aggregate report ==="
     test -f "$run_dir/report.json"
     head -40 "$run_dir/report.json"
 
-phase5-up:
-    scripts/phase5/up.sh
+s3-up:
+    scripts/s3-test/up.sh
 
-phase5-down:
-    scripts/phase5/down.sh
+s3-down:
+    scripts/s3-test/down.sh
 
-phase5-fixtures:
+s3-fixtures:
     #!/usr/bin/env bash
     set -euo pipefail
-    source scripts/phase5/env.sh
-    scripts/phase5/fixtures.sh
+    source scripts/s3-test/env.sh
+    scripts/s3-test/fixtures.sh
 
-phase5-test:
+s3-test:
     #!/usr/bin/env bash
     set -euo pipefail
-    source scripts/phase5/env.sh
+    source scripts/s3-test/env.sh
     cargo test -p parqonaut-storage --features s3 fogbank -- --nocapture
 
-phase5-demo:
+s3-demo:
     #!/usr/bin/env bash
     set -euo pipefail
-    just phase5-up
-    source scripts/phase5/env.sh
-    just phase5-fixtures
+    just s3-up
+    source scripts/s3-test/env.sh
+    just s3-fixtures
     echo "=== scan remote healthy dataset ==="
-    cargo run -p parqonaut-cli --features s3 -- scan "s3://${FOGBANK_BUCKET}/datasets/healthy/"
+    cargo run -p parqonaut-cli --bin prqnt --features s3 -- scan "s3://${FOGBANK_BUCKET}/datasets/healthy/"
     echo "=== plan remote repair ==="
-    cargo run -p parqonaut-cli --features s3 -- plan "s3://${FOGBANK_BUCKET}/datasets/healthy/" \
-        --output target/phase5-plan.json
+    cargo run -p parqonaut-cli --bin prqnt --features s3 -- plan "s3://${FOGBANK_BUCKET}/datasets/healthy/" \
+        --output target/s3-demo-plan.json
     echo "=== fogbank integration tests ==="
-    just phase5-test
+    just s3-test
 
-phase5-resume-demo:
-    scripts/phase5/resume-demo.sh
+s3-resume-demo:
+    scripts/s3-test/resume-demo.sh
 
-phase5-batch-demo:
-    scripts/phase5/batch-demo.sh
+mixed-storage-demo:
+    scripts/s3-test/batch-demo.sh
 
-phase4-resume-demo:
+batch-resume-demo:
     #!/usr/bin/env bash
     set -euo pipefail
-    just phase4-fixtures
-    rm -rf target/phase4-resume-out
-    cargo run -p parqonaut-cli -- batch plan --config fixtures/phase4/shipwreck/batch.toml \
+    just orchestration-fixtures
+    rm -rf target/batch-resume-out
+    cargo run -p parqonaut-cli --bin prqnt -- batch plan --config fixtures/orchestration/shipwreck/batch.toml \
         --output target/shipwreck-resume.plan.json
     python3 - <<'PY'
     import json, pathlib
     plan = json.load(open("target/shipwreck-resume.plan.json"))
-    out = pathlib.Path("target/phase4-resume-out").resolve()
+    out = pathlib.Path("target/batch-resume-out").resolve()
     out.mkdir(parents=True, exist_ok=True)
     plan["output_root"] = str(out / "repaired")
     plan["run_root"] = plan["output_root"]
@@ -174,15 +180,15 @@ phase4-resume-demo:
     json.dump(plan, open("target/shipwreck-resume.plan.json", "w"), indent=2)
     PY
     echo "=== start (interrupt after 2 datasets) ==="
-    cargo run -p parqonaut-cli -- batch repair --plan target/shipwreck-resume.plan.json \
+    cargo run -p parqonaut-cli --bin prqnt -- batch repair --plan target/shipwreck-resume.plan.json \
         --jobs 1 --interrupt-after 2 || test $? -eq 130
-    run_dir=$(find target/phase4-resume-out/repaired/.parqonaut/runs -mindepth 1 -maxdepth 1 -type d | head -1)
+    run_dir=$(find target/batch-resume-out/repaired/.parqonaut/runs -mindepth 1 -maxdepth 1 -type d | head -1)
     echo "=== status after interrupt ==="
-    cargo run -p parqonaut-cli -- batch status --run-dir "$run_dir"
+    cargo run -p parqonaut-cli --bin prqnt -- batch status --run-dir "$run_dir"
     echo "=== resume ==="
-    cargo run -p parqonaut-cli -- batch resume --run-dir "$run_dir" --jobs 1 || test $? -eq 2
+    cargo run -p parqonaut-cli --bin prqnt -- batch resume --run-dir "$run_dir" --jobs 1 || test $? -eq 2
     echo "=== verify ==="
-    cargo run -p parqonaut-cli -- batch verify --run-dir "$run_dir" || true
+    cargo run -p parqonaut-cli --bin prqnt -- batch verify --run-dir "$run_dir" || true
 
 demo:
     #!/usr/bin/env bash
@@ -190,8 +196,8 @@ demo:
     tmp=$(mktemp -d)
     echo "a,b" > "$tmp/input.csv"
     echo "1,2" >> "$tmp/input.csv"
-    cargo run -p parqonaut-cli -- convert "$tmp/input.csv" -o "$tmp/streamed.parquet" --out-format parquet
-    cargo run -p parqonaut-cli -- scan "$tmp/streamed.parquet"
-    cargo run -p parqonaut-cli -- rewrite "$tmp/streamed.parquet" "$tmp/rewritten.parquet" --compression zstd
-    cargo run -p parqonaut-cli -- scan "$tmp/rewritten.parquet" --json
+    cargo run -p parqonaut-cli --bin prqnt -- convert "$tmp/input.csv" -o "$tmp/streamed.parquet" --out-format parquet
+    cargo run -p parqonaut-cli --bin prqnt -- scan "$tmp/streamed.parquet"
+    cargo run -p parqonaut-cli --bin prqnt -- rewrite "$tmp/streamed.parquet" "$tmp/rewritten.parquet" --compression zstd
+    cargo run -p parqonaut-cli --bin prqnt -- scan "$tmp/rewritten.parquet" --json
     echo "Demo complete in $tmp"

@@ -7,32 +7,30 @@ fn workspace_root() -> camino::Utf8PathBuf {
     camino::Utf8PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-fn ensure_phase3() {
-    let root = workspace_root().join("fixtures/phase3/frankenlake-v2");
+fn ensure_schema() {
+    let root = workspace_root().join("fixtures/schema/frankenlake-v2");
     if root.exists() {
         return;
     }
     std::process::Command::new("cargo")
-        .args(["run", "-p", "parqonaut-repair", "--bin", "generate-phase3-fixtures", "--"])
-        .arg(workspace_root().join("fixtures/phase3"))
+        .args(["xtask", "fixtures", "schema"])
         .current_dir(workspace_root())
         .env("CARGO_BUILD_JOBS", "1")
         .status()
         .expect("generate fixtures");
 }
 
-fn ensure_phase2() {
-    let root = workspace_root().join("fixtures/phase2/small-files");
+fn ensure_repair() {
+    let root = workspace_root().join("fixtures/repair/small-files");
     if root.exists() {
         return;
     }
     std::process::Command::new("cargo")
-        .args(["run", "-p", "parqonaut-repair", "--bin", "generate-phase2-fixtures", "--"])
-        .arg(workspace_root().join("fixtures/phase2"))
+        .args(["xtask", "fixtures", "repair"])
         .current_dir(workspace_root())
         .env("CARGO_BUILD_JOBS", "1")
         .status()
-        .expect("generate phase2 fixtures");
+        .expect("generate repair fixtures");
 }
 
 fn assert_matches_golden(name: &str, plan: &RepairPlan) {
@@ -48,10 +46,10 @@ fn assert_matches_golden(name: &str, plan: &RepairPlan) {
 
 #[test]
 fn frankenlake_v2_mixed_plan_contract() {
-    ensure_phase3();
-    let root = workspace_root().join("fixtures/phase3/frankenlake-v2");
+    ensure_schema();
+    let root = workspace_root().join("fixtures/schema/frankenlake-v2");
     let policy_toml =
-        std::fs::read_to_string(workspace_root().join("fixtures/phase3/policy.toml")).unwrap();
+        std::fs::read_to_string(workspace_root().join("fixtures/schema/policy.toml")).unwrap();
     let policy = EffectivePolicy::from_toml(Some(&policy_toml)).unwrap();
     let scan = scan_directory(&root).unwrap();
     let plan = generate_plan(&root, &scan, &policy, None).unwrap();
@@ -72,8 +70,8 @@ fn frankenlake_v2_mixed_plan_contract() {
 
 #[test]
 fn safe_only_plan_contract() {
-    ensure_phase2();
-    let root = workspace_root().join("fixtures/phase2/small-files");
+    ensure_repair();
+    let root = workspace_root().join("fixtures/repair/small-files");
     let policy = EffectivePolicy::default();
     let scan = scan_directory(&root).unwrap();
     let plan = generate_plan(&root, &scan, &policy, None).unwrap();
@@ -84,10 +82,10 @@ fn safe_only_plan_contract() {
 
 #[test]
 fn review_required_rename_plan_contract() {
-    ensure_phase3();
-    let root = workspace_root().join("fixtures/phase3/rename-map");
+    ensure_schema();
+    let root = workspace_root().join("fixtures/schema/rename-map");
     let policy_toml =
-        std::fs::read_to_string(workspace_root().join("fixtures/phase3/rename-policy.toml"))
+        std::fs::read_to_string(workspace_root().join("fixtures/schema/rename-policy.toml"))
             .unwrap();
     let policy = EffectivePolicy::from_toml(Some(&policy_toml)).unwrap();
     let scan = scan_directory(&root).unwrap();
@@ -103,8 +101,8 @@ fn review_required_rename_plan_contract() {
 
 #[test]
 fn unresolvable_schema_conflict_plan() {
-    ensure_phase3();
-    let root = workspace_root().join("fixtures/phase3/explicit-target");
+    ensure_schema();
+    let root = workspace_root().join("fixtures/schema/explicit-target");
     let policy = EffectivePolicy::default();
     let scan = scan_directory(&root).unwrap();
     let plan = generate_plan(&root, &scan, &policy, None).unwrap();
@@ -115,10 +113,10 @@ fn unresolvable_schema_conflict_plan() {
 
 #[test]
 fn stale_fingerprint_rejected() {
-    ensure_phase3();
-    let root = workspace_root().join("fixtures/phase3/frankenlake-v2");
+    ensure_schema();
+    let root = workspace_root().join("fixtures/schema/frankenlake-v2");
     let policy_toml =
-        std::fs::read_to_string(workspace_root().join("fixtures/phase3/policy.toml")).unwrap();
+        std::fs::read_to_string(workspace_root().join("fixtures/schema/policy.toml")).unwrap();
     let policy = EffectivePolicy::from_toml(Some(&policy_toml)).unwrap();
     let scan = scan_directory(&root).unwrap();
     let mut plan = generate_plan(&root, &scan, &policy, None).unwrap();
@@ -137,10 +135,10 @@ fn stale_fingerprint_rejected() {
 
 #[test]
 fn plan_determinism() {
-    ensure_phase3();
-    let root = workspace_root().join("fixtures/phase3/frankenlake-v2");
+    ensure_schema();
+    let root = workspace_root().join("fixtures/schema/frankenlake-v2");
     let policy_toml =
-        std::fs::read_to_string(workspace_root().join("fixtures/phase3/policy.toml")).unwrap();
+        std::fs::read_to_string(workspace_root().join("fixtures/schema/policy.toml")).unwrap();
     let policy = EffectivePolicy::from_toml(Some(&policy_toml)).unwrap();
     let scan = scan_directory(&root).unwrap();
     let p1 = generate_plan(&root, &scan, &policy, None).unwrap();

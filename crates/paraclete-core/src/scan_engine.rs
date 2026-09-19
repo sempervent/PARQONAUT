@@ -14,19 +14,19 @@ use crate::dataset_infer::infer_parquet_datasets;
 use crate::failure_map::failure_kind;
 use crate::local_resolve::resolve_local_scan_plan;
 use crate::parquet_inspect::inspect_parquet_file;
-use crate::phase1_rules::evaluate_phase1_rules;
-use crate::phase2_findings::{
+use crate::scan_findings::{
     multiple_datasets_finding, parquet_read_failed_finding, scan_truncated_finding,
     unpartitioned_collection_finding,
 };
-use crate::phase3_findings::{
+use crate::scan_rules::evaluate_scan_rules;
+use crate::schema_findings::{
     grouping_ambiguous_from_notes, inspection_partial_finding,
     inspection_skipped_aggregate_finding, text_probe_bounded_finding,
 };
 use crate::shallow_inspect::{inspect_csv_shallow, inspect_json_like_shallow};
 use crate::CoreError;
 
-/// Single entrypoint for the Phase 3 local scan pipeline.
+/// Single entrypoint for the local scan pipeline.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ScanEngine;
 
@@ -192,8 +192,7 @@ impl ScanEngine {
         }
 
         let inspection_list: Vec<_> = parquet_inspections.values().cloned().collect();
-        let mut findings =
-            evaluate_phase1_rules(&plan, &assets_sorted, &inspection_list, &datasets);
+        let mut findings = evaluate_scan_rules(&plan, &assets_sorted, &inspection_list, &datasets);
         findings.extend(extra_findings);
         findings.sort_by(|a, b| a.code.as_str().cmp(b.code.as_str()));
 
@@ -263,7 +262,7 @@ impl ScanEngine {
     }
 }
 
-/// Back-compat alias for call sites that still refer to the Phase 1 engine name.
+/// Back-compat alias for legacy call sites.
 pub type LocalScanEngine = ScanEngine;
 
 fn dominant_format_in_dataset(assets: &[ResolvedAsset], dataset: &Dataset) -> DataFormat {

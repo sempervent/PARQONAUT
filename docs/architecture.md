@@ -32,13 +32,13 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 | `paraclete-plugin-protocol` | Plugin wire format |
 | `parqonaut-transform` | Parquet rewrite/inspect (Arrow 54) |
 | `parqonaut-stream` | Streaming CSV/Parquet (arrow2) |
-| `parqonaut-cli` | Unified `parqonaut` binary |
+| `parqonaut-cli` | Unified `prqnt` binary |
 
 Paraclete crate names are retained intentionally for provenance (see `docs/provenance.md`).
 
 ## Dependency boundaries
 
-Three Arrow/Parquet stacks coexist in Phase 1:
+Three Arrow/Parquet stacks coexist in Stream demo:
 
 - **Scan:** `parquet` 53 (Paraclete)
 - **Transform:** `arrow`/`parquet` 54 (parqknife lineage)
@@ -46,13 +46,15 @@ Three Arrow/Parquet stacks coexist in Phase 1:
 
 Convergence is deferred; see ADR-0002.
 
-## Phase 1 CLI
+## Product CLI (`prqnt`)
 
-| Command | Engine |
+| Command | Crate |
 |---------|--------|
-| `parqonaut scan <path>` | `paraclete-core` |
-| `parqonaut inspect <file>` | `parqonaut-transform` |
-| `parqonaut rewrite <in> <out>` | `parqonaut-transform` |
-| `parqonaut convert <inputs...> -o <out>` | `parqonaut-stream` |
+| `prqnt scan <path>` | `paraclete-core` |
+| `prqnt inspect <file>` | `parqonaut-transform` |
+| `prqnt rewrite <in> <out>` | `parqonaut-transform` |
+| `prqnt convert <inputs...> -o <out>` | `parqonaut-stream` |
+| `prqnt doctor`, `plan`, `repair`, `verify`, `check` | `parqonaut-repair` |
+| `prqnt batch …` | `parqonaut-orchestrator` |
 
-HTTP service (`paraclete-service`) builds with the workspace but is not yet exposed as `parqonaut server` in Phase 1.
+HTTP service (`paraclete-service`) remains library-only; a future `prqnt serve` subcommand is deferred.

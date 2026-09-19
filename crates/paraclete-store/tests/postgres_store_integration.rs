@@ -21,7 +21,7 @@ async fn postgres_persist_and_integrity() {
     let store = PostgresScanStore::connect(&url).await.expect("connect pg");
 
     let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/phase1/single_parquet/data.parquet");
+        .join("../../fixtures/scan/single_parquet/data.parquet");
     let path = Utf8PathBuf::from_path_buf(fixture).unwrap();
     let target = ScanTarget::LocalFile { path };
     let scan_req = ScanRequest::new(target, paraclete_types::ScanProfile::Standard);
@@ -119,7 +119,7 @@ async fn sqlite_and_postgres_summary_parity_when_pg_configured() {
     let sqlite = SqliteScanStore::connect(&sqlite_url).await.unwrap();
 
     let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/phase1/single_parquet/data.parquet");
+        .join("../../fixtures/scan/single_parquet/data.parquet");
     let path = Utf8PathBuf::from_path_buf(fixture).unwrap();
     let target = ScanTarget::LocalFile { path };
     let scan_req = ScanRequest::new(target, paraclete_types::ScanProfile::Standard);

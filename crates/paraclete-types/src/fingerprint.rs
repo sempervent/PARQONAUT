@@ -1,4 +1,4 @@
-//! Deterministic canonical JSON for finding fingerprints (Phase 1+).
+//! Deterministic canonical JSON for finding fingerprints.
 
 use std::collections::BTreeMap;
 

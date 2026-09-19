@@ -1,6 +1,6 @@
-# CI policy and `parqonaut check`
+# CI policy and `prqnt check`
 
-`parqonaut check` scans and plans without mutating data, then evaluates CI gates.
+`prqnt check` scans and plans without mutating data, then evaluates CI gates.
 
 ## Example policy
 
@@ -23,6 +23,6 @@ fail_on_unresolvable_schema = true
 | 5 | Operational failure |
 
 ```bash
-parqonaut check dataset/ --policy ci-policy.toml
-parqonaut check dataset/ --policy ci-policy.toml --json
+prqnt check dataset/ --policy ci-policy.toml
+prqnt check dataset/ --policy ci-policy.toml --json
 ```

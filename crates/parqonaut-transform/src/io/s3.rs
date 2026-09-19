@@ -1,4 +1,4 @@
-//! Legacy S3 I/O stub — quarantined in Phase 5.
+//! Legacy S3 I/O stub — superseded by `parqonaut-storage`.
 //!
 //! Object storage is implemented in `parqonaut-storage`. Transform engines operate on
 //! local seekable files; remote datasets are staged via the repair/orchestrator path.
@@ -7,7 +7,7 @@ use crate::error::{ParqknifeError, Result};
 use async_trait::async_trait;
 
 const REMOVED: &str =
-    "S3 I/O was removed from parqonaut-transform; use parqonaut-storage via parqonaut repair/scan";
+    "S3 I/O was removed from parqonaut-transform; use parqonaut-storage via prqnt repair/scan";
 
 pub struct S3InputSource;
 

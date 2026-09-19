@@ -51,7 +51,7 @@ impl FilePolicy {
     }
 }
 
-/// CI gate policy for `parqonaut check`.
+/// CI gate policy for `prqnt check`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CiPolicy {
     pub fail_on_safe_findings: bool,

@@ -261,7 +261,7 @@ pub struct JobListQuery {
     pub offset: u32,
 }
 
-// --- Token administration (Phase 11; admin role only) ---
+// --- Token administration (future HTTP admin; admin role only) ---
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct AuthTokenCreateRequest {

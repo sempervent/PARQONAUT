@@ -1,4 +1,4 @@
-//! Parquet footer inspection (metadata only; no row reads in Phase 1).
+//! Parquet footer inspection (metadata only; no row reads ).
 
 use std::collections::BTreeSet;
 use std::fs::File;

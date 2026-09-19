@@ -6,10 +6,6 @@ license.workspace = true
 authors.workspace = true
 description = "Application service layer and HTTP API for Paraclete."
 
-[[bin]]
-name = "paraclete-http"
-path = "src/bin/paraclete-http.rs"
-
 [dependencies]
 paraclete-types.workspace = true
 paraclete-core = { path = "../paraclete-core" }

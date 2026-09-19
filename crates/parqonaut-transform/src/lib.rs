@@ -1,7 +1,7 @@
 //! Parquet transformation engine (parqknife lineage).
 //!
-//! Phase 1 retains inherited scaffolding (S3 stubs, spec wiring, partition writer).
-//! `#![allow(dead_code, ...)]` covers unwired modules until Phase 2.
+//! Transform scaffolding (S3 I/O, spec wiring, partition writer).
+//! `#![allow(dead_code, ...)]` covers unwired modules until wired through `prqnt`.
 
 #![allow(dead_code, unused_imports, unused_variables)]
 

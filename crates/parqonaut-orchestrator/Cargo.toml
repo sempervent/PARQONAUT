@@ -28,10 +28,6 @@ parquet = { version = "54", features = ["arrow"] }
 default = ["s3"]
 s3 = ["parqonaut-storage/s3", "parqonaut-repair/s3"]
 
-[[bin]]
-name = "generate-phase4-fixtures"
-path = "src/bin/generate_phase4_fixtures.rs"
-
 [dev-dependencies]
 tempfile = "3"
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
