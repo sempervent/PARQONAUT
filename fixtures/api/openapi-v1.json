@@ -749,7 +749,7 @@
             "$ref": "#/components/schemas/FindingCode"
           },
           "detail": {
-            "description": "Long-form human-readable text (product term: \u201cdetail\u201d).",
+            "description": "Long-form human-readable text (product term: “detail”).",
             "type": "string"
           },
           "evidence": {
@@ -818,7 +818,7 @@
         "type": "string"
       },
       "FindingCode": {
-        "description": "Machine-facing finding code with enforced namespace policy.\n\nAllowed forms:\n- `system.<domain>.<name>[.<sub>...]` \u2014 at least three dot segments after `system`.\n- `plugin.<plugin_id>.<name>[.<sub>...]` \u2014 `plugin_id` must be `[a-z0-9_-]+`.\n- `user.<name>[.<sub>...]` \u2014 at least two segments total.",
+        "description": "Machine-facing finding code with enforced namespace policy.\n\nAllowed forms:\n- `system.<domain>.<name>[.<sub>...]` — at least three dot segments after `system`.\n- `plugin.<plugin_id>.<name>[.<sub>...]` — `plugin_id` must be `[a-z0-9_-]+`.\n- `user.<name>[.<sub>...]` — at least two segments total.",
         "type": "string"
       },
       "FindingDelta": {
@@ -1031,7 +1031,7 @@
       "LocationPolicyBody": {
         "properties": {
           "location": {
-            "description": "Dataset location (`/path`, `file://\u2026`, `s3://bucket/prefix`).",
+            "description": "Dataset location (`/path`, `file://…`, `s3://bucket/prefix`).",
             "type": "string"
           },
           "policy_toml": {
@@ -2256,7 +2256,7 @@
         "type": "object"
       },
       "TargetIdentity": {
-        "description": "Normalized identity for listing history of the \u201csame\u201d target across runs (local paths only today).",
+        "description": "Normalized identity for listing history of the “same” target across runs (local paths only today).",
         "properties": {
           "normalized_key": {
             "description": "Canonical UTF-8 path or logical key used for equality (no symlinks resolved here).",
@@ -2351,7 +2351,7 @@
       "name": "MIT"
     },
     "title": "PARQONAUT API",
-    "version": "0.7.0"
+    "version": "0.7.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -4152,7 +4152,7 @@
         "operationId": "list_target_runs",
         "parameters": [
           {
-            "description": "Target discriminator (`local_file`, `local_directory`, \u2026)",
+            "description": "Target discriminator (`local_file`, `local_directory`, …)",
             "in": "path",
             "name": "target_kind",
             "required": true,
@@ -4338,7 +4338,7 @@
         "operationId": "get_metrics",
         "responses": {
           "200": {
-            "description": "Prometheus text exposition (`text/plain`; unauthenticated \u2014 protect at the edge in production)"
+            "description": "Prometheus text exposition (`text/plain`; unauthenticated — protect at the edge in production)"
           }
         },
         "tags": [

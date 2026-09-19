@@ -2,6 +2,26 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.7.1] - 2026-09-19
+
+Documentation and delivery infrastructure release. No intended runtime behavior changes.
+
+### Added
+
+- GitHub Pages documentation site (mdBook)
+- Documentation CI workflow and `just docs-build` / `just docs-check`
+- Generated CLI reference (`cargo xtask docs cli`)
+- OpenAPI and Rustdoc publishing as part of the site build
+- Internal Markdown link checker
+
+### Changed
+
+- Reorganized public documentation navigation (`docs/SUMMARY.md`)
+- README links to the canonical documentation site
+- Release notes are committed before tagging (v0.7.1 discipline)
+
+[0.7.1]: https://github.com/sempervent/PARQONAUT/releases/tag/v0.7.1
+
 ## [0.7.0] - 2026-09-19
 
 Unified application server: CLI and HTTP share `parqonaut-app`; durable jobs for scan, repair, and batch orchestration.

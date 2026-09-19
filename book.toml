@@ -1,0 +1,14 @@
+[book]
+title = "PARQONAUT"
+authors = ["Joshua Grant"]
+language = "en"
+src = "docs"
+
+[output.html]
+site-url = "/PARQONAUT/"
+git-repository-url = "https://github.com/sempervent/PARQONAUT"
+edit-url-template = "https://github.com/sempervent/PARQONAUT/edit/main/docs/{path}"
+no-section-label = false
+
+[output.html.search]
+enable = true

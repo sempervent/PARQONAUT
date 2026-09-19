@@ -1,6 +1,6 @@
 # PARQONAUT HTTP API (`/api/v1`)
 
-Product version **0.7.0** ships the first supported API path prefix **`/api/v1`** (distinct from product semver).
+PARQONAUT ships the supported API path prefix **`/api/v1`** (distinct from product semver in OpenAPI `info.version`).
 
 ## Endpoint groups
 
@@ -15,4 +15,4 @@ Product version **0.7.0** ships the first supported API path prefix **`/api/v1`*
 
 Bearer token required on protected routes. OpenAPI title: **PARQONAUT API**; `info.version` tracks the workspace crate version.
 
-Direct CLI utilities (`inspect`, `rewrite`, `convert`) intentionally have no HTTP twins in v0.7.0.
+Direct CLI utilities (`inspect`, `rewrite`, `convert`) intentionally have no HTTP twins in v0.7.x.

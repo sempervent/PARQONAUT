@@ -33,8 +33,14 @@ build:
 bench:
     cargo bench --workspace || true
 
+docs-build:
+    bash scripts/docs/build.sh
+
+docs-check:
+    bash scripts/docs/check.sh
+
 docs:
-    @echo "See docs/architecture.md and docs/adr/"
+    @echo "Run: just docs-build (site) or just docs-check (CI gate)"
 
 naming-check:
     scripts/check-active-naming.sh

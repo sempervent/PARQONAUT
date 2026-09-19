@@ -41,5 +41,5 @@ Demos: `just batch-demo`, `just batch-resume-demo`.
 
 - [Batch execution](batch-execution.md)
 - [Resume and recovery](resume-recovery.md)
-- [Concurrency audit](phase-4-concurrency-audit.md)
-- [Acceptance matrix](phase-4-acceptance.md)
+- [Concurrency audit (history)](history/v0.4.0/phase-4-concurrency-audit.md)
+- [Acceptance matrix (history)](history/v0.4.0/phase-4-acceptance.md)
