@@ -27,11 +27,6 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 tempfile = "3"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
 
-[[bin]]
-name = "generate-phase5-fogbank-fixtures"
-path = "src/bin/generate_phase5_fogbank_fixtures.rs"
-required-features = ["s3", "fogbank-fixtures"]
-
 [features]
 default = []
 s3 = ["dep:aws-config", "dep:aws-sdk-s3"]

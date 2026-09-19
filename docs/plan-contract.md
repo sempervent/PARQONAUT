@@ -22,10 +22,10 @@ Volatile fields (`generated_at`, finding UUIDs) are stripped from canonical seri
 ## Commands
 
 ```bash
-parqonaut plan dataset/ --policy policy.toml --output plan.json
-parqonaut plan dataset/ --canonical
-parqonaut plan diff plan-a.json plan-b.json
-parqonaut repair dataset/ --plan plan.json --authorize R004 --output out/
+prqnt plan dataset/ --policy policy.toml --output plan.json
+prqnt plan dataset/ --canonical
+prqnt plan diff plan-a.json plan-b.json
+prqnt repair dataset/ --plan plan.json --authorize R004 --output out/
 ```
 
 Golden fixtures under `fixtures/plans/` guard against accidental contract changes.

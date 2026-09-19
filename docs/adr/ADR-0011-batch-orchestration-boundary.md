@@ -10,7 +10,7 @@ Phase 3 repairs one dataset with durable plans and manifests. Operators need the
 
 ## Decision
 
-Introduce `parqonaut-orchestrator` as the multi-dataset boundary. It owns batch configuration, planning, scheduling, journaling, and resume. It calls `parqonaut-repair` **in-process** only. The CLI exposes `parqonaut batch …` subcommands; no second parser or subprocess orchestration layer.
+Introduce `parqonaut-orchestrator` as the multi-dataset boundary. It owns batch configuration, planning, scheduling, journaling, and resume. It calls `parqonaut-repair` **in-process** only. The CLI exposes `prqnt batch …` subcommands; no second parser or subprocess orchestration layer.
 
 ## Alternatives considered
 

@@ -2,6 +2,32 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.6.0] - 2026-09-19
+
+Interface normalization: one public executable (`prqnt`), capability-oriented repository layout, and removal of legacy product entrypoints.
+
+### BREAKING
+
+- The `parqonaut` executable is renamed to **`prqnt`**. Update scripts, CI, and documentation accordingly. There is no compatibility alias.
+
+### REMOVED
+
+- `paraclete-http` legacy HTTP binary (service crate remains library-only; `prqnt serve` deferred).
+- Product-scoped fixture generator binaries (`generate-phase2-fixtures`, `generate-phase3-fixtures`, `generate-phase4-fixtures`, `generate-phase5-fogbank-fixtures`, `generate-golden-plans`).
+
+### CHANGED
+
+- Developer automation consolidated under **`cargo xtask`** (fixtures, golden plans).
+- Active tests, fixtures, scripts, Just targets, and CI jobs use capability names (`scan`, `repair`, `schema`, `orchestration`, `object-storage`, `s3-integration`) instead of numbered implementation phases.
+- `paraclete-core` scan modules renamed: `scan_rules`, `scan_findings`, `schema_findings`; `evaluate_scan_rules` replaces `evaluate_phase1_rules`.
+- CLI help describes PARQONAUT capabilities without predecessor engine branding.
+
+### ADDED
+
+- `scripts/check-active-naming.sh` and `just naming-check` (also wired into `just ci` and GitHub Actions).
+
+[0.6.0]: https://github.com/sempervent/parqonaut/releases/tag/v0.6.0
+
 ## [0.4.1] - 2026-09-18
 
 Release metadata correction only — no functional changes from v0.4.0.
@@ -21,7 +47,7 @@ Multi-dataset batch orchestration with bounded concurrency, durable journal, res
 ### Added
 
 - `parqonaut-orchestrator` crate — batch plan contracts, scheduler, SQLite run journal, locking, resume
-- `parqonaut batch check|plan|repair|status|resume|verify` CLI commands with JSON output
+- `prqnt batch check|plan|repair|status|resume|verify` CLI commands with JSON output
 - SHIPWRECK Phase 4 fixture fleet and integration tests
 - Plan-bound authorization, output path mapping, and overlap detection for batch runs
 - Cooperative SIGINT cancellation and idempotent resume semantics
@@ -38,7 +64,7 @@ Policy-governed schema reconciliation and explicit authorization for review-requ
 
 - Deterministic schema compatibility model and lossless schema widening
 - Explicit `--authorize` for ReviewRequired repair operations
-- `parqonaut doctor --policy`, `parqonaut check`, `parqonaut plan diff`
+- `prqnt doctor --policy`, `prqnt check`, `prqnt plan diff`
 - Durable repair plan contract v1, execution manifests, staged publication
 - FRANKENLAKE v2 laboratory fixtures and Phase 3 demo
 - ADRs 0007–0010 and Phase 3 documentation
@@ -54,7 +80,7 @@ Evidence-driven diagnose, plan, repair, and verify for single datasets.
 - `parqonaut-repair` crate — scan → diagnose → plan → repair → verify pipeline
 - Dataset fingerprints and stale-plan rejection
 - Repair safety classification (Safe, ReviewRequired, Blocked)
-- `parqonaut doctor`, `parqonaut plan`, `parqonaut repair`, `parqonaut verify`
+- `prqnt doctor`, `prqnt plan`, `prqnt repair`, `prqnt verify`
 - FRANKENLAKE Phase 2 fixtures and golden repair plans
 - ADRs 0004–0006 and Phase 2 documentation
 
@@ -69,7 +95,7 @@ Initial unified release consolidating Paraclete, parqknife, and streaming-parque
 - Cargo workspace with Paraclete-derived scan chassis (`paraclete-*` crates)
 - `parqonaut-transform` — parqknife-derived inspect/rewrite/filter pipeline (Apache Arrow 54)
 - `parqonaut-stream` — maw-derived streaming CSV/Parquet conversion (arrow2)
-- Unified `parqonaut` CLI with `scan`, `inspect`, `rewrite`, and `convert` commands
+- Unified `prqnt` CLI with `scan`, `inspect`, `rewrite`, and `convert` commands
 - End-to-end demo: CSV → Parquet → scan → rewrite → rescan (`just demo`)
 - Integration tests covering all three engine families
 - Fixtures, Python plugin contracts, and migration documentation

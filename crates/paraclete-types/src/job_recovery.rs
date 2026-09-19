@@ -1,4 +1,4 @@
-//! Bounded retry and lease timing for async scan jobs (Phase 8).
+//! Bounded retry and lease timing for async scan jobs.
 
 /// Default policy for in-process worker: lease renewal, heartbeat cadence, and max execution attempts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

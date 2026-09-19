@@ -5,13 +5,13 @@
 After interruption (SIGINT, crash) or partial failure, use:
 
 ```bash
-parqonaut batch resume --run-dir {output_root}/.parqonaut/runs/{run-id}
+prqnt batch resume --run-dir {output_root}/.parqonaut/runs/{run-id}
 ```
 
 Status from a **new process** reads the same journal:
 
 ```bash
-parqonaut batch status --run-dir …
+prqnt batch status --run-dir …
 ```
 
 ## Resume steps

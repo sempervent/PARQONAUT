@@ -1,4 +1,4 @@
-//! OpenAPI document structure and schema presence (Phase 12).
+//! OpenAPI document structure and schema presence (OpenAPI).
 
 use paraclete_service::openapi_spec;
 use paraclete_service::{ErrorBody, ErrorCode, ErrorEnvelope};

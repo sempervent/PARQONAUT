@@ -1,6 +1,6 @@
 //! Streaming CSV/Parquet conversion engine (maw lineage).
 //!
-//! Phase 1: inherited maw modules retain partial wiring; see `docs/migration-analysis.md`.
+//! Streaming conversion modules; see `docs/migration-analysis.md` for lineage.
 
 pub mod cli;
 pub mod coercion;

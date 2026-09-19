@@ -2,7 +2,7 @@
 
 //! FOGBANK laboratory integration tests (S3-compatible backend, RustFS in CI).
 //!
-//! Run after `just phase5-up && just phase5-fixtures`.
+//! Run after `just s3-up && just s3-fixtures`.
 
 mod common;
 
@@ -22,7 +22,7 @@ fn dataset_prefix() -> String {
 
 fn fogbank_manifest(name: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/phase5/manifests")
+        .join("../../fixtures/object-storage/manifests")
         .join(name)
 }
 
@@ -80,7 +80,7 @@ async fn fogbank_large_parquet_supports_footer_range_read() {
             panic!("FOGBANK large-parquet head failed in integration CI: {e}");
         }
         Err(e) => {
-            eprintln!("skipping FOGBANK large-parquet test: {e} (run just phase5-fixtures)");
+            eprintln!("skipping FOGBANK large-parquet test: {e} (run just s3-fixtures)");
             return;
         }
     };
@@ -124,7 +124,7 @@ async fn fogbank_stale_baseline_matches_manifest_when_present() {
             panic!("integration CI requires manifest at {}", manifest_path.display());
         }
         eprintln!(
-            "skipping manifest comparison: {} not found (run phase5-fixtures)",
+            "skipping manifest comparison: {} not found (run s3-fixtures)",
             manifest_path.display()
         );
         return;

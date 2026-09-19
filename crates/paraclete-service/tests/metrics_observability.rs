@@ -122,7 +122,7 @@ async fn authorization_denied_increments_when_reader_posts_scan() {
         "paraclete_authorization_denied_total",
     );
     let body = json!({
-        "target": { "type": "local_file", "path": fixture("phase1/single_parquet/data.parquet").as_str() },
+        "target": { "type": "local_file", "path": fixture("scan/single_parquet/data.parquet").as_str() },
         "profile": "standard",
         "options": { "mode": "full", "max_files": 100000, "format_hints": [] }
     });
@@ -167,7 +167,7 @@ async fn async_job_success_exposes_job_counters() {
     let app = build_router(ParacleteService::new(store));
 
     let body = json!({
-        "target": { "type": "local_file", "path": fixture("phase1/single_parquet/data.parquet").as_str() },
+        "target": { "type": "local_file", "path": fixture("scan/single_parquet/data.parquet").as_str() },
         "profile": "standard",
         "options": { "mode": "full", "max_files": 100000, "format_hints": [] }
     });
@@ -203,7 +203,7 @@ async fn worker_recovery_increments_jobs_requeued_total() {
     let store = SqliteScanStore::connect(&url).await.unwrap();
     store.insert_auth_token("integration", TEST_BEARER_SECRET, AuthRole::Operator).await.unwrap();
 
-    let path = fixture("phase1/single_parquet/data.parquet");
+    let path = fixture("scan/single_parquet/data.parquet");
     let jid = JobId::new();
     let identity = TargetIdentity {
         target_kind: "local_file".into(),

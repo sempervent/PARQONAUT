@@ -74,7 +74,7 @@ async fn scan_persist_summary_report_assets_findings_diff() {
     let app = build_router(ParacleteService::new(store));
 
     let body = json!({
-        "target": { "type": "local_file", "path": fixture("phase1/single_parquet/data.parquet").as_str() },
+        "target": { "type": "local_file", "path": fixture("scan/single_parquet/data.parquet").as_str() },
         "profile": "standard",
         "options": { "mode": "full", "max_files": 100000, "format_hints": [] }
     });
@@ -148,7 +148,7 @@ async fn scan_persist_summary_report_assets_findings_diff() {
 
     // Second run for diff
     let body2 = json!({
-        "target": { "type": "local_file", "path": fixture("phase1/tiny_parquet/micro.parquet").as_str() },
+        "target": { "type": "local_file", "path": fixture("scan/tiny_parquet/micro.parquet").as_str() },
         "profile": "standard",
         "options": { "mode": "full", "max_files": 100000, "format_hints": [] }
     });
@@ -280,7 +280,7 @@ async fn unknown_target_kind_404() {
 async fn list_runs_for_target() {
     let (_dir, store) = connect_store_with_token(AuthRole::Operator).await;
     let app = build_router(ParacleteService::new(store));
-    let path = fixture("phase1/single_parquet/data.parquet");
+    let path = fixture("scan/single_parquet/data.parquet");
     let body = json!({
         "target": { "type": "local_file", "path": path.as_str() },
         "profile": "standard",
@@ -320,7 +320,7 @@ async fn async_scan_job_poll_then_fetch_run() {
     let app = build_router(ParacleteService::new(store));
 
     let body = json!({
-        "target": { "type": "local_file", "path": fixture("phase1/single_parquet/data.parquet").as_str() },
+        "target": { "type": "local_file", "path": fixture("scan/single_parquet/data.parquet").as_str() },
         "profile": "standard",
         "options": { "mode": "full", "max_files": 100000, "format_hints": [] }
     });
@@ -459,7 +459,7 @@ async fn list_jobs_returns_total() {
     let app = build_router(ParacleteService::new(store));
 
     let body = json!({
-        "target": { "type": "local_file", "path": fixture("phase1/single_parquet/data.parquet").as_str() },
+        "target": { "type": "local_file", "path": fixture("scan/single_parquet/data.parquet").as_str() },
         "profile": "standard",
         "options": { "mode": "full", "max_files": 100000, "format_hints": [] }
     });
@@ -527,7 +527,7 @@ async fn reader_cannot_post_scan_returns_403() {
     store.insert_auth_token("reader", TEST_BEARER_SECRET, AuthRole::Reader).await.unwrap();
     let app = build_router(ParacleteService::new(store));
     let body = json!({
-        "target": { "type": "local_file", "path": fixture("phase1/single_parquet/data.parquet").as_str() },
+        "target": { "type": "local_file", "path": fixture("scan/single_parquet/data.parquet").as_str() },
         "profile": "standard",
         "options": { "mode": "full", "max_files": 100000, "format_hints": [] }
     });

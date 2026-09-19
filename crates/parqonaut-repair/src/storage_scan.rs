@@ -251,7 +251,7 @@ async fn scan_remote_dataset<B: StorageBackend>(
 
     let inspection_list: Vec<_> = parquet_inspections.values().cloned().collect();
     let mut findings =
-        paraclete_core::evaluate_phase1_rules(&plan, &assets_sorted, &inspection_list, &datasets);
+        paraclete_core::evaluate_scan_rules(&plan, &assets_sorted, &inspection_list, &datasets);
     findings.extend(extra_findings);
     findings.sort_by(|a, b| a.code.as_str().cmp(b.code.as_str()));
 

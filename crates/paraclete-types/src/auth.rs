@@ -1,4 +1,4 @@
-//! HTTP bearer-token identity (Phase 9). Roles are ordered for authorization checks.
+//! HTTP bearer-token identity. Roles are ordered for authorization checks.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

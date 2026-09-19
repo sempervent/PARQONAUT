@@ -7,7 +7,7 @@ use crate::plan::generate_plan;
 use crate::safety::RepairSafety;
 use crate::schema_policy::EffectivePolicy;
 
-/// CI-oriented exit codes for `parqonaut check`.
+/// CI-oriented exit codes for `prqnt check`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
 pub enum CheckExitCode {

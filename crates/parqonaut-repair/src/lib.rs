@@ -1,6 +1,6 @@
 //! Evidence-driven dataset repair: diagnose → plan → execute → verify.
 //!
-//! Phase 3 adds policy-governed schema reconciliation with explicit authorization,
+//! Policy-governed schema reconciliation with explicit authorization,
 //! durable plan contracts, execution manifests, and CI-oriented checks.
 
 #![forbid(unsafe_code)]

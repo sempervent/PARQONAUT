@@ -46,7 +46,7 @@ pub enum RunOutcome {
     CompletedPartial,
 }
 
-/// Normalized identity for listing history of the “same” target across runs (local paths only in Phase 4).
+/// Normalized identity for listing history of the “same” target across runs (local paths only today).
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
 )]
@@ -145,7 +145,7 @@ pub struct FindingDelta {
     pub removed: Vec<String>,
 }
 
-/// Policy applied before persisting blobs/projections (Phase 4 baseline; expand later).
+/// Policy applied before persisting blobs/projections (baseline; expand later).
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 pub struct RedactionPolicy {
     /// Remove `AssetRecord.inspection_hints` before persistence.

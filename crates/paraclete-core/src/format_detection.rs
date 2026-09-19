@@ -24,7 +24,7 @@ pub trait FormatDetector: Send + Sync {
     fn detect_format(&self, path: &Utf8Path) -> DataFormat;
 }
 
-/// Extension-only [`FormatDetector`] used in Phase 0 smoke paths.
+/// Extension-only [`FormatDetector`] used in smoke paths.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ExtensionFormatDetector;
 

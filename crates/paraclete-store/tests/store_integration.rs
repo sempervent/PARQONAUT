@@ -36,7 +36,7 @@ async fn persist_load_roundtrip_and_integrity() {
     let dir = tempfile::tempdir().unwrap();
     let store = SqliteScanStore::connect(&sqlite_url(&dir)).await.unwrap();
     let mut req = ScanRequest::new(
-        ScanTarget::LocalFile { path: fixture("phase1/single_parquet/data.parquet") },
+        ScanTarget::LocalFile { path: fixture("scan/single_parquet/data.parquet") },
         ScanProfile::Standard,
     );
     req.scan_id = Uuid::parse_str("00000000-0000-4000-8000-0000000000b1").unwrap();
@@ -59,7 +59,7 @@ async fn list_runs_for_same_target() {
     let dir = tempfile::tempdir().unwrap();
     let store = SqliteScanStore::connect(&sqlite_url(&dir)).await.unwrap();
     let mut req = ScanRequest::new(
-        ScanTarget::LocalFile { path: fixture("phase1/single_parquet/data.parquet") },
+        ScanTarget::LocalFile { path: fixture("scan/single_parquet/data.parquet") },
         ScanProfile::Standard,
     );
     req.scan_id = Uuid::new_v4();
@@ -81,13 +81,13 @@ async fn diff_two_loaded_runs() {
     let dir = tempfile::tempdir().unwrap();
     let store = SqliteScanStore::connect(&sqlite_url(&dir)).await.unwrap();
     let mut a_req = ScanRequest::new(
-        ScanTarget::LocalFile { path: fixture("phase1/tiny_parquet/micro.parquet") },
+        ScanTarget::LocalFile { path: fixture("scan/tiny_parquet/micro.parquet") },
         ScanProfile::Standard,
     );
     a_req.scan_id = Uuid::new_v4();
     let rep_a = ScanEngine::scan(&a_req).unwrap();
     let mut b_req = ScanRequest::new(
-        ScanTarget::LocalFile { path: fixture("phase1/single_parquet/data.parquet") },
+        ScanTarget::LocalFile { path: fixture("scan/single_parquet/data.parquet") },
         ScanProfile::Standard,
     );
     b_req.scan_id = Uuid::new_v4();
@@ -108,7 +108,7 @@ async fn redaction_strips_probe_before_store() {
     let dir = tempfile::tempdir().unwrap();
     let store = SqliteScanStore::connect(&sqlite_url(&dir)).await.unwrap();
     let mut req = ScanRequest::new(
-        ScanTarget::LocalFile { path: fixture("phase1/single_parquet/data.parquet") },
+        ScanTarget::LocalFile { path: fixture("scan/single_parquet/data.parquet") },
         ScanProfile::Standard,
     );
     req.scan_id = Uuid::new_v4();
@@ -133,7 +133,7 @@ async fn failed_asset_roundtrip_keeps_failure_kind() {
     let dir = tempfile::tempdir().unwrap();
     let store = SqliteScanStore::connect(&sqlite_url(&dir)).await.unwrap();
     let mut req = ScanRequest::new(
-        ScanTarget::LocalFile { path: fixture("phase2/corrupt_parquet/bad.parquet") },
+        ScanTarget::LocalFile { path: fixture("repair/corrupt_parquet/bad.parquet") },
         ScanProfile::Standard,
     );
     req.scan_id = Uuid::new_v4();

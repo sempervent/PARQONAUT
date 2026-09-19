@@ -40,7 +40,7 @@ If types cannot be resolved deterministically (e.g. `utf8` vs `int64` for the sa
 Compatible widening and nullable widening are `ReviewRequired`. Execute with:
 
 ```bash
-parqonaut repair dataset/ --plan plan.json --authorize <operation_id> --output repaired/
+prqnt repair dataset/ --plan plan.json --authorize <operation_id> --output repaired/
 ```
 
 Safe operations run under `automatic-safe-policy` without extra flags.

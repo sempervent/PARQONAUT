@@ -1,6 +1,6 @@
 # Parquet fixtures
 
-Phase 0 includes a **tiny valid Parquet** file for early integration tests and manual
+This directory includes a **tiny valid Parquet** file for early integration tests and manual
 smoke checks. Regenerate it any time with:
 
 ```bash

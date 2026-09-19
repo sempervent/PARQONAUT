@@ -7,7 +7,7 @@ authors.workspace = true
 description = "Unified PARQONAUT CLI — scan, transform, stream"
 
 [[bin]]
-name = "parqonaut"
+name = "prqnt"
 path = "src/main.rs"
 
 [features]

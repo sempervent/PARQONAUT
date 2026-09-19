@@ -54,7 +54,7 @@ async fn conditional_create_and_replace_roundtrip() {
     };
 
     let bucket = test_bucket();
-    let key = unique_key("phase5");
+    let key = unique_key("s3-integration");
     let object = ObjectLocation::S3 { bucket: bucket.clone(), key: key.clone() };
 
     let created = backend

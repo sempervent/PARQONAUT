@@ -1,4 +1,4 @@
-//! Application service layer and HTTP API for Paraclete (Phase 5–6).
+//! Application service layer and HTTP API for Paraclete (HTTP API).
 //!
 //! HTTP handlers must not call [`paraclete_core::ScanEngine`] or [`paraclete_store::StoreBackend`]
 //! directly — use [`ParacleteService`].
