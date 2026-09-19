@@ -15,7 +15,5 @@ pub fn require_s3_endpoint() -> Option<String> {
 
 #[allow(dead_code)]
 pub fn fogbank_bucket() -> String {
-    std::env::var("PARQONAUT_S3_BUCKET")
-        .or_else(|_| std::env::var("FOGBANK_BUCKET"))
-        .unwrap_or_else(|_| "fogbank".into())
+    std::env::var("FOGBANK_BUCKET").unwrap_or_else(|_| "fogbank".into())
 }
