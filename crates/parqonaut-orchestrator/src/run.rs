@@ -20,7 +20,7 @@ use crate::plan::{build_batch_plan, BatchPlan};
 use crate::report::{
     build_aggregate_report, BatchVerificationSummary, BATCH_REPORT_SCHEMA_VERSION,
 };
-use crate::verify::{verify_batch, verify_batch_with_run, verify_results_map, BatchVerifyReport};
+use crate::verify::{verify_batch_with_run, verify_results_map, BatchVerifyReport};
 
 pub const RUNS_DIR: &str = ".parqonaut/runs";
 pub const JOURNAL_FILE: &str = "journal.sqlite";

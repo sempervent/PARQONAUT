@@ -150,7 +150,15 @@ async fn write_stream_multipart_small_object() {
     let written = stream.finish().await.expect("finish");
     assert_eq!(written, 12);
 
-    let head = backend.head(&object).await.expect("head");
+    let mut head = None;
+    for _ in 0..30 {
+        if let Ok(h) = backend.head(&object).await {
+            head = Some(h);
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+    let head = head.expect("head after put_object write_stream");
     assert_eq!(head.size, 12);
 
     backend.delete_owned_object(&object).await.expect("delete");
