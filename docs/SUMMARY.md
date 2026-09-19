@@ -43,7 +43,7 @@
 
 - [OpenAPI](./openapi.md)
 - [CLI reference (generated)](./reference/cli.md)
-- [Rust API (rustdoc)](./rustdoc.md)
+- [Rust API (rustdoc)](./rust-api.md)
 - [Changelog](./changelog.md)
 - [Licensing](./licensing.md)
 
