@@ -26,10 +26,7 @@ if command -v aws >/dev/null 2>&1; then
 
   tmp=$(mktemp)
   dd if=/dev/zero of="$tmp" bs=1048576 count=6 status=none
-  upload_id=$("${AWS[@]}" s3api create-multipart-upload --bucket "$BUCKET" --key "$MP_KEY" --query UploadId --output text)
-  etag1=$("${AWS[@]}" s3api upload-part --bucket "$BUCKET" --key "$MP_KEY" --part-number 1 --upload-id "$upload_id" --body "$tmp" --query ETag --output text)
-  "${AWS[@]}" s3api complete-multipart-upload --bucket "$BUCKET" --key "$MP_KEY" --upload-id "$upload_id" \
-    --multipart-upload "{\"Parts\":[{\"ETag\":\"${etag1}\",\"PartNumber\":1}]}" >/dev/null
+  "${AWS[@]}" s3 cp "$tmp" "s3://${BUCKET}/${MP_KEY}" >/dev/null
   "${AWS[@]}" s3api head-object --bucket "$BUCKET" --key "$MP_KEY" >/dev/null
   rm -f "$tmp"
 
