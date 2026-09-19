@@ -6,7 +6,9 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 
 It consolidates [Paraclete](https://github.com/sempervent/paraclete), [parqknife](https://github.com/sempervent/parqknife), and [streaming-parquet (maw)](https://github.com/sempervent/streaming-parquet) into one workspace. See [docs/provenance.md](docs/provenance.md) for migration sources.
 
-**Current release:** v0.7.0 — unified `prqnt` CLI plus `prqnt serve` HTTP API; local and S3-capable scan/repair/batch workflows.
+**Current release:** [v0.7.1](https://github.com/sempervent/PARQONAUT/releases/tag/v0.7.1) — unified `prqnt` CLI plus `prqnt serve` HTTP API; local and S3-capable scan/repair/batch workflows.
+
+**Documentation:** [PARQONAUT docs](https://sempervent.github.io/PARQONAUT/) (GitHub Pages)
 
 PARQONAUT provides the **`prqnt`** command.
 

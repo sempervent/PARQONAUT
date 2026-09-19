@@ -1,6 +1,6 @@
 # PARQONAUT server (`prqnt serve`)
 
-v0.7.0 exposes the supported HTTP API only through:
+PARQONAUT exposes the supported HTTP API only through:
 
 ```bash
 prqnt serve

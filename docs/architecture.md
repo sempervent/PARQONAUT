@@ -1,60 +1,55 @@
-# PARQONAUT Architecture
+# Architecture overview
 
-PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transforming, and repairing Parquet-oriented datasets.
+PARQONAUT is a Rust-first toolkit for exploring, diagnosing, repairing, and orchestrating Parquet datasets — locally or on S3-compatible storage.
 
-## Three engines, one CLI
+## Application layer (CLI and HTTP)
+
+Scan, repair, and batch **orchestration** share one application facade:
 
 ```text
-                        ┌───────────────────┐
-                        │     parqonaut     │
-                        │        CLI        │
-                        └─────────┬─────────┘
-                                  │
-                 ┌────────────────┼────────────────┐
-                 │                │                │
-                 ▼                ▼                ▼
-          ┌────────────┐   ┌─────────────┐   ┌────────────┐
-          │   SCAN     │   │  TRANSFORM  │   │   STREAM   │
-          │ Paraclete  │   │ parqknife   │   │    maw     │
-          │   core     │   │  lineage    │   │  lineage   │
-          └────────────┘   └─────────────┘   └────────────┘
+prqnt CLI ───┐
+             ├──► parqonaut-app ──► scan / repair engines, orchestrator, storage
+HTTP/workers ┘
+
+parqonaut-app
+  ├─ scan, diagnose, plan, check, repair, verify
+  └─ batch check, plan, repair, status, resume, verify
+
+Direct CLI utilities (intentionally outside parqonaut-app):
+  inspect, rewrite, convert  →  transform / stream crates
 ```
 
-## Workspace layout
+`prqnt serve` runs in-process workers that dispatch durable jobs by kind into the same `parqonaut-app` entrypoints.
+
+## Control plane and storage
+
+```text
+paraclete-store  →  SQLite / Postgres (jobs, tokens, runs)
+parqonaut-storage →  S3StorageBackend (s3://)
+paraclete-service →  HTTP router, auth, metrics, OpenAPI
+```
+
+## Workspace map (selected)
 
 | Crate | Role |
 |-------|------|
-| `paraclete-types` | Durable scan/report contracts |
-| `paraclete-core` | Local forensic scan engine |
-| `paraclete-report` | Report rendering |
-| `paraclete-store` | SQLite/Postgres persistence |
-| `paraclete-service` | HTTP API + async jobs |
-| `paraclete-plugin-protocol` | Plugin wire format |
-| `parqonaut-transform` | Parquet rewrite/inspect (Arrow 54) |
-| `parqonaut-stream` | Streaming CSV/Parquet (arrow2) |
-| `parqonaut-cli` | Unified `prqnt` binary |
+| `parqonaut-app` | Transport-neutral use cases |
+| `parqonaut-cli` | `prqnt` binary |
+| `paraclete-core` | Forensic scan engine |
+| `parqonaut-repair` | Planning and repair execution |
+| `parqonaut-orchestrator` | Batch journal and scheduler |
+| `paraclete-store` | Durable metadata |
+| `paraclete-service` | `/api/v1` server library |
+| `parqonaut-transform` / `parqonaut-stream` | Direct Parquet/CSV utilities |
 
-Paraclete crate names are retained intentionally for provenance (see `docs/provenance.md`).
+Historical crate names (`paraclete-*`) reflect provenance; see [Provenance](./provenance.md) and [ADR index](./adr/README.md).
 
-## Dependency boundaries
+## Arrow/Parquet stacks
 
-Three Arrow/Parquet stacks coexist in Stream demo:
+Three stacks coexist (scan vs transform vs stream). Convergence is deferred — [ADR-0002](./adr/ADR-0002-coexisting-arrow-stacks.md).
 
-- **Scan:** `parquet` 53 (Paraclete)
-- **Transform:** `arrow`/`parquet` 54 (parqknife lineage)
-- **Stream:** `arrow2`/`parquet2` (maw lineage)
+## Further reading
 
-Convergence is deferred; see ADR-0002.
-
-## Product CLI (`prqnt`)
-
-| Command | Crate |
-|---------|--------|
-| `prqnt scan <path>` | `paraclete-core` |
-| `prqnt inspect <file>` | `parqonaut-transform` |
-| `prqnt rewrite <in> <out>` | `parqonaut-transform` |
-| `prqnt convert <inputs...> -o <out>` | `parqonaut-stream` |
-| `prqnt doctor`, `plan`, `repair`, `verify`, `check` | `parqonaut-repair` |
-| `prqnt batch …` | `parqonaut-orchestrator` |
-
-HTTP service (`paraclete-service`) remains library-only; a future `prqnt serve` subcommand is deferred.
+- [Storage architecture](./storage-architecture.md)
+- [Durable jobs](./job-model.md)
+- [HTTP API](./api.md)
