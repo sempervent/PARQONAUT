@@ -11,7 +11,7 @@ See [storage-architecture.md](storage-architecture.md) for frozen interface cont
 
 | Item | Value |
 |------|-------|
-| `PHASE5_CONTRACT_SHA` | *(recorded after contract commit)* |
+| `PHASE5_CONTRACT_SHA` | `ebd305e9360eb196ddcc3e0da2bdf6eda51944a9` |
 | Contract commit message | `feat: define phase 5 storage contracts` |
 | Crate | `crates/parqonaut-storage/` |
 | Contract version | `STORAGE_CONTRACT_VERSION = 1` |
