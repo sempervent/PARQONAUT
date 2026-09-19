@@ -28,6 +28,17 @@ impl ObjectReadStream {
     pub fn bytes_read(&self) -> u64 {
         self.bytes_read
     }
+
+    /// Wrap the underlying reader (test-only fault injection).
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn inject_reader(
+        self,
+        wrap: impl FnOnce(Pin<Box<dyn AsyncRead + Send + Unpin>>) -> Pin<Box<dyn AsyncRead + Send + Unpin>>
+            + Send
+            + 'static,
+    ) -> Self {
+        Self { inner: wrap(self.inner), bytes_read: self.bytes_read }
+    }
 }
 
 impl AsyncRead for ObjectReadStream {
@@ -72,11 +83,18 @@ impl AsyncRead for BytesReader {
 pub struct ObjectWriteStream {
     inner: Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
     bytes_written: u64,
+    #[cfg(any(test, feature = "test-util"))]
+    before_write: Option<std::sync::Arc<dyn Fn() -> Result<(), StorageError> + Send + Sync>>,
 }
 
 impl ObjectWriteStream {
     pub fn new(inner: impl tokio::io::AsyncWrite + Send + Unpin + 'static) -> Self {
-        Self { inner: Box::pin(inner), bytes_written: 0 }
+        Self {
+            inner: Box::pin(inner),
+            bytes_written: 0,
+            #[cfg(any(test, feature = "test-util"))]
+            before_write: None,
+        }
     }
 
     pub fn bytes_written(&self) -> u64 {
@@ -84,6 +102,10 @@ impl ObjectWriteStream {
     }
 
     pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), StorageError> {
+        #[cfg(any(test, feature = "test-util"))]
+        if let Some(hook) = &self.before_write {
+            hook()?;
+        }
         use tokio::io::AsyncWriteExt;
         self.inner.write_all(buf).await?;
         self.bytes_written += buf.len() as u64;
@@ -94,5 +116,31 @@ impl ObjectWriteStream {
         use tokio::io::AsyncWriteExt;
         self.inner.shutdown().await?;
         Ok(self.bytes_written)
+    }
+
+    /// Wrap the underlying writer (test-only fault injection).
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn inject_writer(
+        self,
+        wrap: impl FnOnce(
+            Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+        ) -> Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>
+            + Send
+            + 'static,
+    ) -> Self {
+        Self {
+            inner: wrap(self.inner),
+            bytes_written: self.bytes_written,
+            before_write: self.before_write,
+        }
+    }
+
+    /// Invoke before each [`Self::write_all`] (test-only fault injection).
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn set_before_write(
+        &mut self,
+        hook: std::sync::Arc<dyn Fn() -> Result<(), StorageError> + Send + Sync>,
+    ) {
+        self.before_write = Some(hook);
     }
 }

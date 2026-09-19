@@ -27,6 +27,9 @@ pub mod stream;
 #[cfg(feature = "s3")]
 pub mod s3;
 
+#[cfg(any(test, feature = "test-util"))]
+pub mod chaos;
+
 pub use backend::{ByteRange, ListOptions, ListPage, StorageBackend};
 pub use capabilities::StorageCapabilities;
 pub use conditional::{ConditionalCreate, ConditionalReplace};
@@ -42,5 +45,8 @@ pub use stream::{ObjectReadStream, ObjectWriteStream};
 
 #[cfg(feature = "s3")]
 pub use s3::{S3Config, S3StorageBackend};
+
+#[cfg(any(test, feature = "test-util"))]
+pub use chaos::FaultInjectingBackend;
 
 pub const STORAGE_CONTRACT_VERSION: u32 = 1;
