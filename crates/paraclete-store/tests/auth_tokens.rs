@@ -45,7 +45,7 @@ async fn create_auth_token_hashes_only_and_lists_metadata() {
     let store = SqliteScanStore::connect(&url).await.unwrap();
     let (id, secret) =
         store.create_auth_token("from-api", AuthRole::Operator, Some("note")).await.unwrap();
-    assert!(secret.starts_with("plc_"));
+    assert!(secret.starts_with("prqnt_"));
     let p = store.verify_bearer_token(&secret).await.unwrap().expect("ok");
     assert_eq!(p.token_id, id);
 
@@ -88,7 +88,7 @@ async fn rotate_disables_old_and_mints_new_secret() {
     let (old_id, old_secret) = store.create_auth_token("rot", AuthRole::Admin, None).await.unwrap();
     let (new_id, new_secret) = store.rotate_auth_token(old_id).await.unwrap();
     assert_ne!(old_id, new_id);
-    assert!(new_secret.starts_with("plc_"));
+    assert!(new_secret.starts_with("prqnt_"));
     assert!(store.verify_bearer_token(&old_secret).await.unwrap().is_none());
     let p = store.verify_bearer_token(&new_secret).await.unwrap().expect("new works");
     assert_eq!(p.token_id, new_id);

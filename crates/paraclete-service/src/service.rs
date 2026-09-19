@@ -3,14 +3,14 @@
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
-use paraclete_core::ScanEngine;
 use paraclete_store::{
     AuthTokenSummary, ScanJobRow, StoreBackend, StoredAssetRow, StoredFindingRow,
 };
 use paraclete_types::{
     validate_report, AuthTokenId, AuthTokenStatus, JobErrorCode, JobId, JobStatus, RedactionPolicy,
-    RunId, RunOutcome, ScanReport, ScanRequest, ScanRunListItem, TargetIdentity,
+    RunId, RunOutcome, ScanReport, ScanRunListItem, TargetIdentity,
 };
+use parqonaut_app::{location, ParqonautApp, ScanRequest, StoragePolicy};
 
 use crate::api_types::{
     AuthTokenCreateRequest, AuthTokenCreateResponse, AuthTokenListResponse,
@@ -24,36 +24,44 @@ use crate::observability::audit;
 #[derive(Debug, Clone)]
 pub struct ParacleteService {
     store: StoreBackend,
+    app: ParqonautApp,
 }
 
 impl ParacleteService {
     pub fn new(store: impl Into<StoreBackend>) -> Self {
-        Self { store: store.into() }
+        Self::with_storage_policy(store, StoragePolicy::cli_unrestricted_local())
+    }
+
+    pub fn with_storage_policy(store: impl Into<StoreBackend>, policy: StoragePolicy) -> Self {
+        Self { store: store.into(), app: ParqonautApp::new(policy) }
     }
 
     pub fn store(&self) -> &StoreBackend {
         &self.store
     }
 
-    /// Runs a local scan, applies redaction policy, validates, and persists (same path as the job worker).
+    pub fn app(&self) -> &ParqonautApp {
+        &self.app
+    }
+
+    /// Runs a scan via [`ParqonautApp`], applies redaction policy, validates, and persists.
     pub async fn execute_scan_and_persist(
         &self,
         req: StartScanRequest,
     ) -> Result<StartScanResponse, AppError> {
-        Self::assert_local_scan_target(&req)?;
-
-        let mut scan_req = ScanRequest::new(req.target.clone(), req.profile);
-        scan_req.options = req.options.clone();
-        if let Some(id) = req.scan_id {
-            scan_req.scan_id = id;
-        }
+        let location = location::dataset_location_from_scan_target(&req.target)?;
+        self.app.policy().validate_dataset(&location)?;
+        let scan_req = ScanRequest::new(location, req.profile);
 
         let started = Utc::now();
         let engine_start = Instant::now();
-        let report = ScanEngine::run(&scan_req)?;
+        let mut report = self.app.scan(scan_req).await.map_err(AppError::from)?.report;
+        if let Some(id) = req.scan_id {
+            report.request.scan_id = id;
+        }
         validate_report(&report)?;
         let completed = Utc::now();
-        metrics::histogram!("paraclete_scan_engine_duration_seconds")
+        metrics::histogram!("parqonaut_scan_engine_duration_seconds")
             .record(engine_start.elapsed().as_secs_f64());
 
         let redaction =
@@ -62,16 +70,16 @@ impl ParacleteService {
         let run_id = RunId::new();
         let persist_start = Instant::now();
         self.store.persist_scan_run(run_id, started, completed, &report, &redaction).await?;
-        metrics::histogram!("paraclete_run_persist_duration_seconds")
+        metrics::histogram!("parqonaut_run_persist_duration_seconds")
             .record(persist_start.elapsed().as_secs_f64());
-        metrics::counter!("paraclete_runs_persisted_total").increment(1);
+        metrics::counter!("parqonaut_runs_persisted_total").increment(1);
 
         let outcome = if report.summary.partial_inspection {
             RunOutcome::CompletedPartial
         } else {
             RunOutcome::Completed
         };
-        let identity = TargetIdentity::from_scan_target(&scan_req.target);
+        let identity = TargetIdentity::from_scan_target(&req.target);
         audit::run_persisted(run_id.0, &identity.target_kind, &identity.normalized_key);
         Ok(StartScanResponse {
             run_id: run_id.0,
@@ -91,26 +99,17 @@ impl ParacleteService {
         self.execute_scan_and_persist(req).await
     }
 
-    fn assert_local_scan_target(req: &StartScanRequest) -> Result<(), AppError> {
-        match &req.target {
-            paraclete_types::ScanTarget::LocalFile { .. }
-            | paraclete_types::ScanTarget::LocalDirectory { .. } => Ok(()),
-            _ => Err(AppError::TargetNotFound(
-                "only local_file and local_directory targets are supported by this API".into(),
-            )),
-        }
-    }
-
     pub async fn submit_scan_job(
         &self,
         req: StartScanRequest,
     ) -> Result<ScanJobSubmissionResponse, AppError> {
-        Self::assert_local_scan_target(&req)?;
+        let loc = location::dataset_location_from_scan_target(&req.target)?;
+        self.app.policy().validate_dataset(&loc)?;
         let jid = JobId::new();
         let identity = TargetIdentity::from_scan_target(&req.target);
         let request_json = serde_json::to_string(&req)?;
         self.store.insert_scan_job_queued(jid, &identity, &request_json).await?;
-        metrics::counter!("paraclete_jobs_submitted_total").increment(1);
+        metrics::counter!("parqonaut_jobs_submitted_total").increment(1);
         audit::scan_submitted(jid.0, &identity.target_kind, &identity.normalized_key);
         let submitted_at = Utc::now();
         Ok(ScanJobSubmissionResponse {

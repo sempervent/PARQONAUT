@@ -12,7 +12,14 @@ use crate::error::AppError;
 use crate::observability::audit;
 use crate::service::ParacleteService;
 
-pub(crate) fn spawn_scan_job_worker(service: ParacleteService) -> tokio::task::JoinHandle<()> {
+pub(crate) fn spawn_scan_job_workers(
+    service: ParacleteService,
+    workers: usize,
+) -> Vec<tokio::task::JoinHandle<()>> {
+    (0..workers).map(|_| spawn_scan_job_worker(service.clone())).collect()
+}
+
+fn spawn_scan_job_worker(service: ParacleteService) -> tokio::task::JoinHandle<()> {
     let policy = JobRecoveryPolicy::default();
     let worker_id = Uuid::new_v4().to_string();
 
@@ -23,11 +30,11 @@ pub(crate) fn spawn_scan_job_worker(service: ParacleteService) -> tokio::task::J
             match service.store().recover_stale_scan_jobs(now, policy).await {
                 Ok(stats) => {
                     if stats.requeued > 0 {
-                        metrics::counter!("paraclete_jobs_requeued_total")
+                        metrics::counter!("parqonaut_jobs_requeued_total")
                             .increment(stats.requeued);
                     }
                     if stats.failed_retries_exhausted > 0 {
-                        metrics::counter!("paraclete_job_retries_exhausted_total")
+                        metrics::counter!("parqonaut_job_retries_exhausted_total")
                             .increment(stats.failed_retries_exhausted);
                     }
                     if stats.requeued > 0 || stats.failed_retries_exhausted > 0 {
@@ -41,8 +48,8 @@ pub(crate) fn spawn_scan_job_worker(service: ParacleteService) -> tokio::task::J
                 service.store().count_scan_jobs(Some("queued")).await,
                 service.store().count_scan_jobs(Some("running")).await,
             ) {
-                metrics::gauge!("paraclete_jobs_queued").set(q as f64);
-                metrics::gauge!("paraclete_jobs_running").set(r as f64);
+                metrics::gauge!("parqonaut_jobs_queued").set(q as f64);
+                metrics::gauge!("parqonaut_jobs_running").set(r as f64);
             }
 
             let hb = Utc::now();
@@ -64,11 +71,11 @@ pub(crate) fn spawn_scan_job_worker(service: ParacleteService) -> tokio::task::J
                 Err(_) => continue,
             };
             let jid = JobId(job_uuid);
-            metrics::counter!("paraclete_jobs_claimed_total").increment(1);
+            metrics::counter!("parqonaut_jobs_claimed_total").increment(1);
             audit::job_claimed(job_uuid, job.attempt_count, &worker_id);
 
             let job_span = tracing::info_span!(
-                "paraclete.job",
+                "parqonaut.job",
                 job_id = %jid,
                 worker_id = %worker_id,
                 attempt_count = job.attempt_count,
@@ -83,7 +90,7 @@ pub(crate) fn spawn_scan_job_worker(service: ParacleteService) -> tokio::task::J
                             .store()
                             .complete_scan_job_failure(jid, "invalid_request", &msg)
                             .await;
-                        metrics::counter!("paraclete_jobs_failed_total", "code" => "invalid_request")
+                        metrics::counter!("parqonaut_jobs_failed_total", "code" => "invalid_request")
                             .increment(1);
                         audit::job_failed(job_uuid, "invalid_request");
                     }
@@ -105,7 +112,7 @@ pub(crate) fn spawn_scan_job_worker(service: ParacleteService) -> tokio::task::J
                     let lu = n + ChronoDuration::seconds(hb_policy.lease_duration_secs as i64);
                     match svc.store().renew_scan_job_lease(hb_jid, &wid, n, lu).await {
                         Ok(true) => {
-                            metrics::counter!("paraclete_job_lease_renewals_total").increment(1);
+                            metrics::counter!("parqonaut_job_lease_renewals_total").increment(1);
                             audit::job_heartbeat(hb_jid.0);
                         }
                         Ok(false) => break,
@@ -127,7 +134,7 @@ pub(crate) fn spawn_scan_job_worker(service: ParacleteService) -> tokio::task::J
                             .await
                         {
                             Ok(()) => {
-                                metrics::counter!("paraclete_jobs_succeeded_total").increment(1);
+                                metrics::counter!("parqonaut_jobs_succeeded_total").increment(1);
                                 audit::job_completed(jid.0, resp.run_id);
                             }
                             Err(e) => {
@@ -142,7 +149,7 @@ pub(crate) fn spawn_scan_job_worker(service: ParacleteService) -> tokio::task::J
                             .store()
                             .complete_scan_job_failure(jid, code, &e.to_string())
                             .await;
-                        metrics::counter!("paraclete_jobs_failed_total", "code" => code)
+                        metrics::counter!("parqonaut_jobs_failed_total", "code" => code)
                             .increment(1);
                         audit::job_failed(jid.0, code);
                     }
@@ -164,6 +171,8 @@ fn app_error_to_job_failure_label(e: &AppError) -> &'static str {
         AppError::Internal(_) => "internal_error",
         AppError::JobNotFound => "internal_error",
         AppError::TokenNotFound => "internal_error",
-        AppError::Unauthorized(_) | AppError::Forbidden(_) => "internal_error",
+        AppError::Unauthorized(_) | AppError::Forbidden(_) | AppError::LocationNotAllowed(_) => {
+            "internal_error"
+        }
     }
 }

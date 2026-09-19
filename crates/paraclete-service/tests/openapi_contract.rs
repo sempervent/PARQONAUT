@@ -11,7 +11,8 @@ fn openapi_json() -> Value {
 #[test]
 fn openapi_version_and_security() {
     let v = openapi_json();
-    assert_eq!(v["info"]["version"], "0.16.0");
+    assert_eq!(v["info"]["title"], "PARQONAUT API");
+    assert_eq!(v["info"]["version"].as_str().unwrap(), env!("CARGO_PKG_VERSION"));
     assert!(v["components"]["securitySchemes"]["bearerAuth"].is_object());
 }
 

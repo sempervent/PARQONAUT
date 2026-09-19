@@ -26,6 +26,16 @@ pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
+pub async fn health_live() -> Json<HealthResponse> {
+    Json(HealthResponse { status: "ok" })
+}
+
+pub async fn health_ready(State(state): State<AppState>) -> Result<Json<HealthResponse>, AppError> {
+    state.service.store().ping().await?;
+    metrics::gauge!("parqonaut_workers_active").set(1.0);
+    Ok(Json(HealthResponse { status: "ready" }))
+}
+
 /// Prometheus text exposition (unauthenticated; scrape locally or protect at the edge).
 pub async fn prometheus_metrics(State(state): State<AppState>) -> Response<Body> {
     Response::builder()

@@ -6,30 +6,31 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 
 It consolidates [Paraclete](https://github.com/sempervent/paraclete), [parqknife](https://github.com/sempervent/parqknife), and [streaming-parquet (maw)](https://github.com/sempervent/streaming-parquet) into one workspace. See [docs/provenance.md](docs/provenance.md) for migration sources.
 
-**Current release:** v0.6.0 — unified `prqnt` CLI, local and S3-capable scan/repair/batch workflows.
+**Current release:** v0.7.0 — unified `prqnt` CLI plus `prqnt serve` HTTP API; local and S3-capable scan/repair/batch workflows.
 
 PARQONAUT provides the **`prqnt`** command.
 
 ## What works today
 
-| Command | Engine | Description |
-|---------|--------|-------------|
-| `prqnt scan <path>` | Paraclete | Forensic scan of a file or directory (assets, datasets, findings) |
-| `prqnt inspect <file>` | parqknife | Parquet schema and row-group metadata |
-| `prqnt rewrite <in> <out> [--compression zstd]` | parqknife | Rewrite Parquet with optional recompression |
-| `prqnt convert <inputs...> -o <out>` | maw | Stream CSV → Parquet (or concatenate CSV) |
+| Command | Capability | Description |
+|---------|------------|-------------|
+| `prqnt scan <path>` | scan | Forensic scan of a file, directory, or `s3://` prefix |
+| `prqnt serve` | server | PARQONAUT HTTP API (`/api/v1`) with durable async scan jobs |
+| `prqnt inspect <file>` | transform | Parquet schema and row-group metadata |
+| `prqnt rewrite <in> <out> [--compression zstd]` | transform | Rewrite Parquet with optional recompression |
+| `prqnt convert <inputs...> -o <out>` | stream | Stream CSV → Parquet (or concatenate CSV) |
 | `prqnt doctor <path> [--policy policy.toml]` | repair | Scan → diagnose → plan (optional `--repair`) |
 | `prqnt plan <path> [--policy policy.toml]` | repair | Generate durable repair plan JSON |
 | `prqnt repair <path> --plan plan.json --output out/` | repair | Execute plan; `--authorize <op_id>` for ReviewRequired |
 | `prqnt verify before/ after/ [--manifest manifest.json]` | repair | Verify invariants and optional manifest |
 | `prqnt check <path> [--policy ci-policy.toml]` | repair | CI gate (non-mutating; exit codes 0/2/3/4/5) |
 | `prqnt plan diff plan-a.json plan-b.json` | repair | Compare plans for review/CI |
-| `prqnt batch check --config batch.toml` | orchestrator | Validate batch config (non-mutating) |
-| `prqnt batch plan --config batch.toml --output plan.json` | orchestrator | Build durable multi-dataset batch plan |
-| `prqnt batch repair --plan plan.json [--jobs N]` | orchestrator | Execute batch repair with bounded concurrency |
-| `prqnt batch status --run-dir <run-dir>` | orchestrator | Read durable run journal status |
-| `prqnt batch resume --run-dir <run-dir>` | orchestrator | Resume interrupted batch run |
-| `prqnt batch verify --run-dir <run-dir>` | orchestrator | Verify batch outputs from journal |
+| `prqnt batch check --config batch.toml` | batch | Validate batch config (non-mutating) |
+| `prqnt batch plan --config batch.toml --output plan.json` | batch | Build durable multi-dataset batch plan |
+| `prqnt batch repair --plan plan.json [--jobs N]` | batch | Execute batch repair with bounded concurrency |
+| `prqnt batch status --run-dir <run-dir>` | batch | Read durable run journal status |
+| `prqnt batch resume --run-dir <run-dir>` | batch | Resume interrupted batch run |
+| `prqnt batch verify --run-dir <run-dir>` | batch | Verify batch outputs from journal |
 
 Local paths and **`s3://`** dataset URIs are supported when built with S3 features (see object-storage docs and `just s3-demo`).
 
@@ -65,14 +66,17 @@ just ci       # fmt + clippy + test
 ## Quick start
 
 ```bash
-# Forensic scan (Paraclete engine)
+# Forensic scan
 cargo run -p parqonaut-cli --bin prqnt -- scan fixtures/scan/single_parquet/data.parquet
 
-# Recompress Parquet (parqknife engine)
+# HTTP server (loopback default)
+cargo run -p parqonaut-cli --bin prqnt -- serve --state-dir /tmp/prqnt-serve-demo
+
+# Recompress Parquet
 cargo run -p parqonaut-cli --bin prqnt -- rewrite \
   fixtures/scan/single_parquet/data.parquet /tmp/out.parquet --compression zstd
 
-# CSV → Parquet (maw engine)
+# CSV → Parquet
 printf 'id,name\n1,alpha\n2,beta\n' > /tmp/sample.csv
 cargo run -p parqonaut-cli --bin prqnt -- convert /tmp/sample.csv -o /tmp/sample.parquet --out-format parquet
 ```
@@ -111,11 +115,10 @@ just batch-resume-demo  # Batch: interrupt and resume
 
 ## Not yet implemented
 
-- ****Remote object storage** (`s3://` URIs) — see object-storage docs
-- `parqonaut server` (HTTP service) and TUI
+- Web dashboard / TUI
 - Plugin execution bridge
-- parqknife: partition, merge, split, and spec-file workflows (S3 I/O deferred to object-storage layer layer)
-- maw: resumability, progress UI wiring, full schema unification in the stream pipeline
+- parqknife: partition, merge, split, and spec-file workflows beyond current transform surface
+- Stream pipeline: resumability, progress UI wiring, full schema unification
 - Arrow/Parquet dependency convergence across engines
 - In-memory cross-engine pipelines
 
@@ -123,6 +126,8 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Documentation
 
+- [Server (`prqnt serve`)](docs/server.md)
+- [HTTP API](docs/api.md)
 - [Architecture](docs/architecture.md)
 - [Schema reconciliation](docs/schema-reconciliation.md)
 - [Batch orchestration](docs/batch-orchestration.md)

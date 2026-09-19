@@ -30,9 +30,9 @@ impl Modify for SecurityAddon {
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Paraclete API",
-        version = "0.16.0",
-        description = "HTTP API for scan jobs, persisted runs, diffing, and bearer-token administration. Successful JSON responses and application-level errors use the `{ \"error\": { \"code\", \"message\", \"details\" } }` envelope for failures. JSON request bodies use a shared extractor so malformed JSON, wrong JSON shape, missing `Content-Type: application/json`, and related body-buffer failures map to `invalid_json_request` with appropriate HTTP status codes (`400`, `415`, `422`, `413` where applicable)."
+        title = "PARQONAUT API",
+        version = env!("CARGO_PKG_VERSION"),
+        description = "PARQONAUT HTTP API for scan jobs, persisted runs, diffing, and bearer-token administration. Successful JSON responses and application-level errors use the `{ \"error\": { \"code\", \"message\", \"details\" } }` envelope for failures. JSON request bodies use a shared extractor so malformed JSON, wrong JSON shape, missing `Content-Type: application/json`, and related body-buffer failures map to `invalid_json_request` with appropriate HTTP status codes (`400`, `415`, `422`, `413` where applicable)."
     ),
     paths(
         paths::get_metrics,

@@ -38,7 +38,7 @@ pub use finding::{
 pub use finding_code::{system, FindingCode, FindingCodeError};
 pub use fingerprint::sort_json_value;
 pub use format::{DataFormat, FormatSupportTier};
-pub use job::{JobErrorCode, JobId, JobResultRef, JobStatus};
+pub use job::{JobErrorCode, JobId, JobKind, JobResultRef, JobStatus};
 pub use job_recovery::JobRecoveryPolicy;
 pub use report::{DatasetSummary, FormatSummary, ReportMetadata, ScanReport, ScanSummary};
 pub use run::{

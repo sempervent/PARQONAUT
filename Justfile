@@ -41,6 +41,10 @@ naming-check:
 
 ci: fmt-check lint test naming-check
 
+api-test:
+    cargo test -p paraclete-service --tests
+    cargo test -p paraclete-store --test auth_tokens
+
 repair-fixtures:
     cargo xtask fixtures repair
 

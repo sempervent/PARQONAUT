@@ -87,7 +87,7 @@ async fn metrics_endpoint_returns_prometheus_text() {
         .unwrap();
     let body = scrape_metrics(app).await;
     assert!(
-        body.contains("paraclete_http_requests_total"),
+        body.contains("parqonaut_http_requests_total"),
         "expected paraclete metrics after one request; body:\n{body}"
     );
 }
@@ -99,13 +99,13 @@ async fn http_request_counter_increments_for_health() {
     let store = SqliteScanStore::connect(&sqlite_url(&dir)).await.unwrap();
     let app = build_router(ParacleteService::new(store));
     let before =
-        sum_samples_for_metric(&scrape_metrics(app.clone()).await, "paraclete_http_requests_total");
+        sum_samples_for_metric(&scrape_metrics(app.clone()).await, "parqonaut_http_requests_total");
     let _ = app
         .clone()
         .oneshot(Request::get("/api/v1/health").body(Body::empty()).unwrap())
         .await
         .unwrap();
-    let after = sum_samples_for_metric(&scrape_metrics(app).await, "paraclete_http_requests_total");
+    let after = sum_samples_for_metric(&scrape_metrics(app).await, "parqonaut_http_requests_total");
     assert!(
         after > before,
         "expected http request counter to increase: before={before} after={after}"
@@ -119,7 +119,7 @@ async fn authorization_denied_increments_when_reader_posts_scan() {
     let app = build_router(ParacleteService::new(store));
     let before = sum_samples_for_metric(
         &scrape_metrics(app.clone()).await,
-        "paraclete_authorization_denied_total",
+        "parqonaut_authorization_denied_total",
     );
     let body = json!({
         "target": { "type": "local_file", "path": fixture("scan/single_parquet/data.parquet").as_str() },
@@ -138,7 +138,7 @@ async fn authorization_denied_increments_when_reader_posts_scan() {
         .await
         .unwrap();
     let after =
-        sum_samples_for_metric(&scrape_metrics(app).await, "paraclete_authorization_denied_total");
+        sum_samples_for_metric(&scrape_metrics(app).await, "parqonaut_authorization_denied_total");
     assert!(after > before, "authorization denied counter: before={before} after={after}");
 }
 
@@ -150,13 +150,13 @@ async fn auth_failure_increments_on_missing_bearer() {
     store.insert_auth_token("x", TEST_BEARER_SECRET, AuthRole::Operator).await.unwrap();
     let app = build_router(ParacleteService::new(store));
     let before =
-        sum_samples_for_metric(&scrape_metrics(app.clone()).await, "paraclete_auth_failure_total");
+        sum_samples_for_metric(&scrape_metrics(app.clone()).await, "parqonaut_auth_failure_total");
     let _ = app
         .clone()
         .oneshot(Request::get("/api/v1/jobs").body(Body::empty()).unwrap())
         .await
         .unwrap();
-    let after = sum_samples_for_metric(&scrape_metrics(app).await, "paraclete_auth_failure_total");
+    let after = sum_samples_for_metric(&scrape_metrics(app).await, "parqonaut_auth_failure_total");
     assert!(after > before, "auth failure counter: before={before} after={after}");
 }
 
@@ -185,9 +185,9 @@ async fn async_job_success_exposes_job_counters() {
 
     for _ in 0..500u32 {
         let body = scrape_metrics(app.clone()).await;
-        if sum_samples_for_metric(&body, "paraclete_jobs_succeeded_total") >= 1.0 {
-            assert!(body.contains("paraclete_jobs_submitted_total"));
-            assert!(body.contains("paraclete_runs_persisted_total"));
+        if sum_samples_for_metric(&body, "parqonaut_jobs_succeeded_total") >= 1.0 {
+            assert!(body.contains("parqonaut_jobs_submitted_total"));
+            assert!(body.contains("parqonaut_runs_persisted_total"));
             return;
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -224,7 +224,7 @@ async fn worker_recovery_increments_jobs_requeued_total() {
         .unwrap();
 
     let pool = sqlx::SqlitePool::connect(&url).await.unwrap();
-    sqlx::query("UPDATE scan_jobs SET leased_until = ? WHERE job_id = ?")
+    sqlx::query("UPDATE application_jobs SET leased_until = ? WHERE job_id = ?")
         .bind("1999-01-01T00:00:00Z")
         .bind(jid.0.to_string())
         .execute(&pool)
@@ -238,8 +238,8 @@ async fn worker_recovery_increments_jobs_requeued_total() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     let body = scrape_metrics(app).await;
-    assert!(body.contains("paraclete_jobs_requeued_total"), "metrics:\n{body}");
-    let v = sum_samples_for_metric(&body, "paraclete_jobs_requeued_total");
+    assert!(body.contains("parqonaut_jobs_requeued_total"), "metrics:\n{body}");
+    let v = sum_samples_for_metric(&body, "parqonaut_jobs_requeued_total");
     assert!(v >= 1.0, "expected requeued counter >= 1, got {v}");
 }
 

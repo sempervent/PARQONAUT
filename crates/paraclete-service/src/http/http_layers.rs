@@ -39,23 +39,23 @@ pub async fn request_id_middleware(mut req: Request, next: Next) -> Response {
 }
 
 pub async fn http_metrics_middleware(req: Request, next: Next) -> Response {
-    metrics::gauge!("paraclete_http_requests_in_flight").increment(1.0);
+    metrics::gauge!("parqonaut_http_requests_in_flight").increment(1.0);
     let start = Instant::now();
     let method = req.method().as_str().to_string();
     let route = normalize_metric_path(req.uri().path());
     let response = next.run(req).await;
-    metrics::gauge!("paraclete_http_requests_in_flight").decrement(1.0);
+    metrics::gauge!("parqonaut_http_requests_in_flight").decrement(1.0);
     let status = response.status().as_u16().to_string();
     let elapsed = start.elapsed().as_secs_f64();
 
     metrics::histogram!(
-        "paraclete_http_request_duration_seconds",
+        "parqonaut_http_request_duration_seconds",
         "method" => method.clone(),
         "route" => route.clone(),
     )
     .record(elapsed);
     metrics::counter!(
-        "paraclete_http_requests_total",
+        "parqonaut_http_requests_total",
         "method" => method,
         "route" => route,
         "status" => status,

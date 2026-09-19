@@ -64,9 +64,9 @@ async fn admin_can_create_list_get_disable() {
     let created: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let tid = created["token_id"].as_str().unwrap();
     let secret = created["token_secret"].as_str().unwrap();
-    assert!(secret.starts_with("plc_"));
+    assert!(secret.starts_with("prqnt_"));
     assert_eq!(created["token_prefix"].as_str().unwrap().len(), 12);
-    assert!(created["token_prefix"].as_str().unwrap().starts_with("plc_"));
+    assert!(created["token_prefix"].as_str().unwrap().starts_with("prqnt_"));
 
     let res = app
         .clone()
@@ -239,7 +239,7 @@ async fn admin_rotate_invalidates_old_secret_and_sets_last_used() {
         serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes()).unwrap();
     let new_secret = rot["token_secret"].as_str().unwrap();
     assert_eq!(rot["previous_token_id"].as_str().unwrap(), tid);
-    assert!(new_secret.starts_with("plc_"));
+    assert!(new_secret.starts_with("prqnt_"));
 
     let res = app
         .clone()

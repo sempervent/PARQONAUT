@@ -365,6 +365,13 @@ impl StoreBackend {
             StoreBackend::Postgres(p) => p.bootstrap_auth_from_env().await,
         }
     }
+
+    pub async fn ping(&self) -> Result<(), StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => s.ping().await,
+            StoreBackend::Postgres(p) => p.ping().await,
+        }
+    }
 }
 
 impl From<SqliteScanStore> for StoreBackend {

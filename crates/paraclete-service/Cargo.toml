@@ -6,10 +6,15 @@ license.workspace = true
 authors.workspace = true
 description = "Application service layer and HTTP API for Paraclete."
 
+[features]
+default = ["s3"]
+s3 = ["parqonaut-app/s3"]
+
 [dependencies]
 paraclete-types.workspace = true
 paraclete-core = { path = "../paraclete-core" }
 paraclete-store = { path = "../paraclete-store" }
+parqonaut-app = { path = "../parqonaut-app" }
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true

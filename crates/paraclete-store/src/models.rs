@@ -7,7 +7,7 @@ use paraclete_types::{
 };
 use uuid::Uuid;
 
-/// One row from `scan_jobs` (async orchestration; request payload is JSON text).
+/// One row from `application_jobs` (durable async orchestration; request payload is JSON text).
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ScanJobRow {
     pub job_id: String,
@@ -26,6 +26,10 @@ pub struct ScanJobRow {
     pub heartbeat_at: Option<String>,
     pub leased_until: Option<String>,
     pub recovery_note: Option<String>,
+    pub job_kind: String,
+    pub payload_schema_version: i64,
+    pub cancel_requested: i64,
+    pub result_ref_json: Option<String>,
 }
 
 /// Result of stale-job recovery.

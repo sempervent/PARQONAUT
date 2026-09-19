@@ -16,7 +16,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::observability;
 use crate::service::ParacleteService;
-use crate::worker::spawn_scan_job_worker;
+use crate::worker::spawn_scan_job_workers;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -30,8 +30,14 @@ pub struct AppState {
 /// [`ParacleteService::execute_scan_and_persist`] path as synchronous scans.
 ///
 /// All routes except [`handlers::health`] require `Authorization: Bearer <token>` and a sufficient role.
+const DEFAULT_WORKERS: usize = 2;
+
 pub fn build_router(service: ParacleteService) -> Router {
-    std::mem::drop(spawn_scan_job_worker(service.clone()));
+    build_router_with_workers(service, DEFAULT_WORKERS)
+}
+
+pub fn build_router_with_workers(service: ParacleteService, workers: usize) -> Router {
+    std::mem::drop(spawn_scan_job_workers(service.clone(), workers.max(1)));
     let prometheus = observability::metrics_handle();
     let state = AppState { service, prometheus };
 
@@ -59,6 +65,8 @@ pub fn build_router(service: ParacleteService) -> Router {
     Router::new()
         .route("/metrics", get(handlers::prometheus_metrics))
         .route("/api/v1/health", get(handlers::health))
+        .route("/api/v1/health/live", get(handlers::health_live))
+        .route("/api/v1/health/ready", get(handlers::health_ready))
         .nest("/api/v1", protected)
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())

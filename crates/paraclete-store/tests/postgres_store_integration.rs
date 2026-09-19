@@ -97,7 +97,7 @@ async fn postgres_recover_stale_scan_jobs() {
         .unwrap()
         .unwrap();
 
-    sqlx::query("UPDATE scan_jobs SET leased_until = $1 WHERE job_id = $2")
+    sqlx::query("UPDATE application_jobs SET leased_until = $1 WHERE job_id = $2")
         .bind("1999-01-01T00:00:00Z")
         .bind(jid.0.to_string())
         .execute(store.pool())

@@ -500,7 +500,7 @@ impl PostgresScanStore {
     ) -> Result<(), StoreError> {
         let now = Utc::now().to_rfc3339();
         sqlx::query(
-            r#"INSERT INTO scan_jobs (
+            r#"INSERT INTO application_jobs (
                 job_id, submitted_at, status, target_kind, normalized_target_key, request_json, attempt_count
             ) VALUES ($1, $2, 'queued', $3, $4, $5, 0)"#,
         )
@@ -526,13 +526,13 @@ impl PostgresScanStore {
         let lu = leased_until.to_rfc3339();
         let row = sqlx::query_as::<_, ScanJobRow>(
             r#"WITH picked AS (
-                 SELECT job_id FROM scan_jobs
+                 SELECT job_id FROM application_jobs
                  WHERE status = 'queued'
                  ORDER BY submitted_at ASC
                  LIMIT 1
                  FOR UPDATE SKIP LOCKED
                )
-               UPDATE scan_jobs AS j
+               UPDATE application_jobs AS j
                SET status = 'running',
                    started_at = $1,
                    worker_id = $2,
@@ -544,7 +544,8 @@ impl PostgresScanStore {
                RETURNING j.job_id, j.submitted_at, j.started_at, j.completed_at, j.status,
                          j.target_kind, j.normalized_target_key, j.request_json,
                          j.failure_code, j.failure_message, j.run_id,
-                         j.worker_id, j.attempt_count, j.heartbeat_at, j.leased_until, j.recovery_note"#,
+                         j.worker_id, j.attempt_count, j.heartbeat_at, j.leased_until, j.recovery_note,
+                         j.job_kind, j.payload_schema_version, j.cancel_requested, j.result_ref_json"#,
         )
         .bind(&started)
         .bind(worker_id)
@@ -563,7 +564,7 @@ impl PostgresScanStore {
         leased_until: DateTime<Utc>,
     ) -> Result<bool, StoreError> {
         let res = sqlx::query(
-            r#"UPDATE scan_jobs SET heartbeat_at = $1, leased_until = $2
+            r#"UPDATE application_jobs SET heartbeat_at = $1, leased_until = $2
                WHERE job_id = $3 AND worker_id = $4 AND status = 'running'"#,
         )
         .bind(heartbeat_at.to_rfc3339())
@@ -583,7 +584,7 @@ impl PostgresScanStore {
         let now_s = now.to_rfc3339();
         let mut tx = self.pool.begin().await?;
         let rows: Vec<(String, i64)> = sqlx::query_as(
-            r#"SELECT job_id, attempt_count FROM scan_jobs
+            r#"SELECT job_id, attempt_count FROM application_jobs
                WHERE status = 'running'
                  AND leased_until IS NOT NULL
                  AND leased_until < $1"#,
@@ -598,7 +599,7 @@ impl PostgresScanStore {
         for (job_id, attempt_count) in rows {
             if attempt_count >= max {
                 sqlx::query(
-                    r#"UPDATE scan_jobs SET status = 'failed', completed_at = $1, failure_code = $2, failure_message = $3,
+                    r#"UPDATE application_jobs SET status = 'failed', completed_at = $1, failure_code = $2, failure_message = $3,
                        worker_id = NULL, heartbeat_at = NULL, leased_until = NULL,
                        recovery_note = $4
                        WHERE job_id = $5 AND status = 'running'"#,
@@ -615,7 +616,7 @@ impl PostgresScanStore {
                 stats.failed_retries_exhausted += 1;
             } else {
                 sqlx::query(
-                    r#"UPDATE scan_jobs SET status = 'queued',
+                    r#"UPDATE application_jobs SET status = 'queued',
                        started_at = NULL, worker_id = NULL, heartbeat_at = NULL, leased_until = NULL,
                        recovery_note = $1
                        WHERE job_id = $2 AND status = 'running'"#,
@@ -640,7 +641,7 @@ impl PostgresScanStore {
     ) -> Result<(), StoreError> {
         let completed = Utc::now().to_rfc3339();
         let res = sqlx::query(
-            r#"UPDATE scan_jobs SET status = 'succeeded', completed_at = $1, run_id = $2,
+            r#"UPDATE application_jobs SET status = 'succeeded', completed_at = $1, run_id = $2,
                worker_id = NULL, heartbeat_at = NULL, leased_until = NULL
                WHERE job_id = $3 AND status = 'running'"#,
         )
@@ -665,7 +666,7 @@ impl PostgresScanStore {
     ) -> Result<(), StoreError> {
         let completed = Utc::now().to_rfc3339();
         let res = sqlx::query(
-            r#"UPDATE scan_jobs SET status = 'failed', completed_at = $1, failure_code = $2, failure_message = $3,
+            r#"UPDATE application_jobs SET status = 'failed', completed_at = $1, failure_code = $2, failure_message = $3,
                worker_id = NULL, heartbeat_at = NULL, leased_until = NULL
                WHERE job_id = $4 AND status = 'running'"#,
         )
@@ -688,8 +689,9 @@ impl PostgresScanStore {
             r#"SELECT job_id, submitted_at, started_at, completed_at, status,
                       target_kind, normalized_target_key, request_json,
                       failure_code, failure_message, run_id,
-                      worker_id, attempt_count, heartbeat_at, leased_until, recovery_note
-               FROM scan_jobs WHERE job_id = $1"#,
+                      worker_id, attempt_count, heartbeat_at, leased_until, recovery_note,
+                      job_kind, payload_schema_version, cancel_requested, result_ref_json
+               FROM application_jobs WHERE job_id = $1"#,
         )
         .bind(job_id.0.to_string())
         .fetch_optional(&self.pool)
@@ -697,14 +699,21 @@ impl PostgresScanStore {
         .ok_or(StoreError::JobNotFound(job_id.0))
     }
 
+    pub async fn ping(&self) -> Result<(), StoreError> {
+        sqlx::query("SELECT 1").execute(&self.pool).await?;
+        Ok(())
+    }
+
     pub async fn count_scan_jobs(&self, status: Option<&str>) -> Result<u64, StoreError> {
         let n: i64 = if let Some(st) = status {
-            sqlx::query_scalar("SELECT COUNT(*) FROM scan_jobs WHERE status = $1")
+            sqlx::query_scalar("SELECT COUNT(*) FROM application_jobs WHERE status = $1")
                 .bind(st)
                 .fetch_one(&self.pool)
                 .await?
         } else {
-            sqlx::query_scalar("SELECT COUNT(*) FROM scan_jobs").fetch_one(&self.pool).await?
+            sqlx::query_scalar("SELECT COUNT(*) FROM application_jobs")
+                .fetch_one(&self.pool)
+                .await?
         };
         Ok(n as u64)
     }
@@ -720,8 +729,9 @@ impl PostgresScanStore {
                 r#"SELECT job_id, submitted_at, started_at, completed_at, status,
                           target_kind, normalized_target_key, request_json,
                           failure_code, failure_message, run_id,
-                          worker_id, attempt_count, heartbeat_at, leased_until, recovery_note
-                   FROM scan_jobs WHERE status = $1
+                          worker_id, attempt_count, heartbeat_at, leased_until, recovery_note,
+                          job_kind, payload_schema_version, cancel_requested, result_ref_json
+                   FROM application_jobs WHERE status = $1
                    ORDER BY submitted_at DESC LIMIT $2 OFFSET $3"#,
             )
             .bind(st)
@@ -734,8 +744,9 @@ impl PostgresScanStore {
                 r#"SELECT job_id, submitted_at, started_at, completed_at, status,
                           target_kind, normalized_target_key, request_json,
                           failure_code, failure_message, run_id,
-                          worker_id, attempt_count, heartbeat_at, leased_until, recovery_note
-                   FROM scan_jobs
+                          worker_id, attempt_count, heartbeat_at, leased_until, recovery_note,
+                          job_kind, payload_schema_version, cancel_requested, result_ref_json
+                   FROM application_jobs
                    ORDER BY submitted_at DESC LIMIT $1 OFFSET $2"#,
             )
             .bind(limit as i64)

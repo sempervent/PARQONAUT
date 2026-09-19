@@ -525,7 +525,7 @@ impl SqliteScanStore {
     ) -> Result<(), StoreError> {
         let now = Utc::now().to_rfc3339();
         sqlx::query(
-            r#"INSERT INTO scan_jobs (
+            r#"INSERT INTO application_jobs (
                 job_id, submitted_at, status, target_kind, normalized_target_key, request_json, attempt_count
             ) VALUES (?, ?, 'queued', ?, ?, ?, 0)"#,
         )
@@ -550,7 +550,7 @@ impl SqliteScanStore {
         let hb = heartbeat_at.to_rfc3339();
         let lu = leased_until.to_rfc3339();
         let row = sqlx::query_as::<_, ScanJobRow>(
-            r#"UPDATE scan_jobs
+            r#"UPDATE application_jobs
                SET status = 'running',
                    started_at = ?,
                    worker_id = ?,
@@ -558,7 +558,7 @@ impl SqliteScanStore {
                    leased_until = ?,
                    attempt_count = attempt_count + 1
                WHERE job_id = (
-                 SELECT job_id FROM scan_jobs
+                 SELECT job_id FROM application_jobs
                  WHERE status = 'queued'
                  ORDER BY submitted_at ASC
                  LIMIT 1
@@ -566,7 +566,8 @@ impl SqliteScanStore {
                RETURNING job_id, submitted_at, started_at, completed_at, status,
                          target_kind, normalized_target_key, request_json,
                          failure_code, failure_message, run_id,
-                         worker_id, attempt_count, heartbeat_at, leased_until, recovery_note"#,
+                         worker_id, attempt_count, heartbeat_at, leased_until, recovery_note,
+                         job_kind, payload_schema_version, cancel_requested, result_ref_json"#,
         )
         .bind(&started)
         .bind(worker_id)
@@ -586,7 +587,7 @@ impl SqliteScanStore {
         leased_until: DateTime<Utc>,
     ) -> Result<bool, StoreError> {
         let res = sqlx::query(
-            r#"UPDATE scan_jobs SET heartbeat_at = ?, leased_until = ?
+            r#"UPDATE application_jobs SET heartbeat_at = ?, leased_until = ?
                WHERE job_id = ? AND worker_id = ? AND status = 'running'"#,
         )
         .bind(heartbeat_at.to_rfc3339())
@@ -607,7 +608,7 @@ impl SqliteScanStore {
         let now_s = now.to_rfc3339();
         let mut tx = self.pool.begin().await?;
         let rows: Vec<(String, i64)> = sqlx::query_as(
-            r#"SELECT job_id, attempt_count FROM scan_jobs
+            r#"SELECT job_id, attempt_count FROM application_jobs
                WHERE status = 'running'
                  AND leased_until IS NOT NULL
                  AND leased_until < ?"#,
@@ -622,7 +623,7 @@ impl SqliteScanStore {
         for (job_id, attempt_count) in rows {
             if attempt_count >= max {
                 sqlx::query(
-                    r#"UPDATE scan_jobs SET status = 'failed', completed_at = ?, failure_code = ?, failure_message = ?,
+                    r#"UPDATE application_jobs SET status = 'failed', completed_at = ?, failure_code = ?, failure_message = ?,
                        worker_id = NULL, heartbeat_at = NULL, leased_until = NULL,
                        recovery_note = ?
                        WHERE job_id = ? AND status = 'running'"#,
@@ -639,7 +640,7 @@ impl SqliteScanStore {
                 stats.failed_retries_exhausted += 1;
             } else {
                 sqlx::query(
-                    r#"UPDATE scan_jobs SET status = 'queued',
+                    r#"UPDATE application_jobs SET status = 'queued',
                        started_at = NULL, worker_id = NULL, heartbeat_at = NULL, leased_until = NULL,
                        recovery_note = ?
                        WHERE job_id = ? AND status = 'running'"#,
@@ -664,7 +665,7 @@ impl SqliteScanStore {
     ) -> Result<(), StoreError> {
         let completed = Utc::now().to_rfc3339();
         let res = sqlx::query(
-            r#"UPDATE scan_jobs SET status = 'succeeded', completed_at = ?, run_id = ?,
+            r#"UPDATE application_jobs SET status = 'succeeded', completed_at = ?, run_id = ?,
                worker_id = NULL, heartbeat_at = NULL, leased_until = NULL
                WHERE job_id = ? AND status = 'running'"#,
         )
@@ -689,7 +690,7 @@ impl SqliteScanStore {
     ) -> Result<(), StoreError> {
         let completed = Utc::now().to_rfc3339();
         let res = sqlx::query(
-            r#"UPDATE scan_jobs SET status = 'failed', completed_at = ?, failure_code = ?, failure_message = ?,
+            r#"UPDATE application_jobs SET status = 'failed', completed_at = ?, failure_code = ?, failure_message = ?,
                worker_id = NULL, heartbeat_at = NULL, leased_until = NULL
                WHERE job_id = ? AND status = 'running'"#,
         )
@@ -712,8 +713,9 @@ impl SqliteScanStore {
             r#"SELECT job_id, submitted_at, started_at, completed_at, status,
                       target_kind, normalized_target_key, request_json,
                       failure_code, failure_message, run_id,
-                      worker_id, attempt_count, heartbeat_at, leased_until, recovery_note
-               FROM scan_jobs WHERE job_id = ?"#,
+                      worker_id, attempt_count, heartbeat_at, leased_until, recovery_note,
+                      job_kind, payload_schema_version, cancel_requested, result_ref_json
+               FROM application_jobs WHERE job_id = ?"#,
         )
         .bind(job_id.0.to_string())
         .fetch_optional(&self.pool)
@@ -721,14 +723,21 @@ impl SqliteScanStore {
         .ok_or(StoreError::JobNotFound(job_id.0))
     }
 
+    pub async fn ping(&self) -> Result<(), StoreError> {
+        sqlx::query("SELECT 1").execute(&self.pool).await?;
+        Ok(())
+    }
+
     pub async fn count_scan_jobs(&self, status: Option<&str>) -> Result<u64, StoreError> {
         let n: i64 = if let Some(st) = status {
-            sqlx::query_scalar("SELECT COUNT(*) FROM scan_jobs WHERE status = ?")
+            sqlx::query_scalar("SELECT COUNT(*) FROM application_jobs WHERE status = ?")
                 .bind(st)
                 .fetch_one(&self.pool)
                 .await?
         } else {
-            sqlx::query_scalar("SELECT COUNT(*) FROM scan_jobs").fetch_one(&self.pool).await?
+            sqlx::query_scalar("SELECT COUNT(*) FROM application_jobs")
+                .fetch_one(&self.pool)
+                .await?
         };
         Ok(n as u64)
     }
@@ -744,8 +753,9 @@ impl SqliteScanStore {
                 r#"SELECT job_id, submitted_at, started_at, completed_at, status,
                           target_kind, normalized_target_key, request_json,
                           failure_code, failure_message, run_id,
-                          worker_id, attempt_count, heartbeat_at, leased_until, recovery_note
-                   FROM scan_jobs WHERE status = ?
+                          worker_id, attempt_count, heartbeat_at, leased_until, recovery_note,
+                          job_kind, payload_schema_version, cancel_requested, result_ref_json
+                   FROM application_jobs WHERE status = ?
                    ORDER BY submitted_at DESC LIMIT ? OFFSET ?"#,
             )
             .bind(st)
@@ -758,8 +768,9 @@ impl SqliteScanStore {
                 r#"SELECT job_id, submitted_at, started_at, completed_at, status,
                           target_kind, normalized_target_key, request_json,
                           failure_code, failure_message, run_id,
-                          worker_id, attempt_count, heartbeat_at, leased_until, recovery_note
-                   FROM scan_jobs
+                          worker_id, attempt_count, heartbeat_at, leased_until, recovery_note,
+                          job_kind, payload_schema_version, cancel_requested, result_ref_json
+                   FROM application_jobs
                    ORDER BY submitted_at DESC LIMIT ? OFFSET ?"#,
             )
             .bind(limit as i64)
@@ -866,7 +877,14 @@ mod tests {
         .fetch_one(store.pool())
         .await
         .unwrap();
-        assert_eq!(n, 6);
+        assert_eq!(n, 5);
+        let jobs: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = 'application_jobs'",
+        )
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
+        assert_eq!(jobs, 1);
     }
 
     #[tokio::test]
@@ -1004,7 +1022,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        sqlx::query("UPDATE scan_jobs SET leased_until = ? WHERE job_id = ?")
+        sqlx::query("UPDATE application_jobs SET leased_until = ? WHERE job_id = ?")
             .bind("1999-01-01T00:00:00Z")
             .bind(jid.0.to_string())
             .execute(store.pool())
@@ -1050,7 +1068,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        sqlx::query("UPDATE scan_jobs SET leased_until = ? WHERE job_id = ?")
+        sqlx::query("UPDATE application_jobs SET leased_until = ? WHERE job_id = ?")
             .bind("1999-01-01T00:00:00Z")
             .bind(jid.0.to_string())
             .execute(store.pool())
@@ -1064,7 +1082,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        sqlx::query("UPDATE scan_jobs SET leased_until = ? WHERE job_id = ?")
+        sqlx::query("UPDATE application_jobs SET leased_until = ? WHERE job_id = ?")
             .bind("1999-01-01T00:00:00Z")
             .bind(jid.0.to_string())
             .execute(store.pool())

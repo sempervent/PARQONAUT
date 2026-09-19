@@ -1,0 +1,28 @@
+[package]
+name = "parqonaut-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Transport-neutral PARQONAUT application use cases (scan, repair, batch)."
+
+[features]
+default = ["s3"]
+s3 = ["parqonaut-repair/s3", "parqonaut-storage/s3"]
+
+[dependencies]
+paraclete-core = { path = "../paraclete-core" }
+paraclete-types = { path = "../paraclete-types" }
+parqonaut-repair = { path = "../parqonaut-repair" }
+parqonaut-storage = { path = "../parqonaut-storage" }
+parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
+camino.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros"] }
+camino.workspace = true
