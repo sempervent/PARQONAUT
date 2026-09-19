@@ -3,14 +3,15 @@
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
-use paraclete_core::ScanEngine;
 use paraclete_store::{
-    AuthTokenSummary, ScanJobRow, StoreBackend, StoredAssetRow, StoredFindingRow,
+    AuthTokenSummary, JobCancelOutcome, ScanJobRow, StoreBackend, StoredAssetRow, StoredFindingRow,
 };
 use paraclete_types::{
-    validate_report, AuthTokenId, AuthTokenStatus, JobErrorCode, JobId, JobStatus, RedactionPolicy,
-    RunId, RunOutcome, ScanReport, ScanRequest, ScanRunListItem, TargetIdentity,
+    validate_report, AuthTokenId, AuthTokenStatus, JobErrorCode, JobId, JobKind, JobStatus,
+    RedactionPolicy, RunId, RunOutcome, ScanReport, ScanRunListItem, TargetIdentity,
 };
+use parqonaut_app::{location, JobResultReference, ParqonautApp, ScanRequest, StoragePolicy};
+use parqonaut_orchestrator::CancelFlag;
 
 use crate::api_types::{
     AuthTokenCreateRequest, AuthTokenCreateResponse, AuthTokenListResponse,
@@ -18,42 +19,56 @@ use crate::api_types::{
     RunSummaryView, ScanJobListResponse, ScanJobSubmissionResponse, ScanJobView, StartScanRequest,
     StartScanResponse,
 };
+use crate::application_http::{
+    self, BatchCheckResponse, BatchConfigBody, BatchPlanResponse, BatchRepairJobBody,
+    BatchResumeBody, BatchStatusResponse, BatchVerifyResponse, CheckResponse, DiagnoseResponse,
+    JobCancelResponse, LocationPolicyBody, PlanBody, PlanResponse, RepairJobBody, VerifyBody,
+    VerifyResponse,
+};
 use crate::error::AppError;
 use crate::observability::audit;
 
 #[derive(Debug, Clone)]
 pub struct ParacleteService {
     store: StoreBackend,
+    app: ParqonautApp,
 }
 
 impl ParacleteService {
     pub fn new(store: impl Into<StoreBackend>) -> Self {
-        Self { store: store.into() }
+        Self::with_storage_policy(store, StoragePolicy::cli_unrestricted_local())
+    }
+
+    pub fn with_storage_policy(store: impl Into<StoreBackend>, policy: StoragePolicy) -> Self {
+        Self { store: store.into(), app: ParqonautApp::new(policy) }
     }
 
     pub fn store(&self) -> &StoreBackend {
         &self.store
     }
 
-    /// Runs a local scan, applies redaction policy, validates, and persists (same path as the job worker).
+    pub fn app(&self) -> &ParqonautApp {
+        &self.app
+    }
+
+    /// Runs a scan via [`ParqonautApp`], applies redaction policy, validates, and persists.
     pub async fn execute_scan_and_persist(
         &self,
         req: StartScanRequest,
     ) -> Result<StartScanResponse, AppError> {
-        Self::assert_local_scan_target(&req)?;
-
-        let mut scan_req = ScanRequest::new(req.target.clone(), req.profile);
-        scan_req.options = req.options.clone();
-        if let Some(id) = req.scan_id {
-            scan_req.scan_id = id;
-        }
+        let location = location::dataset_location_from_scan_target(&req.target)?;
+        self.app.policy().validate_dataset(&location)?;
+        let scan_req = ScanRequest::new(location, req.profile);
 
         let started = Utc::now();
         let engine_start = Instant::now();
-        let report = ScanEngine::run(&scan_req)?;
+        let mut report = self.app.scan(scan_req).await.map_err(AppError::from)?.report;
+        if let Some(id) = req.scan_id {
+            report.request.scan_id = id;
+        }
         validate_report(&report)?;
         let completed = Utc::now();
-        metrics::histogram!("paraclete_scan_engine_duration_seconds")
+        metrics::histogram!("parqonaut_scan_engine_duration_seconds")
             .record(engine_start.elapsed().as_secs_f64());
 
         let redaction =
@@ -62,16 +77,16 @@ impl ParacleteService {
         let run_id = RunId::new();
         let persist_start = Instant::now();
         self.store.persist_scan_run(run_id, started, completed, &report, &redaction).await?;
-        metrics::histogram!("paraclete_run_persist_duration_seconds")
+        metrics::histogram!("parqonaut_run_persist_duration_seconds")
             .record(persist_start.elapsed().as_secs_f64());
-        metrics::counter!("paraclete_runs_persisted_total").increment(1);
+        metrics::counter!("parqonaut_runs_persisted_total").increment(1);
 
         let outcome = if report.summary.partial_inspection {
             RunOutcome::CompletedPartial
         } else {
             RunOutcome::Completed
         };
-        let identity = TargetIdentity::from_scan_target(&scan_req.target);
+        let identity = TargetIdentity::from_scan_target(&req.target);
         audit::run_persisted(run_id.0, &identity.target_kind, &identity.normalized_key);
         Ok(StartScanResponse {
             run_id: run_id.0,
@@ -91,26 +106,17 @@ impl ParacleteService {
         self.execute_scan_and_persist(req).await
     }
 
-    fn assert_local_scan_target(req: &StartScanRequest) -> Result<(), AppError> {
-        match &req.target {
-            paraclete_types::ScanTarget::LocalFile { .. }
-            | paraclete_types::ScanTarget::LocalDirectory { .. } => Ok(()),
-            _ => Err(AppError::TargetNotFound(
-                "only local_file and local_directory targets are supported by this API".into(),
-            )),
-        }
-    }
-
     pub async fn submit_scan_job(
         &self,
         req: StartScanRequest,
     ) -> Result<ScanJobSubmissionResponse, AppError> {
-        Self::assert_local_scan_target(&req)?;
+        let loc = location::dataset_location_from_scan_target(&req.target)?;
+        self.app.policy().validate_dataset(&loc)?;
         let jid = JobId::new();
         let identity = TargetIdentity::from_scan_target(&req.target);
         let request_json = serde_json::to_string(&req)?;
         self.store.insert_scan_job_queued(jid, &identity, &request_json).await?;
-        metrics::counter!("paraclete_jobs_submitted_total").increment(1);
+        metrics::counter!("parqonaut_jobs_submitted_total").increment(1);
         audit::scan_submitted(jid.0, &identity.target_kind, &identity.normalized_key);
         let submitted_at = Utc::now();
         Ok(ScanJobSubmissionResponse {
@@ -261,6 +267,137 @@ impl ParacleteService {
     }
 
     /// Rotates a token: mints a new secret, disables the old row, sets `replaced_by_token_id` on the old row.
+    pub async fn diagnose_sync(
+        &self,
+        body: LocationPolicyBody,
+    ) -> Result<DiagnoseResponse, AppError> {
+        let req = application_http::to_diagnose_request(body)?;
+        let report = self.app.diagnose(req).await.map_err(AppError::from)?.report;
+        Ok(DiagnoseResponse { report })
+    }
+
+    pub async fn plan_sync(&self, body: PlanBody) -> Result<PlanResponse, AppError> {
+        let req = application_http::to_plan_request(body)?;
+        let plan = self.app.plan(req).await.map_err(AppError::from)?.plan;
+        Ok(PlanResponse { plan })
+    }
+
+    pub async fn check_sync(&self, body: LocationPolicyBody) -> Result<CheckResponse, AppError> {
+        let req = application_http::to_check_request(body)?;
+        let report = self.app.check(req).await.map_err(AppError::from)?.report;
+        Ok(CheckResponse { report })
+    }
+
+    pub async fn verify_sync(&self, body: VerifyBody) -> Result<VerifyResponse, AppError> {
+        let req = application_http::to_verify_request(body)?;
+        let report = self.app.verify(req).await.map_err(AppError::from)?.report;
+        Ok(VerifyResponse { report })
+    }
+
+    pub async fn batch_check_sync(
+        &self,
+        body: BatchConfigBody,
+    ) -> Result<BatchCheckResponse, AppError> {
+        let req = application_http::to_batch_check_request(body)?;
+        let report = self.app.batch_check(req);
+        Ok(BatchCheckResponse { report })
+    }
+
+    pub async fn batch_plan_sync(
+        &self,
+        body: BatchConfigBody,
+    ) -> Result<BatchPlanResponse, AppError> {
+        let req = application_http::to_batch_plan_request(body)?;
+        let plan = self.app.batch_plan(req)?.plan;
+        Ok(BatchPlanResponse { plan })
+    }
+
+    pub async fn batch_status_sync(
+        &self,
+        run_dir: camino::Utf8PathBuf,
+    ) -> Result<BatchStatusResponse, AppError> {
+        let req = application_http::batch_status_request(run_dir);
+        let status = self.app.batch_status(req)?.status;
+        Ok(BatchStatusResponse { status })
+    }
+
+    pub async fn batch_verify_sync(
+        &self,
+        run_dir: camino::Utf8PathBuf,
+    ) -> Result<BatchVerifyResponse, AppError> {
+        let req = application_http::batch_verify_request(run_dir);
+        let report = self.app.batch_verify(req)?.report;
+        Ok(BatchVerifyResponse { report })
+    }
+
+    pub async fn submit_repair_job(
+        &self,
+        body: RepairJobBody,
+    ) -> Result<ScanJobSubmissionResponse, AppError> {
+        let req = application_http::to_repair_request(body)?;
+        self.app.policy().validate_dataset(&req.source)?;
+        self.app.policy().validate_dataset(&req.output)?;
+        let identity = application_http::target_identity_for_location(&req.source);
+        let jid = JobId::new();
+        let payload = application_http::durable_payload(&req)?;
+        self.store.insert_application_job(jid, JobKind::Repair, &identity, &payload).await?;
+        metrics::counter!("parqonaut_jobs_submitted_total", "kind" => "repair").increment(1);
+        Ok(job_submission_view(jid, &identity))
+    }
+
+    pub async fn submit_batch_repair_job(
+        &self,
+        body: BatchRepairJobBody,
+    ) -> Result<ScanJobSubmissionResponse, AppError> {
+        let req = application_http::to_batch_repair_request(body)?;
+        if !req.plan_path.exists() {
+            return Err(AppError::InvalidRequest(format!(
+                "batch plan not found: {}",
+                req.plan_path
+            )));
+        }
+        let identity =
+            application_http::target_identity_for_path("batch_repair", req.plan_path.as_str());
+        let jid = JobId::new();
+        let payload = application_http::durable_payload(&req)?;
+        self.store.insert_application_job(jid, JobKind::BatchRepair, &identity, &payload).await?;
+        metrics::counter!("parqonaut_jobs_submitted_total", "kind" => "batch_repair").increment(1);
+        Ok(job_submission_view(jid, &identity))
+    }
+
+    pub async fn submit_batch_resume_job(
+        &self,
+        run_dir: camino::Utf8PathBuf,
+        body: BatchResumeBody,
+    ) -> Result<ScanJobSubmissionResponse, AppError> {
+        let req = application_http::to_batch_resume_request(run_dir.clone(), body)?;
+        let identity = application_http::target_identity_for_path("batch_resume", run_dir.as_str());
+        let jid = JobId::new();
+        let payload = application_http::durable_payload(&req)?;
+        self.store.insert_application_job(jid, JobKind::BatchResume, &identity, &payload).await?;
+        metrics::counter!("parqonaut_jobs_submitted_total", "kind" => "batch_resume").increment(1);
+        Ok(job_submission_view(jid, &identity))
+    }
+
+    pub async fn cancel_job(&self, job_id: JobId) -> Result<JobCancelResponse, AppError> {
+        let outcome = self.store.request_cancel_job(job_id).await?;
+        let status = match outcome {
+            JobCancelOutcome::CanceledFromQueued | JobCancelOutcome::AlreadyCanceled => {
+                JobStatus::Canceled
+            }
+            JobCancelOutcome::CancelRequestedForRunning => JobStatus::Running,
+        };
+        let message = match outcome {
+            JobCancelOutcome::CanceledFromQueued => "job canceled".into(),
+            JobCancelOutcome::AlreadyCanceled => "job already canceled".into(),
+            JobCancelOutcome::CancelRequestedForRunning => {
+                "cancel requested; worker will stop at next safe boundary".into()
+            }
+        };
+        metrics::counter!("parqonaut_jobs_cancel_total").increment(1);
+        Ok(JobCancelResponse { job_id: job_id.0, status, message })
+    }
+
     pub async fn admin_rotate_token(
         &self,
         old_id: AuthTokenId,
@@ -289,6 +426,42 @@ impl ParacleteService {
             note: row.note,
             previous_disabled_at,
         })
+    }
+
+    pub(crate) fn decode_durable_payload<T: serde::de::DeserializeOwned>(
+        payload_json: &str,
+    ) -> Result<T, AppError> {
+        let envelope: parqonaut_app::DurableJobPayload = serde_json::from_str(payload_json)?;
+        Ok(serde_json::from_value(envelope.body)?)
+    }
+
+    pub(crate) async fn run_repair_job(
+        &self,
+        payload_json: &str,
+    ) -> Result<JobResultReference, AppError> {
+        let req: parqonaut_app::RepairRequest = Self::decode_durable_payload(payload_json)?;
+        let result = self.app.repair(req).await.map_err(AppError::from)?;
+        Ok(JobResultReference::RepairManifest { manifest_path: result.execution.manifest_path })
+    }
+
+    pub(crate) async fn run_batch_repair_job(
+        &self,
+        payload_json: &str,
+        cancel: CancelFlag,
+    ) -> Result<JobResultReference, AppError> {
+        let req: parqonaut_app::BatchRepairRequest = Self::decode_durable_payload(payload_json)?;
+        let out = self.app.batch_repair(req, cancel).await.map_err(AppError::from)?;
+        Ok(JobResultReference::BatchRun { run_dir: out.execution.run_dir.as_str().to_string() })
+    }
+
+    pub(crate) async fn run_batch_resume_job(
+        &self,
+        payload_json: &str,
+        cancel: CancelFlag,
+    ) -> Result<JobResultReference, AppError> {
+        let req: parqonaut_app::BatchResumeRequest = Self::decode_durable_payload(payload_json)?;
+        let out = self.app.batch_resume(req, cancel).await.map_err(AppError::from)?;
+        Ok(JobResultReference::BatchRun { run_dir: out.execution.run_dir.as_str().to_string() })
     }
 }
 
@@ -320,6 +493,17 @@ fn normalize_job_status_filter(s: &str) -> Result<&'static str, AppError> {
     }
 }
 
+fn job_submission_view(jid: JobId, identity: &TargetIdentity) -> ScanJobSubmissionResponse {
+    ScanJobSubmissionResponse {
+        job_id: jid.0,
+        status: JobStatus::Queued,
+        submitted_at: Utc::now(),
+        target_kind: identity.target_kind.clone(),
+        normalized_target_key: identity.normalized_key.clone(),
+        job_url: format!("/api/v1/jobs/{}", jid.0),
+    }
+}
+
 fn scan_job_row_to_view(row: ScanJobRow) -> Result<ScanJobView, AppError> {
     let job_id = uuid::Uuid::parse_str(&row.job_id)
         .map_err(|_| AppError::Internal("invalid job_id in store".into()))?;
@@ -334,6 +518,9 @@ fn scan_job_row_to_view(row: ScanJobRow) -> Result<ScanJobView, AppError> {
         .transpose()
         .map_err(|_| AppError::Internal("invalid run_id on job".into()))?;
 
+    let job_kind = JobKind::parse(&row.job_kind)
+        .ok_or_else(|| AppError::Internal(format!("unknown job_kind `{}`", row.job_kind)))?;
+
     let failure = if status == JobStatus::Failed {
         let code = row
             .failure_code
@@ -342,27 +529,40 @@ fn scan_job_row_to_view(row: ScanJobRow) -> Result<ScanJobView, AppError> {
             .unwrap_or(JobErrorCode::InternalError);
         let message = row.failure_message.unwrap_or_default();
         Some(JobFailureBody { code, message })
+    } else if status == JobStatus::Canceled {
+        let message = row.failure_message.unwrap_or_else(|| "canceled".into());
+        Some(JobFailureBody { code: JobErrorCode::InvalidRequest, message })
     } else {
         None
     };
+
+    let result_ref = row
+        .result_ref_json
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|_| AppError::Internal("invalid result_ref_json on job".into()))?;
 
     let heartbeat_at = row.heartbeat_at.as_deref().map(parse_rfc3339).transpose()?;
     let leased_until = row.leased_until.as_deref().map(parse_rfc3339).transpose()?;
 
     Ok(ScanJobView {
         job_id,
+        job_kind,
         status,
         submitted_at,
         started_at,
         completed_at,
         target_kind: row.target_kind,
         normalized_target_key: row.normalized_target_key,
-        attempt_count: row.attempt_count,
+        attempt_count: i64::from(row.attempt_count),
         worker_id: row.worker_id,
         heartbeat_at,
         leased_until,
         recovery_note: row.recovery_note,
         run_id,
+        result_ref,
+        cancel_requested: row.cancel_requested != 0,
         failure,
         job_url: format!("/api/v1/jobs/{job_id}"),
     })

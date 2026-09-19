@@ -31,6 +31,39 @@ impl std::fmt::Display for JobId {
     }
 }
 
+/// Durable application job kind (v0.7 generic job model).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum JobKind {
+    Scan,
+    Repair,
+    BatchRepair,
+    BatchResume,
+}
+
+impl JobKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Scan => "scan",
+            Self::Repair => "repair",
+            Self::BatchRepair => "batch_repair",
+            Self::BatchResume => "batch_resume",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "scan" => Some(Self::Scan),
+            "repair" => Some(Self::Repair),
+            "batch_repair" => Some(Self::BatchRepair),
+            "batch_resume" => Some(Self::BatchResume),
+            _ => None,
+        }
+    }
+}
+
 /// Job lifecycle state persisted in SQLite and returned over HTTP.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,

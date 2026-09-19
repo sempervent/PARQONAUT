@@ -406,7 +406,7 @@ async fn async_scan_job_records_failure() {
     let app = build_router(ParacleteService::new(store));
 
     let body = json!({
-        "target": { "type": "local_file", "path": "/no/such/paraclete_missing_file.parquet" },
+        "target": { "type": "local_file", "path": "/no/such/parqonaut_missing_file.parquet" },
         "profile": "standard",
         "options": { "mode": "full", "max_files": 100000, "format_hints": [] }
     });

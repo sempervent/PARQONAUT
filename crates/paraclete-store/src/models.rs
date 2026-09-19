@@ -7,7 +7,7 @@ use paraclete_types::{
 };
 use uuid::Uuid;
 
-/// One row from `scan_jobs` (async orchestration; request payload is JSON text).
+/// One row from `application_jobs` (durable async orchestration; request payload is JSON text).
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct ScanJobRow {
     pub job_id: String,
@@ -22,10 +22,14 @@ pub struct ScanJobRow {
     pub failure_message: Option<String>,
     pub run_id: Option<String>,
     pub worker_id: Option<String>,
-    pub attempt_count: i64,
+    pub attempt_count: i32,
     pub heartbeat_at: Option<String>,
     pub leased_until: Option<String>,
     pub recovery_note: Option<String>,
+    pub job_kind: String,
+    pub payload_schema_version: i32,
+    pub cancel_requested: i32,
+    pub result_ref_json: Option<String>,
 }
 
 /// Result of stale-job recovery.
@@ -33,6 +37,17 @@ pub struct ScanJobRow {
 pub struct StaleRecoveryStats {
     pub requeued: u64,
     pub failed_retries_exhausted: u64,
+}
+
+/// Outcome of a client cancel request against a durable job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobCancelOutcome {
+    /// Job was `queued` and transitioned to `canceled` immediately.
+    CanceledFromQueued,
+    /// Job is `running`; cooperative cancel flag was persisted.
+    CancelRequestedForRunning,
+    /// Job was already in terminal `canceled` state (idempotent).
+    AlreadyCanceled,
 }
 
 /// One row from `scan_assets` (projection; reload full `ScanReport` for complete `AssetRecord`).

@@ -2,6 +2,7 @@ mod batch;
 mod location;
 mod repair;
 mod scan;
+mod serve;
 mod stream;
 mod transform;
 
@@ -117,6 +118,11 @@ enum Command {
     Batch {
         #[command(subcommand)]
         command: BatchCommand,
+    },
+    /// Run the PARQONAUT HTTP application server (`/api/v1`)
+    Serve {
+        #[command(flatten)]
+        args: serve::ServeArgs,
     },
     /// Stream-convert CSV/Parquet inputs
     Convert {
@@ -263,6 +269,7 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             stream::run_convert(inputs, out, out_format, compression, zstd_level, plan, dry_run)
                 .await?;
         }
+        Command::Serve { args } => serve::run(args).await?,
     }
     Ok(())
 }

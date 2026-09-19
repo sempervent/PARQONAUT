@@ -24,7 +24,7 @@ pub async fn auth_middleware(
     let path = req.uri().path();
 
     let Some(token) = parse_bearer(req.headers()) else {
-        metrics::counter!("paraclete_auth_failure_total", "reason" => "missing").increment(1);
+        metrics::counter!("parqonaut_auth_failure_total", "reason" => "missing").increment(1);
         audit::auth_rejected("missing_bearer");
         return Err(unauthorized_response("missing or invalid Authorization header"));
     };
@@ -32,13 +32,13 @@ pub async fn auth_middleware(
     let principal = match state.service.store().verify_bearer_token(token).await {
         Ok(Some(p)) => p,
         Ok(None) => {
-            metrics::counter!("paraclete_auth_failure_total", "reason" => "invalid_token")
+            metrics::counter!("parqonaut_auth_failure_total", "reason" => "invalid_token")
                 .increment(1);
             audit::auth_rejected("invalid_or_disabled_token");
             return Err(unauthorized_response("invalid or disabled bearer token"));
         }
         Err(e) => {
-            metrics::counter!("paraclete_auth_failure_total", "reason" => "store").increment(1);
+            metrics::counter!("parqonaut_auth_failure_total", "reason" => "store").increment(1);
             tracing::error!(error = %e, "verify_bearer_token");
             audit::auth_rejected("store_error");
             return Err(internal_error_response());
@@ -47,12 +47,12 @@ pub async fn auth_middleware(
 
     let required = required_role(path, req.method());
     if !principal.role.satisfies(required) {
-        metrics::counter!("paraclete_authorization_denied_total").increment(1);
+        metrics::counter!("parqonaut_authorization_denied_total").increment(1);
         audit::auth_forbidden(principal.token_id.0, &principal.label, principal.role);
         return Err(forbidden_response("insufficient role for this operation"));
     }
 
-    metrics::counter!("paraclete_auth_success_total").increment(1);
+    metrics::counter!("parqonaut_auth_success_total").increment(1);
     audit::auth_accepted(principal.token_id.0, &principal.label, principal.role);
 
     req.extensions_mut().insert(principal);
@@ -73,7 +73,7 @@ fn required_role(path: &str, method: &Method) -> AuthRole {
     if path.starts_with("/admin/tokens") {
         return AuthRole::Admin;
     }
-    if method == Method::POST && matches!(path, "/scans" | "/scans/sync" | "/jobs/scans") {
+    if method == Method::POST {
         return AuthRole::Operator;
     }
     AuthRole::Reader

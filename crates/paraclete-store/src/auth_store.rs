@@ -46,7 +46,7 @@ fn parse_dt(s: &str) -> Result<DateTime<Utc>, StoreError> {
 fn generate_bearer_secret() -> String {
     let mut b = [0u8; 32];
     rand::thread_rng().fill(&mut b[..]);
-    format!("plc_{}", hex_encode(b))
+    format!("prqnt_{}", hex_encode(b))
 }
 
 impl SqliteScanStore {
@@ -271,15 +271,17 @@ impl SqliteScanStore {
             .ok_or_else(|| StoreError::AuthToken("token row missing after disable".into()))
     }
 
-    /// If `PARACLETE_BOOTSTRAP_TOKEN` is set, upserts label `bootstrap` (optional `PARACLETE_BOOTSTRAP_ROLE`, default `admin`).
+    /// If `PRQNT_BOOTSTRAP_ADMIN_TOKEN` or legacy `PARACLETE_BOOTSTRAP_TOKEN` is set, upserts label `bootstrap`.
     pub async fn bootstrap_auth_from_env(&self) -> Result<(), StoreError> {
-        let Ok(raw) = std::env::var("PARACLETE_BOOTSTRAP_TOKEN") else {
+        let raw = std::env::var("PRQNT_BOOTSTRAP_ADMIN_TOKEN")
+            .or_else(|_| std::env::var("PARACLETE_BOOTSTRAP_TOKEN"))
+            .ok();
+        let Some(raw) = raw.filter(|s| !s.is_empty()) else {
             return Ok(());
         };
-        if raw.is_empty() {
-            return Ok(());
-        }
-        let role = match std::env::var("PARACLETE_BOOTSTRAP_ROLE") {
+        let role = match std::env::var("PARACLETE_BOOTSTRAP_ROLE")
+            .or_else(|_| std::env::var("PRQNT_BOOTSTRAP_ROLE"))
+        {
             Ok(s) => s.parse().map_err(|e: String| StoreError::AuthToken(e))?,
             Err(_) => AuthRole::Admin,
         };
@@ -497,13 +499,15 @@ impl PostgresScanStore {
     }
 
     pub async fn bootstrap_auth_from_env(&self) -> Result<(), StoreError> {
-        let Ok(raw) = std::env::var("PARACLETE_BOOTSTRAP_TOKEN") else {
+        let raw = std::env::var("PRQNT_BOOTSTRAP_ADMIN_TOKEN")
+            .or_else(|_| std::env::var("PARACLETE_BOOTSTRAP_TOKEN"))
+            .ok();
+        let Some(raw) = raw.filter(|s| !s.is_empty()) else {
             return Ok(());
         };
-        if raw.is_empty() {
-            return Ok(());
-        }
-        let role = match std::env::var("PARACLETE_BOOTSTRAP_ROLE") {
+        let role = match std::env::var("PARACLETE_BOOTSTRAP_ROLE")
+            .or_else(|_| std::env::var("PRQNT_BOOTSTRAP_ROLE"))
+        {
             Ok(s) => s.parse().map_err(|e: String| StoreError::AuthToken(e))?,
             Err(_) => AuthRole::Admin,
         };

@@ -30,9 +30,9 @@ impl Modify for SecurityAddon {
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Paraclete API",
-        version = "0.16.0",
-        description = "HTTP API for scan jobs, persisted runs, diffing, and bearer-token administration. Successful JSON responses and application-level errors use the `{ \"error\": { \"code\", \"message\", \"details\" } }` envelope for failures. JSON request bodies use a shared extractor so malformed JSON, wrong JSON shape, missing `Content-Type: application/json`, and related body-buffer failures map to `invalid_json_request` with appropriate HTTP status codes (`400`, `415`, `422`, `413` where applicable)."
+        title = "PARQONAUT API",
+        version = env!("CARGO_PKG_VERSION"),
+        description = "PARQONAUT HTTP API for scan jobs, persisted runs, diffing, and bearer-token administration. Successful JSON responses and application-level errors use the `{ \"error\": { \"code\", \"message\", \"details\" } }` envelope for failures. JSON request bodies use a shared extractor so malformed JSON, wrong JSON shape, missing `Content-Type: application/json`, and related body-buffer failures map to `invalid_json_request` with appropriate HTTP status codes (`400`, `415`, `422`, `413` where applicable)."
     ),
     paths(
         paths::get_metrics,
@@ -55,6 +55,19 @@ impl Modify for SecurityAddon {
         paths::get_admin_token_by_id,
         paths::post_admin_token_rotate,
         paths::post_admin_token_disable,
+        paths::post_diagnose,
+        paths::post_plans,
+        paths::post_checks,
+        paths::post_repairs,
+        paths::post_verifications,
+        paths::post_batch_check,
+        paths::post_batch_plans,
+        paths::post_batch_repairs,
+        paths::get_batch_status,
+        paths::post_batch_resume,
+        paths::post_batch_verify,
+        paths::post_job_cancel,
+        paths::get_api_metrics,
     ),
     components(
         schemas(
@@ -70,6 +83,8 @@ impl Modify for SecurityAddon {
         (name = "runs", description = "Persisted runs, reports, projections, diff"),
         (name = "admin", description = "Bearer token administration (admin role)"),
         (name = "meta", description = "Metrics and API contract"),
+        (name = "repair", description = "Diagnose, plan, check, repair, verify"),
+        (name = "batch", description = "Batch orchestration control plane"),
     ),
 )]
 pub struct ApiDoc;

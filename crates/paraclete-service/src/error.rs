@@ -6,6 +6,7 @@ use axum::Json;
 use paraclete_core::CoreError;
 use paraclete_store::StoreError;
 use paraclete_types::ValidationError;
+use parqonaut_app::ApplicationError;
 use serde::Serialize;
 #[allow(unused_imports)]
 use serde_json::json;
@@ -25,6 +26,7 @@ pub enum ErrorCode {
     InternalError,
     Unauthorized,
     Forbidden,
+    LocationNotAllowed,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
@@ -71,6 +73,8 @@ pub enum AppError {
     Unauthorized(String),
     #[error("{0}")]
     Forbidden(String),
+    #[error("location not allowed: {0}")]
+    LocationNotAllowed(String),
 }
 
 impl AppError {
@@ -87,6 +91,7 @@ impl AppError {
             AppError::Internal(_) => ErrorCode::InternalError,
             AppError::Unauthorized(_) => ErrorCode::Unauthorized,
             AppError::Forbidden(_) => ErrorCode::Forbidden,
+            AppError::LocationNotAllowed(_) => ErrorCode::LocationNotAllowed,
         }
     }
 
@@ -103,6 +108,7 @@ impl AppError {
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
+            AppError::LocationNotAllowed(_) => StatusCode::FORBIDDEN,
         }
     }
 }
@@ -124,11 +130,16 @@ impl IntoResponse for AppError {
 impl From<StoreError> for AppError {
     fn from(e: StoreError) -> Self {
         let kind = store_error_kind(&e);
-        metrics::counter!("paraclete_store_errors_total", "kind" => kind).increment(1);
+        metrics::counter!("parqonaut_store_errors_total", "kind" => kind).increment(1);
         match e {
             StoreError::RunNotFound(_) => AppError::RunNotFound,
             StoreError::JobNotFound(_) => AppError::JobNotFound,
             StoreError::AuthTokenNotFound(_) => AppError::TokenNotFound,
+            StoreError::ReportValidation(msg)
+                if msg.contains("already terminal") || msg.contains("already canceled") =>
+            {
+                AppError::InvalidRequest(msg)
+            }
             other => AppError::Store(other.to_string()),
         }
     }
@@ -168,5 +179,26 @@ impl From<ValidationError> for AppError {
 impl From<serde_json::Error> for AppError {
     fn from(e: serde_json::Error) -> Self {
         AppError::InvalidRequest(e.to_string())
+    }
+}
+
+impl From<ApplicationError> for AppError {
+    fn from(e: ApplicationError) -> Self {
+        match e {
+            ApplicationError::InvalidRequest(m) => AppError::InvalidRequest(m),
+            ApplicationError::LocationNotAllowed(m) => AppError::LocationNotAllowed(m),
+            ApplicationError::TargetNotFound(m) => AppError::TargetNotFound(m),
+            ApplicationError::ScanFailed(m) => AppError::ScanFailed(m),
+            ApplicationError::Conflict(m) => AppError::InvalidRequest(m),
+            ApplicationError::ReviewRequired => {
+                AppError::InvalidRequest("review authorization required".into())
+            }
+            ApplicationError::BlockedRepair(m) => AppError::InvalidRequest(m),
+            ApplicationError::StaleSource(m) => AppError::InvalidRequest(m),
+            ApplicationError::RepairFailed(m) | ApplicationError::BatchFailed(m) => {
+                AppError::ScanFailed(m)
+            }
+            ApplicationError::Internal(m) => AppError::Internal(m),
+        }
     }
 }

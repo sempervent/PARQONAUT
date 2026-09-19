@@ -17,6 +17,12 @@ s3 = ["parqonaut-repair/s3", "parqonaut-storage/s3"]
 [dependencies]
 paraclete-core = { path = "../paraclete-core" }
 paraclete-types = { path = "../paraclete-types" }
+paraclete-service = { path = "../paraclete-service", features = ["s3"] }
+paraclete-store = { path = "../paraclete-store" }
+parqonaut-app = { path = "../parqonaut-app", features = ["s3"] }
+dirs = "6"
+toml = "0.8"
+url = "2"
 parqonaut-transform = { path = "../parqonaut-transform" }
 parqonaut-stream = { path = "../parqonaut-stream" }
 parqonaut-repair = { path = "../parqonaut-repair" }
