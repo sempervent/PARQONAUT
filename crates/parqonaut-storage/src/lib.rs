@@ -10,18 +10,28 @@ pub mod capabilities;
 pub mod conditional;
 pub mod contract;
 pub mod error;
+pub mod fingerprint;
+pub mod inventory;
+pub mod local;
 pub mod location;
+pub mod locking;
 pub mod memory;
 pub mod metadata;
 pub mod metrics;
 pub mod noop;
+pub mod parquet_range;
+pub mod publication;
 pub mod redact;
 pub mod stream;
+
+#[cfg(feature = "s3")]
+pub mod s3;
 
 pub use backend::{ByteRange, ListOptions, ListPage, StorageBackend};
 pub use capabilities::StorageCapabilities;
 pub use conditional::{ConditionalCreate, ConditionalReplace};
 pub use error::{RetryClass, StorageError};
+pub use local::LocalStorageBackend;
 pub use location::{DatasetLocation, LocalLocation, ObjectLocation, S3Location};
 pub use memory::MemoryStorageBackend;
 pub use metadata::ObjectMetadata;
@@ -29,5 +39,8 @@ pub use metrics::{StorageMetrics, StorageMetricsCollector};
 pub use noop::NoopStorageBackend;
 pub use redact::{RedactUri, Redacted};
 pub use stream::{ObjectReadStream, ObjectWriteStream};
+
+#[cfg(feature = "s3")]
+pub use s3::{S3Config, S3StorageBackend};
 
 pub const STORAGE_CONTRACT_VERSION: u32 = 1;
