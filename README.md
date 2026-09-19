@@ -2,9 +2,11 @@
 
 **Parquet Analysis, Rewriting, Quality, Orchestration, Navigation, Auditing, Unification & Transformation**
 
-PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transforming, and repairing Parquet-oriented datasets.
+PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transforming, and repairing Parquet-oriented datasets — from single files to multi-dataset fleets.
 
 It consolidates [Paraclete](https://github.com/sempervent/paraclete), [parqknife](https://github.com/sempervent/parqknife), and [streaming-parquet (maw)](https://github.com/sempervent/streaming-parquet) into one workspace. See [docs/provenance.md](docs/provenance.md) for migration sources.
+
+**Current release:** v0.4.x — local filesystem scan, repair, verification, and batch orchestration.
 
 ## What works today
 
@@ -14,12 +16,20 @@ It consolidates [Paraclete](https://github.com/sempervent/paraclete), [parqknife
 | `parqonaut inspect <file>` | parqknife | Parquet schema and row-group metadata |
 | `parqonaut rewrite <in> <out> [--compression zstd]` | parqknife | Rewrite Parquet with optional recompression |
 | `parqonaut convert <inputs...> -o <out>` | maw | Stream CSV → Parquet (or concatenate CSV) |
-| `parqonaut doctor <path>` | repair | Scan → diagnose → plan (optional `--repair`) |
+| `parqonaut doctor <path> [--policy policy.toml]` | repair | Scan → diagnose → plan (optional `--repair`) |
 | `parqonaut plan <path> [--policy policy.toml]` | repair | Generate durable repair plan JSON |
 | `parqonaut repair <path> --plan plan.json --output out/` | repair | Execute plan; `--authorize <op_id>` for ReviewRequired |
 | `parqonaut verify before/ after/ [--manifest manifest.json]` | repair | Verify invariants and optional manifest |
 | `parqonaut check <path> [--policy ci-policy.toml]` | repair | CI gate (non-mutating; exit codes 0/2/3/4/5) |
 | `parqonaut plan diff plan-a.json plan-b.json` | repair | Compare plans for review/CI |
+| `parqonaut batch check --config batch.toml` | orchestrator | Validate batch config (non-mutating) |
+| `parqonaut batch plan --config batch.toml --output plan.json` | orchestrator | Build durable multi-dataset batch plan |
+| `parqonaut batch repair --plan plan.json [--jobs N]` | orchestrator | Execute batch repair with bounded concurrency |
+| `parqonaut batch status --run-dir <run-dir>` | orchestrator | Read durable run journal status |
+| `parqonaut batch resume --run-dir <run-dir>` | orchestrator | Resume interrupted batch run |
+| `parqonaut batch verify --run-dir <run-dir>` | orchestrator | Verify batch outputs from journal |
+
+All paths above are **local filesystem** today. Remote object storage (`s3://`) is planned for v0.5.0.
 
 ### Predecessor contributions
 
@@ -65,45 +75,57 @@ printf 'id,name\n1,alpha\n2,beta\n' > /tmp/sample.csv
 cargo run -p parqonaut-cli -- convert /tmp/sample.csv -o /tmp/sample.parquet --out-format parquet
 ```
 
-## End-to-end demo
+## Batch orchestration
 
-Runs the full Phase 1 pipeline without extending scope:
-
-```text
-CSV → convert → Parquet → scan → rewrite → rescan
-```
+Repair many independent datasets with bounded parallelism, durable SQLite journal, resume, and per-dataset failure isolation:
 
 ```bash
-just demo
+# Validate configuration
+cargo run -p parqonaut-cli -- batch check --config fixtures/phase4/shipwreck/batch.toml
+
+# Generate batch plan
+cargo run -p parqonaut-cli -- batch plan \
+  --config fixtures/phase4/shipwreck/batch.toml \
+  --output /tmp/shipwreck.plan.json
+
+# Execute with up to 4 concurrent datasets
+cargo run -p parqonaut-cli -- batch repair --plan /tmp/shipwreck.plan.json --jobs 4
+
+# Inspect run state and verify outputs
+cargo run -p parqonaut-cli -- batch status --run-dir <run-dir>
+cargo run -p parqonaut-cli -- batch verify --run-dir <run-dir>
 ```
 
-This creates a temporary CSV, converts it to Parquet, scans it, rewrites with zstd compression, and rescans with JSON output.
+See [docs/phase-4.md](docs/phase-4.md) and [docs/batch-execution.md](docs/batch-execution.md).
 
-### Phase 3 schema reconciliation demo
+## Demos
 
 ```bash
-just phase3-demo
+just demo              # Phase 1: CSV → Parquet → scan → rewrite → rescan
+just phase3-demo       # Phase 3: FRANKENLAKE schema reconciliation
+just phase4-demo       # Phase 4: SHIPWRECK batch fleet
+just phase4-resume-demo  # Phase 4: interrupt and resume
 ```
-
-Runs the FRANKENLAKE v2 laboratory: diagnose → plan → partial repair → authorized schema repair → verify → CI check. See [docs/phase-3.md](docs/phase-3.md).
 
 ## Not yet implemented
 
-These are intentionally **not** available in v0.1.0:
-
+- **Remote object storage** (`s3://` URIs) — Phase 5
 - `parqonaut server` (HTTP service) and TUI
 - Plugin execution bridge
-- parqknife: partition, merge, split, S3 I/O, spec-file workflows
+- parqknife: partition, merge, split, and spec-file workflows (S3 I/O deferred to Phase 5 storage layer)
 - maw: resumability, progress UI wiring, full schema unification in the stream pipeline
 - Arrow/Parquet dependency convergence across engines
 - In-memory cross-engine pipelines
 
-See [CHANGELOG.md](CHANGELOG.md) for the v0.1.0 release notes.
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Phase 3 — schema reconciliation](docs/phase-3.md)
+- [Phase 4 — batch orchestration](docs/phase-4.md)
+- [Batch execution](docs/batch-execution.md)
+- [Resume and recovery](docs/resume-recovery.md)
 - [Schema reconciliation policy](docs/schema-reconciliation.md)
 - [Repair plan contract](docs/plan-contract.md)
 - [CI policy / check command](docs/ci-policy.md)
