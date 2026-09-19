@@ -90,6 +90,34 @@ impl MultipartState {
     }
 
     async fn complete(&mut self) -> Result<(), StorageError> {
+        // Single small object: PutObject after aborting the empty MPU (RustFS and some S3 APIs).
+        if self.parts.is_empty() && !self.buffer.is_empty() && self.buffer.len() < PART_SIZE {
+            let data = Bytes::from(std::mem::take(&mut self.buffer));
+            let location = self.location();
+            if !self.aborted {
+                self.aborted = true;
+                let _ = self
+                    .client
+                    .abort_multipart_upload()
+                    .bucket(&self.bucket)
+                    .key(&self.key)
+                    .upload_id(&self.upload_id)
+                    .send()
+                    .await;
+            }
+            self.client
+                .put_object()
+                .bucket(&self.bucket)
+                .key(&self.key)
+                .body(data.into())
+                .send()
+                .await
+                .map_err(|e| map_sdk_error(&location, e))?;
+            self.completed = true;
+            self.metrics.record_put(0);
+            return Ok(());
+        }
+
         self.flush_buffer(true).await?;
         let upload =
             CompletedMultipartUpload::builder().set_parts(Some(self.parts.clone())).build();

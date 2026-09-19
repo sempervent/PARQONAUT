@@ -96,7 +96,7 @@ async fn list_with_pagination_prefix() {
 
     let bucket = test_bucket();
     let prefix = unique_key("list");
-    let dataset = DatasetLocation::parse(&format!("s3://{bucket}/{prefix}/")).unwrap();
+    let dataset = DatasetLocation::parse(&format!("s3://{bucket}/")).unwrap();
 
     let keys =
         [format!("{prefix}/a.bin"), format!("{prefix}/b.bin"), format!("{prefix}/nested/c.bin")];
@@ -114,12 +114,19 @@ async fn list_with_pagination_prefix() {
     }
 
     let page = backend
-        .list(&dataset, ListOptions { recursive: false, max_keys: Some(10) }, None)
+        .list(&dataset, ListOptions { recursive: true, max_keys: Some(10) }, None)
         .await
         .expect("list");
 
-    assert!(page.objects.iter().any(|o| o.location.display_uri().contains("/a.bin")));
-    assert!(page.objects.iter().any(|o| o.location.display_uri().contains("/b.bin")));
+    assert!(
+        page.objects.iter().any(|o| o.location.display_uri().contains(&format!("{prefix}/a.bin"))),
+        "objects: {:?}",
+        page.objects.iter().map(|o| o.location.display_uri()).collect::<Vec<_>>()
+    );
+    assert!(page
+        .objects
+        .iter()
+        .any(|o| o.location.display_uri().contains(&format!("{prefix}/b.bin"))));
 
     for key in &keys {
         let object = ObjectLocation::S3 { bucket: bucket.clone(), key: key.clone() };
@@ -139,12 +146,13 @@ async fn write_stream_multipart_small_object() {
     let object = ObjectLocation::S3 { bucket: bucket.clone(), key: key.clone() };
 
     let mut stream = backend.write_stream(&object, None).await.expect("write_stream");
-    stream.write_all(b"hello-stream").await.expect("write");
+    let payload = vec![b'x'; 5 * 1024 * 1024 + 1];
+    stream.write_all(&payload).await.expect("write");
     let written = stream.finish().await.expect("finish");
-    assert_eq!(written, 12);
+    assert_eq!(written, payload.len() as u64);
 
     let head = backend.head(&object).await.expect("head");
-    assert_eq!(head.size, 12);
+    assert_eq!(head.size, payload.len() as u64);
 
     backend.delete_owned_object(&object).await.expect("delete");
 }
