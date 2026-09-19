@@ -11,7 +11,6 @@
 //! after plan generation, repair execution fails until the plan is regenerated.
 
 use camino::Utf8Path;
-use paraclete_core::inspect_parquet_file;
 use paraclete_types::ScanReport;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -58,16 +57,13 @@ pub fn compute_dataset_fingerprint(
     let mut entries = Vec::new();
     for file in &inventory.parquet_files {
         let rel = relativize(root, &file.path)?;
-        let insp = inspect_parquet_file(&file.path)
-            .map_err(|e| RepairError::DatasetUnreadable(format!("{}: {e}", file.path)))?;
-        let schema_sig = paraclete_core::parquet_schema_signature(&insp);
         entries.push(FingerprintEntry {
             relative_path: rel,
             size_bytes: file.size_bytes,
-            num_rows: insp.num_rows,
-            num_row_groups: insp.num_row_groups,
-            schema_signature: schema_sig,
-            compression_codecs: insp.compression_codecs.iter().cloned().collect(),
+            num_rows: file.num_rows,
+            num_row_groups: file.num_row_groups,
+            schema_signature: file.schema_signature.clone(),
+            compression_codecs: file.compression_codecs.clone(),
         });
     }
     entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));

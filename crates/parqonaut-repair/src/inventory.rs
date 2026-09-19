@@ -38,8 +38,7 @@ impl DatasetInventory {
         assets.sort_by_key(|a| &a.path);
 
         for asset in assets {
-            let insp = inspect_parquet_file(&asset.path)
-                .map_err(|e| RepairError::DatasetUnreadable(format!("{}: {e}", asset.path)))?;
+            let insp = inspect_asset(asset)?;
             total_rows += insp.num_rows;
             let sig = paraclete_core::parquet_schema_signature(&insp);
             schema_signatures.entry(sig.clone()).or_default().push(asset.path.clone());
@@ -96,6 +95,30 @@ impl DatasetInventory {
         parts.sort();
         parts.join("\x1f")
     }
+}
+
+fn inspect_asset(
+    asset: &paraclete_types::AssetRecord,
+) -> Result<paraclete_core::ParquetInspection, RepairError> {
+    if asset.path.as_std_path().is_file() {
+        return inspect_parquet_file(&asset.path)
+            .map_err(|e| RepairError::DatasetUnreadable(format!("{}: {e}", asset.path)));
+    }
+    if let Some(hints) = &asset.inspection_hints {
+        if let Ok(insp) =
+            crate::storage_scan::parquet_inspection_from_hints(hints, asset.path.as_str())
+        {
+            return Ok(insp);
+        }
+    }
+    if asset.path.as_str().starts_with("s3://") {
+        return Err(RepairError::DatasetUnreadable(format!(
+            "{}: remote Parquet inspection missing from scan report",
+            asset.path
+        )));
+    }
+    inspect_parquet_file(&asset.path)
+        .map_err(|e| RepairError::DatasetUnreadable(format!("{}: {e}", asset.path)))
 }
 
 pub fn median_u64(values: &[u64]) -> u64 {

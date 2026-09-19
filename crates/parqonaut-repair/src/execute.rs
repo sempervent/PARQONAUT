@@ -78,9 +78,6 @@ impl RepairExecutor {
         let work = staging.join("work");
         fs::create_dir_all(&work)?;
 
-        let mut executed = Vec::new();
-        let mut skipped = Vec::new();
-        let mut audit = Vec::new();
         let audit_ctx = OperationAuditContext {
             plan_id: plan.plan_id.as_str(),
             dataset_fingerprint: plan.dataset_fingerprint.digest.as_str(),
@@ -90,74 +87,16 @@ impl RepairExecutor {
 
         let mut working = seed_work_dir(root, &work, scan)?;
 
-        let sorted = sort_by_dependencies(&plan.operations)?;
-        let run_result = (|| {
-            for op in sorted {
-                let now = Utc::now();
-                match op.safety {
-                    RepairSafety::Safe => {
-                        apply_operation(op, plan, root, &work, &mut working)?;
-                        executed.push(op.operation_id.clone());
-                        audit.push(OperationAuditRecord::new(
-                            audit_ctx,
-                            op.operation_id.clone(),
-                            op.safety,
-                            AuthorizationSource::AutomaticSafePolicy,
-                            now,
-                            true,
-                            None,
-                        ));
-                    }
-                    RepairSafety::ReviewRequired => {
-                        if self.authorization.is_authorized(&op.operation_id) {
-                            apply_operation(op, plan, root, &work, &mut working)?;
-                            executed.push(op.operation_id.clone());
-                            audit.push(OperationAuditRecord::new(
-                                audit_ctx,
-                                op.operation_id.clone(),
-                                op.safety,
-                                AuthorizationSource::ExplicitUser,
-                                now,
-                                true,
-                                None,
-                            ));
-                        } else {
-                            skipped.push(op.operation_id.clone());
-                            audit.push(OperationAuditRecord::new(
-                                audit_ctx,
-                                op.operation_id.clone(),
-                                op.safety,
-                                AuthorizationSource::NotAuthorized,
-                                now,
-                                false,
-                                Some(format!(
-                                    "review-required operation {} not authorized",
-                                    op.operation_id
-                                )),
-                            ));
-                        }
-                    }
-                    RepairSafety::Blocked | RepairSafety::Destructive => {
-                        skipped.push(op.operation_id.clone());
-                        audit.push(OperationAuditRecord::new(
-                            audit_ctx,
-                            op.operation_id.clone(),
-                            op.safety,
-                            AuthorizationSource::BlockedByPolicy,
-                            now,
-                            false,
-                            Some("operation blocked by safety policy".into()),
-                        ));
-                    }
+        let RepairOperationOutcome { executed, skipped, audit } =
+            match run_repair_operations(self, plan, root, &work, &mut working, &audit_ctx) {
+                Ok(outcome) => outcome,
+                Err(err) => {
+                    info!(staging = %staging, "repair failed; staging retained");
+                    return Err(RepairError::PartialExecution {
+                        staging: format!("{} ({err})", staging),
+                    });
                 }
-            }
-            Ok::<(), RepairError>(())
-        })();
-
-        if let Err(err) = run_result {
-            info!(staging = %staging, "repair failed; staging retained");
-            return Err(RepairError::PartialExecution { staging: format!("{} ({err})", staging) });
-        }
+            };
 
         fs::create_dir_all(output)?;
         copy_work_to_output(&work, output)?;
@@ -203,7 +142,87 @@ impl RepairExecutor {
     }
 }
 
-fn seed_work_dir(
+pub(crate) struct RepairOperationOutcome {
+    pub executed: Vec<String>,
+    pub skipped: Vec<String>,
+    pub audit: Vec<OperationAuditRecord>,
+}
+
+pub(crate) fn run_repair_operations(
+    executor: &RepairExecutor,
+    plan: &RepairPlan,
+    root: &Utf8Path,
+    work: &Utf8Path,
+    working: &mut BTreeMap<String, Utf8PathBuf>,
+    audit_ctx: &OperationAuditContext,
+) -> Result<RepairOperationOutcome, RepairError> {
+    let mut executed = Vec::new();
+    let mut skipped = Vec::new();
+    let mut audit = Vec::new();
+    let sorted = sort_by_dependencies(&plan.operations)?;
+    for op in sorted {
+        let now = Utc::now();
+        match op.safety {
+            RepairSafety::Safe => {
+                apply_operation(op, plan, root, work, working)?;
+                executed.push(op.operation_id.clone());
+                audit.push(OperationAuditRecord::new(
+                    *audit_ctx,
+                    op.operation_id.clone(),
+                    op.safety,
+                    AuthorizationSource::AutomaticSafePolicy,
+                    now,
+                    true,
+                    None,
+                ));
+            }
+            RepairSafety::ReviewRequired => {
+                if executor.authorization.is_authorized(&op.operation_id) {
+                    apply_operation(op, plan, root, work, working)?;
+                    executed.push(op.operation_id.clone());
+                    audit.push(OperationAuditRecord::new(
+                        *audit_ctx,
+                        op.operation_id.clone(),
+                        op.safety,
+                        AuthorizationSource::ExplicitUser,
+                        now,
+                        true,
+                        None,
+                    ));
+                } else {
+                    skipped.push(op.operation_id.clone());
+                    audit.push(OperationAuditRecord::new(
+                        *audit_ctx,
+                        op.operation_id.clone(),
+                        op.safety,
+                        AuthorizationSource::NotAuthorized,
+                        now,
+                        false,
+                        Some(format!(
+                            "review-required operation {} not authorized",
+                            op.operation_id
+                        )),
+                    ));
+                }
+            }
+            RepairSafety::Blocked | RepairSafety::Destructive => {
+                skipped.push(op.operation_id.clone());
+                audit.push(OperationAuditRecord::new(
+                    *audit_ctx,
+                    op.operation_id.clone(),
+                    op.safety,
+                    AuthorizationSource::BlockedByPolicy,
+                    now,
+                    false,
+                    Some("operation blocked by safety policy".into()),
+                ));
+            }
+        }
+    }
+    Ok(RepairOperationOutcome { executed, skipped, audit })
+}
+
+pub(crate) fn seed_work_dir(
     root: &Utf8Path,
     work: &Utf8Path,
     scan: &paraclete_types::ScanReport,
@@ -224,7 +243,7 @@ fn seed_work_dir(
     Ok(map)
 }
 
-fn apply_operation(
+pub(crate) fn apply_operation(
     op: &RepairOperation,
     plan: &RepairPlan,
     root: &Utf8Path,
@@ -397,7 +416,7 @@ fn rewrite_targets(
     Ok(())
 }
 
-fn copy_work_to_output(work: &Utf8Path, output: &Utf8Path) -> Result<(), RepairError> {
+pub(crate) fn copy_work_to_output(work: &Utf8Path, output: &Utf8Path) -> Result<(), RepairError> {
     for entry in walkdir::WalkDir::new(work.as_std_path()).sort_by_file_name() {
         let entry = entry.map_err(|e| RepairError::Io(std::io::Error::other(e)))?;
         if entry.file_type().is_file() {

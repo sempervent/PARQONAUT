@@ -51,4 +51,10 @@ pub enum RepairError {
 
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("storage error: {0}")]
+    Storage(String),
+
+    #[error("publication error: {0}")]
+    Publication(String),
 }

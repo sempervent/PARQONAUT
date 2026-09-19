@@ -1,17 +1,18 @@
 //! Parquet footer inspection (metadata only; no row reads in Phase 1).
 
+use bytes::Bytes;
 use std::collections::BTreeSet;
 use std::fs::File;
 
 use camino::Utf8Path;
 use paraclete_types::{FieldDefinition, SchemaSnapshot};
 use parquet::basic::Repetition;
-use parquet::file::reader::{FileReader, SerializedFileReader};
+use parquet::file::reader::{ChunkReader, FileReader, SerializedFileReader};
 
 use crate::CoreError;
 
 /// Per-row-group summary derived from the Parquet footer.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RowGroupSummary {
     pub index: usize,
     pub num_rows: i64,
@@ -37,8 +38,48 @@ pub struct ParquetInspection {
 /// Reads Parquet footer metadata for a UTF-8 path.
 pub fn inspect_parquet_file(path: &Utf8Path) -> Result<ParquetInspection, CoreError> {
     let file = File::open(path.as_std_path())?;
-    let reader = SerializedFileReader::new(file).map_err(|e| CoreError::Parquet(e.to_string()))?;
-    let meta = reader.metadata();
+    inspect_parquet_chunk_reader(path.as_str().to_string(), file)
+}
+
+/// Reads Parquet footer metadata from any [`ChunkReader`] source.
+pub fn inspect_parquet_chunk_reader<R: ChunkReader + 'static>(
+    path: String,
+    reader: R,
+) -> Result<ParquetInspection, CoreError> {
+    let reader =
+        SerializedFileReader::new(reader).map_err(|e| CoreError::Parquet(e.to_string()))?;
+    inspection_from_metadata(path, reader.metadata())
+}
+
+/// Back-compat alias for [`inspect_parquet_chunk_reader`].
+pub fn inspect_parquet_reader<R: ChunkReader + 'static>(
+    path: String,
+    reader: R,
+) -> Result<ParquetInspection, CoreError> {
+    inspect_parquet_chunk_reader(path, reader)
+}
+
+/// Reads Parquet footer metadata from a bounded footer buffer (metadata + 8-byte trailer).
+///
+/// `object_size` is the full object length; `footer` is the tail slice ending in `PAR1`.
+pub fn inspect_parquet_footer_buffer(
+    path: String,
+    object_size: u64,
+    footer: &[u8],
+) -> Result<ParquetInspection, CoreError> {
+    if footer.len() < 8 || footer.len() as u64 > object_size {
+        return Err(CoreError::Parquet("invalid Parquet footer buffer".into()));
+    }
+    let content_len = object_size - footer.len() as u64;
+    let mut buf = vec![0u8; content_len as usize];
+    buf.extend_from_slice(footer);
+    inspect_parquet_reader(path, Bytes::from(buf))
+}
+
+fn inspection_from_metadata(
+    path: String,
+    meta: &parquet::file::metadata::ParquetMetaData,
+) -> Result<ParquetInspection, CoreError> {
     let fm = meta.file_metadata();
     let nrg = meta.num_row_groups();
     let mut row_groups = Vec::with_capacity(nrg);
@@ -65,7 +106,7 @@ pub fn inspect_parquet_file(path: &Utf8Path) -> Result<ParquetInspection, CoreEr
         }
     }
     Ok(ParquetInspection {
-        path: path.as_str().to_string(),
+        path,
         num_rows: fm.num_rows(),
         num_row_groups: nrg,
         row_groups,
