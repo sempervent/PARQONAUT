@@ -1,38 +1,28 @@
-use camino::{Utf8Path, Utf8PathBuf};
+use parqonaut_repair::locations_overlap;
+use parqonaut_storage::location::DatasetLocation;
 
 use crate::error::OrchestratorError;
 use crate::ids::DatasetId;
+use crate::location::location_display;
 use crate::plan::BatchPlan;
 
-/// Source and output paths for one dataset in a batch run.
+/// Source and output locations for one dataset in a batch run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchPathSpec {
     pub dataset_id: DatasetId,
-    pub source: Utf8PathBuf,
-    pub output: Utf8PathBuf,
+    pub source: DatasetLocation,
+    pub output: DatasetLocation,
 }
 
-/// Returns true when two paths refer to the same location or one is nested inside the other.
-pub fn paths_overlap(a: &Utf8Path, b: &Utf8Path) -> bool {
-    let a = normalize_path(a);
-    let b = normalize_path(b);
-    a.starts_with(&b) || b.starts_with(&a)
-}
-
-fn normalize_path(path: &Utf8Path) -> Utf8PathBuf {
-    std::fs::canonicalize(path.as_std_path())
-        .ok()
-        .and_then(|p| p.try_into().ok())
-        .unwrap_or_else(|| path.to_path_buf())
-}
-
-/// Reject batch plans whose dataset source/output paths would collide.
+/// Reject batch plans whose dataset source/output locations would collide.
 pub fn validate_batch_overlap(specs: &[BatchPathSpec]) -> Result<(), OrchestratorError> {
     for spec in specs {
-        if paths_overlap(&spec.source, &spec.output) {
+        if locations_overlap(&spec.source, &spec.output) {
             return Err(OrchestratorError::PathOverlap(format!(
                 "dataset `{}`: source `{}` overlaps output `{}`",
-                spec.dataset_id.0, spec.source, spec.output
+                spec.dataset_id.0,
+                location_display(&spec.source),
+                location_display(&spec.output)
             )));
         }
     }
@@ -57,10 +47,15 @@ fn cross_overlap_detail(left: &BatchPathSpec, right: &BatchPathSpec) -> Option<S
         ("output", &left.output, "output", &right.output),
     ];
     for (left_kind, left_path, right_kind, right_path) in pairs {
-        if paths_overlap(left_path, right_path) {
+        if locations_overlap(left_path, right_path) {
             return Some(format!(
                 "datasets `{}` and `{}`: {} `{}` overlaps {} `{}`",
-                left.dataset_id.0, right.dataset_id.0, left_kind, left_path, right_kind, right_path
+                left.dataset_id.0,
+                right.dataset_id.0,
+                left_kind,
+                location_display(left_path),
+                right_kind,
+                location_display(right_path)
             ));
         }
     }
@@ -70,13 +65,9 @@ fn cross_overlap_detail(left: &BatchPathSpec, right: &BatchPathSpec) -> Option<S
 /// Validate path safety for a batch plan using embedded output paths.
 pub fn validate_batch_plan(plan: &BatchPlan) -> Result<(), OrchestratorError> {
     let specs: Vec<BatchPathSpec> = plan
-        .datasets
-        .iter()
-        .map(|ds| BatchPathSpec {
-            dataset_id: ds.dataset_id.clone(),
-            source: Utf8PathBuf::from(&ds.source_path),
-            output: Utf8PathBuf::from(&ds.output_path),
-        })
+        .dataset_locations()?
+        .into_iter()
+        .map(|(dataset_id, source, output)| BatchPathSpec { dataset_id, source, output })
         .collect();
     validate_batch_overlap(&specs)
 }
@@ -84,32 +75,40 @@ pub fn validate_batch_plan(plan: &BatchPlan) -> Result<(), OrchestratorError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ids::DatasetId;
+    use parqonaut_storage::location::S3Location;
 
     #[test]
     fn rejects_source_output_overlap() {
-        let root = Utf8PathBuf::from("/data/project");
+        let root = DatasetLocation::parse("/data/project").unwrap();
         let err = validate_batch_overlap(&[BatchPathSpec {
             dataset_id: DatasetId("a".into()),
             source: root.clone(),
-            output: root.join("nested"),
+            output: DatasetLocation::Local(parqonaut_storage::location::LocalLocation {
+                path: "/data/project/nested".into(),
+            }),
         }])
         .unwrap_err();
         assert!(matches!(err, OrchestratorError::PathOverlap(_)));
     }
 
     #[test]
-    fn rejects_cross_dataset_output_overlap() {
+    fn rejects_cross_dataset_s3_output_overlap() {
         let err = validate_batch_overlap(&[
             BatchPathSpec {
                 dataset_id: DatasetId("a".into()),
-                source: Utf8PathBuf::from("/data/a/src"),
-                output: Utf8PathBuf::from("/data/shared/out"),
+                source: DatasetLocation::parse("s3://b/data/a/src").unwrap(),
+                output: DatasetLocation::S3(S3Location {
+                    bucket: "shared".into(),
+                    prefix: "out".into(),
+                }),
             },
             BatchPathSpec {
                 dataset_id: DatasetId("b".into()),
-                source: Utf8PathBuf::from("/data/b/src"),
-                output: Utf8PathBuf::from("/data/shared/out/nested"),
+                source: DatasetLocation::parse("s3://b/data/b/src").unwrap(),
+                output: DatasetLocation::S3(S3Location {
+                    bucket: "shared".into(),
+                    prefix: "out/nested".into(),
+                }),
             },
         ])
         .unwrap_err();
@@ -121,13 +120,13 @@ mod tests {
         validate_batch_overlap(&[
             BatchPathSpec {
                 dataset_id: DatasetId("a".into()),
-                source: Utf8PathBuf::from("/data/a/src"),
-                output: Utf8PathBuf::from("/data/a/out"),
+                source: DatasetLocation::parse("/data/a/src").unwrap(),
+                output: DatasetLocation::parse("/data/a/out").unwrap(),
             },
             BatchPathSpec {
                 dataset_id: DatasetId("b".into()),
-                source: Utf8PathBuf::from("/data/b/src"),
-                output: Utf8PathBuf::from("/data/b/out"),
+                source: DatasetLocation::parse("/data/b/src").unwrap(),
+                output: DatasetLocation::parse("/data/b/out").unwrap(),
             },
         ])
         .unwrap();

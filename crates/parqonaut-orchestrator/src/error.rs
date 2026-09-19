@@ -56,4 +56,7 @@ pub enum OrchestratorError {
 
     #[error("state transition error: {0}")]
     State(#[from] crate::state::StateTransitionError),
+
+    #[error("storage error: {0}")]
+    Storage(String),
 }

@@ -8,6 +8,7 @@ description = "Multi-dataset batch orchestration: planning, scheduling, journal,
 
 [dependencies]
 parqonaut-repair = { path = "../parqonaut-repair" }
+parqonaut-storage = { path = "../parqonaut-storage" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -30,3 +31,5 @@ path = "src/bin/generate_phase4_fixtures.rs"
 [dev-dependencies]
 tempfile = "3"
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
+parqonaut-storage = { path = "../parqonaut-storage" }
+bytes = "1.9"

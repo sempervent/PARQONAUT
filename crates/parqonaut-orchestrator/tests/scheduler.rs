@@ -3,11 +3,12 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use parqonaut_orchestrator::{
-    build_batch_plan, validate_batch_overlap, BatchConfig, BatchExecutor, BatchExecutorConfig,
-    BatchPathSpec, CancelFlag, DatasetId, DatasetState, ExecutionMode, RunId, RunIdentity,
-    SqliteRunJournal,
+    build_batch_plan_async, validate_batch_overlap, BatchConfig, BatchExecutor,
+    BatchExecutorConfig, BatchPathSpec, BatchStorageRuntime, CancelFlag, DatasetId, DatasetState,
+    ExecutionMode, RunId, RunIdentity, SqliteRunJournal,
 };
 use parqonaut_repair::{RepairExecutor, PARQONAUT_VERSION};
+use parqonaut_storage::location::DatasetLocation;
 use tempfile::TempDir;
 
 fn write_batch_config(base: &TempDir, ds_paths: &[(&str, &str)]) -> camino::Utf8PathBuf {
@@ -50,13 +51,13 @@ fn overlap_rejects_shared_output_tree() {
     let err = validate_batch_overlap(&[
         BatchPathSpec {
             dataset_id: DatasetId("left".into()),
-            source: "/tmp/a/src".into(),
-            output: "/tmp/shared/out".into(),
+            source: DatasetLocation::parse("/tmp/a/src").unwrap(),
+            output: DatasetLocation::parse("/tmp/shared/out").unwrap(),
         },
         BatchPathSpec {
             dataset_id: DatasetId("right".into()),
-            source: "/tmp/b/src".into(),
-            output: "/tmp/shared/out/nested".into(),
+            source: DatasetLocation::parse("/tmp/b/src").unwrap(),
+            output: DatasetLocation::parse("/tmp/shared/out/nested").unwrap(),
         },
     ])
     .unwrap_err();
@@ -82,7 +83,8 @@ async fn executor_respects_jobs_bound_metric() {
         ],
     );
     let cfg = BatchConfig::from_toml_path(&cfg_path).unwrap();
-    let plan = build_batch_plan(&cfg, &cfg_path).unwrap();
+    let storage = BatchStorageRuntime::new(cfg.max_storage_requests());
+    let plan = build_batch_plan_async(&cfg, &cfg_path, &storage).await.unwrap();
 
     let run_id = RunId::new();
     let identity = run_identity(&plan, &run_id);
@@ -114,7 +116,8 @@ async fn failure_isolation_continues_other_datasets() {
         &[("good", good.to_str().unwrap()), ("blocked", blocked.to_str().unwrap())],
     );
     let cfg = BatchConfig::from_toml_path(&cfg_path).unwrap();
-    let mut plan = build_batch_plan(&cfg, &cfg_path).unwrap();
+    let storage = BatchStorageRuntime::new(cfg.max_storage_requests());
+    let mut plan = build_batch_plan_async(&cfg, &cfg_path, &storage).await.unwrap();
 
     for ds in &mut plan.datasets {
         if ds.dataset_id.0 == "blocked" {
