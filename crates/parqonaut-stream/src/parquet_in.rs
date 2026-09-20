@@ -44,7 +44,6 @@ mod tests {
     use arrow::array::{Int64Array, StringArray};
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
-    use parquet::basic::Compression;
     use std::sync::Arc;
     use tempfile::tempdir;
 

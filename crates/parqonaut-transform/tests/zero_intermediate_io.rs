@@ -9,7 +9,7 @@ fn rewrite_partition_spec_has_zero_intermediate_io() {
     std::fs::copy(root.join("fixtures/transform/partition-basic/input.parquet"), &input)
         .expect("copy fixture input");
 
-    let mut spec = parse_spec(&root.join("fixtures/transform/specs/rewrite-partition.yaml"))
+    let mut spec = parse_spec(root.join("fixtures/transform/specs/rewrite-partition.yaml"))
         .expect("parse spec");
     *spec.input.as_mut().unwrap() = input.to_string_lossy().into_owned();
     *spec.output.as_mut().unwrap() = work.path().join("processed").to_string_lossy().into_owned();

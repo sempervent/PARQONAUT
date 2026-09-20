@@ -287,7 +287,6 @@ impl Pipeline {
                         let config = ParquetWriterConfig {
                             compression: parquet_compression,
                             zstd_level: cli.zstd_level as i32,
-                            ..ParquetWriterConfig::default()
                         };
                         let mut writer: Option<ParquetWriter> = None;
                         while let Some(batch) = reader.read_batch()? {
@@ -317,7 +316,6 @@ impl Pipeline {
                         let config = ParquetWriterConfig {
                             compression: parquet_compression,
                             zstd_level: cli.zstd_level as i32,
-                            ..ParquetWriterConfig::default()
                         };
                         let mut writer: Option<ParquetWriter> = None;
                         while let Some(batch) = reader.read_batch()? {
@@ -532,7 +530,6 @@ impl Pipeline {
                     let config = ParquetWriterConfig {
                         compression: parquet_compression,
                         zstd_level: zstd_level as i32,
-                        ..ParquetWriterConfig::default()
                     };
 
                     let mut writer = ParquetWriter::new(&output_path, schema, &config)?;
