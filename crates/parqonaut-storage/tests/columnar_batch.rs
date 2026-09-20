@@ -9,7 +9,6 @@ use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use bytes::Bytes;
 use futures::StreamExt;
-use parquet::arrow::ArrowWriter;
 use parqonaut_columnar::{BatchSink, BatchSource};
 use parqonaut_storage::backend::StorageBackend;
 use parqonaut_storage::capabilities::StorageCapabilities;
@@ -18,6 +17,7 @@ use parqonaut_storage::conditional::ConditionalCreate;
 use parqonaut_storage::location::ObjectLocation;
 use parqonaut_storage::memory::MemoryStorageBackend;
 use parqonaut_workflow::NoOpProgressObserver;
+use parquet::arrow::ArrowWriter;
 
 fn write_parquet_bytes(rows: i64) -> Vec<u8> {
     let schema = Arc::new(Schema::new(vec![
@@ -42,10 +42,7 @@ fn write_parquet_bytes(rows: i64) -> Vec<u8> {
 #[tokio::test(flavor = "multi_thread")]
 async fn memory_backend_parquet_read_uses_bounded_ranges() {
     let backend = Arc::new(MemoryStorageBackend::new(StorageCapabilities::LOCAL));
-    let object = ObjectLocation::S3 {
-        bucket: "batch".into(),
-        key: "data.parquet".into(),
-    };
+    let object = ObjectLocation::S3 { bucket: "batch".into(), key: "data.parquet".into() };
     let bytes = write_parquet_bytes(1);
     let full_len = bytes.len() as u64;
     backend
@@ -79,7 +76,10 @@ async fn local_to_local_rewrite_via_storage_backend() {
     let input = input_path.to_string_lossy().to_string();
     let output = output_path.to_string_lossy().to_string();
 
-    let source = StorageParquetBatchSource::new(Arc::clone(&backend), ObjectLocation::parse(&input).unwrap());
+    let source = StorageParquetBatchSource::new(
+        Arc::clone(&backend),
+        ObjectLocation::parse(&input).unwrap(),
+    );
     let schema = source.schema().expect("schema");
     let stream = Box::new(source).into_stream().expect("stream");
     let mut sink = StorageParquetBatchSink::new(backend, ObjectLocation::parse(&output).unwrap());

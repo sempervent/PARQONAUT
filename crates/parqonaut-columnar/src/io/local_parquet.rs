@@ -139,11 +139,11 @@ impl BatchSink for LocalParquetBatchSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use arrow::array::{Int64Array, StringArray};
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
     use parqonaut_workflow::NoOpProgressObserver;
+    use std::sync::Arc;
     use tempfile::tempdir;
 
     #[test]

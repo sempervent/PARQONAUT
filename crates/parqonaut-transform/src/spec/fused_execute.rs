@@ -48,18 +48,14 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
         .ops
         .iter()
         .find_map(|op| match op {
-            FusedOperation::Rewrite {
-                projection,
-                filter,
-                rename,
-                cast,
-                ..
-            } => Some(pipeline_from_rewrite_ops(
-                projection.clone(),
-                filter.as_deref(),
-                rename.clone(),
-                cast.clone(),
-            )),
+            FusedOperation::Rewrite { projection, filter, rename, cast, .. } => {
+                Some(pipeline_from_rewrite_ops(
+                    projection.clone(),
+                    filter.as_deref(),
+                    rename.clone(),
+                    cast.clone(),
+                ))
+            }
             _ => None,
         })
         .transpose()?;

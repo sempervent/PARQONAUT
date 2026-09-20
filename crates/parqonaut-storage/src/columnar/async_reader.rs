@@ -47,7 +47,7 @@ async fn load_metadata<B: StorageBackend + ?Sized>(
             message: format!("Parquet footer decode: {e}"),
         })?
         .metadata_length();
-    if metadata_len as usize + 8 != footer.footer.len() {
+    if metadata_len + 8 != footer.footer.len() {
         return Err(StorageError::InvalidLocation {
             message: format!(
                 "footer buffer length {} does not match metadata length {metadata_len}",
@@ -55,7 +55,7 @@ async fn load_metadata<B: StorageBackend + ?Sized>(
             ),
         });
     }
-    let metadata_bytes = &footer.footer[..metadata_len as usize];
+    let metadata_bytes = &footer.footer[..metadata_len];
     let meta = ParquetMetaDataReader::decode_metadata(metadata_bytes).map_err(|e| {
         StorageError::InvalidLocation { message: format!("Parquet metadata decode: {e}") }
     })?;

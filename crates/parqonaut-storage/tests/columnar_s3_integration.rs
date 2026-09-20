@@ -21,8 +21,7 @@ async fn s3_parquet_batch_source_reads_fixture_without_full_get() {
 
     let backend = Arc::new(S3StorageBackend::new(S3Config::minio(endpoint)).await);
     let bucket = common::fogbank_bucket();
-    let prefix =
-        std::env::var("FOGBANK_DATASET_PREFIX").unwrap_or_else(|_| "datasets".into());
+    let prefix = std::env::var("FOGBANK_DATASET_PREFIX").unwrap_or_else(|_| "datasets".into());
     let key = format!("{prefix}/healthy/part-0000.parquet");
     let object = ObjectLocation::S3 { bucket, key };
 

@@ -2,9 +2,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 
-use arrow::array::{
-    Array, BooleanArray, Float64Array, Int64Array, RecordBatch, StringArray,
-};
+use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, RecordBatch, StringArray};
 use arrow::datatypes::{Field, Schema, SchemaRef};
 use csv::{ByteRecord, ReaderBuilder};
 use encoding_rs::{Encoding, UTF_8};
@@ -107,8 +105,7 @@ impl CsvBatchReader {
             (headers, None)
         } else {
             let mut first = ByteRecord::new();
-            let col_count =
-                if reader.read_byte_record(&mut first)? { first.len() } else { 0 };
+            let col_count = if reader.read_byte_record(&mut first)? { first.len() } else { 0 };
             let headers = (0..col_count).map(|i| format!("col_{}", i + 1)).collect();
             (headers, Some(first))
         };

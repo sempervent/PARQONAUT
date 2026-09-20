@@ -22,8 +22,7 @@ pub trait OutputSink: Send + Sync {
 
 pub fn resolve_inputs(pattern: &str) -> Result<Vec<String>> {
     if pattern.starts_with("s3://") {
-        ObjectLocation::parse(pattern)
-            .map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
+        ObjectLocation::parse(pattern).map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
         return Ok(vec![pattern.to_string()]);
     }
     let paths: Result<Vec<_>> = glob::glob(pattern)

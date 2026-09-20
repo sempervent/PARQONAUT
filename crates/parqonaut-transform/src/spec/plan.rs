@@ -32,6 +32,7 @@ pub struct ExecutablePlan {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)] // FusedPlanSegment carries op vectors; barrier stays small.
 pub enum CompiledSegment {
     Fused(FusedPlanSegment),
     Barrier(BarrierPlanSegment),
@@ -329,7 +330,7 @@ pub fn compile_plan(spec: &Spec) -> Result<ExecutablePlan> {
             storage: storage_kind(&segment_output),
         }));
 
-        current_inputs = predict_outputs_from_fused(&segments.last().unwrap(), &current_inputs)?;
+        current_inputs = predict_outputs_from_fused(segments.last().unwrap(), &current_inputs)?;
     }
 
     Ok(ExecutablePlan {

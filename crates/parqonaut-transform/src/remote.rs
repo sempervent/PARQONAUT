@@ -24,12 +24,8 @@ pub enum RemoteIoKind {
 }
 
 pub fn classify_io(input: &str, output: &str) -> Result<RemoteIoKind> {
-    let in_remote = ObjectLocation::parse(input)
-        .map(|o| o.is_remote())
-        .unwrap_or(false);
-    let out_remote = ObjectLocation::parse(output)
-        .map(|o| o.is_remote())
-        .unwrap_or(false);
+    let in_remote = ObjectLocation::parse(input).map(|o| o.is_remote()).unwrap_or(false);
+    let out_remote = ObjectLocation::parse(output).map(|o| o.is_remote()).unwrap_or(false);
     Ok(match (in_remote, out_remote) {
         (false, false) => RemoteIoKind::LocalToLocal,
         (false, true) => RemoteIoKind::LocalToRemote,
@@ -52,10 +48,10 @@ async fn rewrite_parquet_storage_async(
     input: &str,
     output: &str,
 ) -> Result<WriteSummary> {
-    let input_loc = ObjectLocation::parse(input)
-        .map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
-    let output_loc = ObjectLocation::parse(output)
-        .map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
+    let input_loc =
+        ObjectLocation::parse(input).map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
+    let output_loc =
+        ObjectLocation::parse(output).map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
 
     let progress = NoOpProgressObserver;
     let source = StorageParquetBatchSource::new(Arc::clone(&backend), input_loc);
@@ -71,9 +67,7 @@ pub fn merge_parquet_storage(
     inputs: &[String],
     output: &str,
 ) -> Result<WriteSummary> {
-    run_io_runtime(|handle| {
-        handle.block_on(merge_parquet_storage_async(backend, inputs, output))
-    })
+    run_io_runtime(|handle| handle.block_on(merge_parquet_storage_async(backend, inputs, output)))
 }
 
 async fn merge_parquet_storage_async(
@@ -87,8 +81,8 @@ async fn merge_parquet_storage_async(
     let mut sorted = inputs.to_vec();
     sorted.sort();
 
-    let output_loc = ObjectLocation::parse(output)
-        .map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
+    let output_loc =
+        ObjectLocation::parse(output).map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
     let progress = NoOpProgressObserver;
 
     let first = ObjectLocation::parse(&sorted[0])
@@ -151,7 +145,7 @@ async fn merge_parquet_storage_async(
 
 /// Local filesystem backend rooted at `root` (used for local paths in the remote matrix).
 pub fn default_local_backend(root: impl AsRef<Path>) -> Arc<LocalStorageBackend> {
-    Arc::new(LocalStorageBackend::new(root.as_ref().to_path_buf()))
+    Arc::new(LocalStorageBackend::new(root))
 }
 
 fn run_io_runtime<F, T>(f: F) -> T

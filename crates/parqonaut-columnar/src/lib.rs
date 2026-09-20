@@ -9,9 +9,7 @@ pub mod pipeline;
 pub mod schema;
 mod stream;
 
-pub use batch::{
-    emit_batch_written, validate_batch, BatchSink, BatchSource, WriteSummary,
-};
+pub use batch::{emit_batch_written, validate_batch, BatchSink, BatchSource, WriteSummary};
 pub use channel::{relay_stream, BackpressureStats};
 pub use error::ColumnarError;
 pub use pipeline::{CancellationToken, ExecutionPlan, IntermediateIoCounters, PipelineStage};

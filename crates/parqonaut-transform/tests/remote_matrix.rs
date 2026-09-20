@@ -19,10 +19,7 @@ fn parquet_fixture() -> Vec<u8> {
     ]));
     let batch = RecordBatch::try_new(
         schema.clone(),
-        vec![
-            Arc::new(Int64Array::from(vec![1, 2])),
-            Arc::new(StringArray::from(vec!["x", "y"])),
-        ],
+        vec![Arc::new(Int64Array::from(vec![1, 2])), Arc::new(StringArray::from(vec!["x", "y"]))],
     )
     .unwrap();
     let mut buf = Vec::new();
@@ -56,10 +53,7 @@ fn local_to_local_matrix_rewrite_and_merge() {
 
     merge_parquet_storage(
         backend,
-        &[
-            a.to_string_lossy().into_owned(),
-            b.to_string_lossy().into_owned(),
-        ],
+        &[a.to_string_lossy().into_owned(), b.to_string_lossy().into_owned()],
         &out.to_string_lossy(),
     )
     .expect("merge");
