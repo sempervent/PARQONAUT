@@ -13,7 +13,7 @@ output = "../../target/mixed-storage-batch/local-local/"
 
 [[datasets]]
 id = "local-to-s3"
-path = "local/healthy"
+path = "local/stale-source"
 
 [[datasets]]
 id = "s3-to-local"
@@ -22,7 +22,7 @@ output = "../../target/mixed-storage-batch/s3-local/"
 
 [[datasets]]
 id = "s3-to-s3"
-path = "s3://fogbank/datasets/healthy/"
+path = "s3://fogbank/datasets/stale-source/"
 
 [[datasets]]
 id = "bad-remote"

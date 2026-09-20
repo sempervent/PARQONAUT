@@ -12,4 +12,4 @@ path = "s3://fogbank/datasets/healthy/"
 
 [[datasets]]
 id = "remote-b"
-path = "s3://fogbank/datasets/healthy/"
+path = "s3://fogbank/datasets/stale-source/"

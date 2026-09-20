@@ -18,8 +18,29 @@ pub struct RemoteInventory {
 
 impl RemoteInventory {
     pub fn relative_key(&self, object: &ObjectMetadata) -> Option<String> {
-        relative_object_key(&self.dataset, &object.location)
+        dataset_object_relative_key(&self.dataset, &object.location)
     }
+}
+
+/// Relative key for an object within a dataset, including logical keys for committed
+/// publication data under `.parqonaut/versions/{version}/data/`.
+pub fn dataset_object_relative_key(
+    dataset: &DatasetLocation,
+    object: &ObjectLocation,
+) -> Option<String> {
+    let key = relative_object_key(dataset, object)?;
+    Some(logical_inventory_key(&key))
+}
+
+fn logical_inventory_key(relative_key: &str) -> String {
+    strip_published_data_relative_key(relative_key).unwrap_or_else(|| relative_key.to_string())
+}
+
+/// Maps `.parqonaut/versions/{id}/data/{name}` → `{name}` when present.
+pub fn strip_published_data_relative_key(relative_key: &str) -> Option<String> {
+    let rest = relative_key.strip_prefix(".parqonaut/versions/")?;
+    let (_, after_version) = rest.split_once('/')?;
+    after_version.strip_prefix("data/").map(str::to_string)
 }
 
 /// Recursively list a dataset and return a sorted, de-duplicated inventory.
@@ -41,14 +62,70 @@ pub async fn list_remote_inventory<B: StorageBackend + ?Sized>(
         continuation = page.continuation_token;
     }
 
+    let raw_objects = objects.clone();
     objects.retain(|object| {
-        relative_object_key(dataset, &object.location)
+        dataset_object_relative_key(dataset, &object.location)
             .map(|key| !is_excluded_inventory_path(&key))
             .unwrap_or(false)
     });
+
+    let has_parquet = objects.iter().any(|object| {
+        dataset_object_relative_key(dataset, &object.location)
+            .is_some_and(|key| key.ends_with(".parquet"))
+    });
+    if !has_parquet {
+        if let Ok(published) = published_data_inventory(backend, dataset, &raw_objects).await {
+            objects.extend(published);
+        }
+    }
+
     objects.sort_by(inventory_sort_key);
+    objects.dedup_by(|a, b| object_sort_key(&a.location) == object_sort_key(&b.location));
 
     Ok(RemoteInventory { dataset: dataset.clone(), objects })
+}
+
+async fn published_data_inventory<B: StorageBackend + ?Sized>(
+    backend: &B,
+    dataset: &DatasetLocation,
+    raw_objects: &[ObjectMetadata],
+) -> Result<Vec<ObjectMetadata>, StorageError> {
+    let DatasetLocation::S3(_) = dataset else {
+        return Ok(Vec::new());
+    };
+
+    use crate::publication::{is_version_committed, read_current_version, PublicationVersionId};
+
+    let Some(version_id) = read_current_version(backend, dataset)
+        .await
+        .map_err(|e| StorageError::Other { message: e.to_string() })?
+    else {
+        return Ok(Vec::new());
+    };
+    let version = PublicationVersionId(version_id);
+    if !is_version_committed(backend, dataset, &version)
+        .await
+        .map_err(|e| StorageError::Other { message: e.to_string() })?
+    {
+        return Ok(Vec::new());
+    }
+
+    let data_prefix = format!(".parqonaut/versions/{}/data/", version.as_str());
+    let mut published = Vec::new();
+    for object in raw_objects {
+        let Some(relative) = relative_object_key(dataset, &object.location) else {
+            continue;
+        };
+        if !relative.starts_with(&data_prefix) {
+            continue;
+        }
+        let logical = relative.strip_prefix(&data_prefix).unwrap_or(&relative);
+        if is_excluded_inventory_path(logical) || !logical.ends_with(".parquet") {
+            continue;
+        }
+        published.push(object.clone());
+    }
+    Ok(published)
 }
 
 /// Returns true when `relative_key` is PARQONAUT-owned metadata or staging and must
@@ -149,6 +226,18 @@ mod tests {
             )
             .await
             .expect("conditional create")
+    }
+
+    #[test]
+    fn published_data_maps_to_logical_keys() {
+        assert_eq!(
+            strip_published_data_relative_key(
+                ".parqonaut/versions/run-abc/data/nested/part.parquet"
+            )
+            .as_deref(),
+            Some("nested/part.parquet")
+        );
+        assert!(strip_published_data_relative_key("plain/part.parquet").is_none());
     }
 
     #[test]

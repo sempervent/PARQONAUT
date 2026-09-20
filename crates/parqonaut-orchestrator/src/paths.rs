@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use camino::Utf8Path;
-use parqonaut_storage::location::DatasetLocation;
+use parqonaut_storage::location::{DatasetLocation, LocalLocation};
 
 use crate::config::{BatchConfig, DatasetConfig};
 use crate::error::OrchestratorError;
@@ -76,6 +76,9 @@ fn resolve_dataset_output(
             let text = raw.as_str();
             if text.contains("://") || raw.is_absolute() {
                 parse_output_override(text, config_base)
+            } else if text.contains('/') || text.contains("..") {
+                let path = BatchConfig::resolve_path(config_base, raw);
+                Ok(DatasetLocation::Local(LocalLocation { path }))
             } else {
                 join_output_segment(output_root, text)
             }

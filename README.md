@@ -6,7 +6,7 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 
 It consolidates [Paraclete](https://github.com/sempervent/paraclete), [parqknife](https://github.com/sempervent/parqknife), and [streaming-parquet (maw)](https://github.com/sempervent/streaming-parquet) into one workspace. See [docs/provenance.md](docs/provenance.md) for migration sources.
 
-**Current release:** [v0.8.0](https://github.com/sempervent/PARQONAUT/releases/tag/v0.8.0) — transform workflows (`partition`, `merge`, `split`, declarative specs) and schema-unified streaming conversion with resumable checkpoints.
+**Current release:** [v0.8.1](https://github.com/sempervent/PARQONAUT/releases/tag/v0.8.1) — transform workflows (`partition`, `merge`, `split`, declarative specs) and schema-unified streaming conversion with resumable checkpoints.
 
 **Documentation:** [PARQONAUT docs](https://sempervent.github.io/PARQONAUT/) (GitHub Pages)
 
