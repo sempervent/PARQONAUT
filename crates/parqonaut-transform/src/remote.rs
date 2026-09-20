@@ -152,11 +152,14 @@ fn run_io_runtime<F, T>(f: F) -> T
 where
     F: FnOnce(tokio::runtime::Handle) -> T,
 {
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        f(handle)
-    } else {
+    let run = || {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime required for storage I/O");
         f(rt.handle().clone())
+    };
+    if tokio::runtime::Handle::try_current().is_ok() {
+        tokio::task::block_in_place(run)
+    } else {
+        run()
     }
 }
 
