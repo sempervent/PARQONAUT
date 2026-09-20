@@ -16,11 +16,11 @@ use crate::{
 };
 use arrow::datatypes::SchemaRef;
 use arrow::record_batch::RecordBatch;
-use parquet::basic::Compression;
 use parqonaut_workflow::{
     JsonLinesProgressObserver, NoOpProgressObserver, ProgressEvent, ProgressEventKind,
     ProgressObserver, SchemaConflictPolicy, TerminalProgressObserver,
 };
+use parquet::basic::Compression;
 use std::io::Write;
 use std::{
     collections::HashMap,
@@ -282,8 +282,7 @@ impl Pipeline {
                         writer.finish()?;
                     }
                     OutputFormat::Parquet => {
-                        let schema: SchemaRef =
-                            Arc::new(aligner.unified_schema().schema.clone());
+                        let schema: SchemaRef = Arc::new(aligner.unified_schema().schema.clone());
                         let parquet_compression = compression_from_cli(cli);
                         let config = ParquetWriterConfig {
                             compression: parquet_compression,
@@ -309,17 +308,11 @@ impl Pipeline {
             FileFormat::Parquet => {
                 let mut reader = ParquetReader::new(&file.path, cli.infer_rows.max(1))?;
                 let source_fields: Vec<String> =
-                    reader
-                        .get_schema()
-                        .fields()
-                        .iter()
-                        .map(|f| f.name().to_string())
-                        .collect();
+                    reader.get_schema().fields().iter().map(|f| f.name().to_string()).collect();
 
                 match output_format {
                     OutputFormat::Parquet => {
-                        let schema: SchemaRef =
-                            Arc::new(aligner.unified_schema().schema.clone());
+                        let schema: SchemaRef = Arc::new(aligner.unified_schema().schema.clone());
                         let parquet_compression = compression_from_cli(cli);
                         let config = ParquetWriterConfig {
                             compression: parquet_compression,
@@ -486,13 +479,12 @@ impl Pipeline {
                     }
                     FileFormat::Parquet => {
                         let mut reader = ParquetReader::new(&file_path, 64_000)?;
-                        let source_fields: Vec<String> =
-                            reader
-                        .get_schema()
-                        .fields()
-                        .iter()
-                        .map(|f| f.name().to_string())
-                        .collect();
+                        let source_fields: Vec<String> = reader
+                            .get_schema()
+                            .fields()
+                            .iter()
+                            .map(|f| f.name().to_string())
+                            .collect();
 
                         while let Some(batch) = reader.read_batch()? {
                             let aligned =

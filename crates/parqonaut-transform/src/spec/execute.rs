@@ -4,8 +4,10 @@ use crate::engine::{
 };
 use crate::error::{ParqknifeError, Result};
 use crate::io::resolve_inputs;
-use crate::spec::plan::{compile_plan, ExecutablePlan, ResolvedStep};
+use crate::spec::fused_execute::execute_fused_segment;
+use crate::spec::plan::{compile_plan, CompiledSegment, ExecutablePlan, ResolvedStep};
 use crate::spec::types::{Compression, Operation, Spec};
+use parqonaut_columnar::IntermediateIoCounters;
 use parqonaut_workflow::{TransformReport, TRANSFORM_SPEC_SCHEMA_VERSION};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -36,6 +38,10 @@ fn plan_to_dry_run_report(plan: &ExecutablePlan) -> Result<TransformReport> {
         files_written: 0,
         bytes_read: 0,
         bytes_written: 0,
+        intermediate_files_created: 0,
+        intermediate_bytes_written: 0,
+        intermediate_files_read: 0,
+        intermediate_bytes_read: 0,
         rows: 0,
         bytes: 0,
         elapsed_ms: 0,
@@ -58,12 +64,34 @@ pub fn execute_plan(plan: &ExecutablePlan) -> Result<TransformReport> {
     let warnings: Vec<String> = Vec::new();
     let mut files_read = 0u64;
     let mut files_written = 0u64;
+    let mut intermediate_io = IntermediateIoCounters::default();
 
-    for step in &plan.steps {
-        let (written, read) = execute_step(step)?;
-        files_read += read;
-        files_written += written;
-        completed += 1;
+    for segment in &plan.segments {
+        match segment {
+            CompiledSegment::Fused(fused) => {
+                let (written, read) = execute_fused_segment(fused)?;
+                files_read += read;
+                files_written += written;
+                if fused.is_intermediate {
+                    record_intermediate_dir(&mut intermediate_io, &fused.output);
+                }
+                completed += fused.step_indices.len() as u64;
+            }
+            CompiledSegment::Barrier(barrier) => {
+                let (written, read) = execute_step(&barrier.step)?;
+                files_read += read;
+                files_written += written;
+                if barrier.step.is_intermediate {
+                    record_intermediate_dir(&mut intermediate_io, &barrier.step.output);
+                    for input in &barrier.step.inputs {
+                        if plan.intermediate_roots.iter().any(|r| input.starts_with(r)) {
+                            record_intermediate_file(&mut intermediate_io, input, true);
+                        }
+                    }
+                }
+                completed += 1;
+            }
+        }
     }
 
     if plan
@@ -96,6 +124,10 @@ pub fn execute_plan(plan: &ExecutablePlan) -> Result<TransformReport> {
         files_written,
         bytes_read: 0,
         bytes_written: 0,
+        intermediate_files_created: intermediate_io.intermediate_files_created(),
+        intermediate_bytes_written: intermediate_io.bytes_written,
+        intermediate_files_read: intermediate_io.files_read,
+        intermediate_bytes_read: intermediate_io.bytes_read,
         rows: 0,
         bytes: 0,
         elapsed_ms: started.elapsed().as_millis() as u64,
@@ -103,6 +135,39 @@ pub fn execute_plan(plan: &ExecutablePlan) -> Result<TransformReport> {
         failures: vec![],
         plan: None,
     })
+}
+
+fn record_intermediate_dir(io: &mut IntermediateIoCounters, root: &str) {
+    let root_path = Path::new(root);
+    if !root_path.exists() {
+        return;
+    }
+    walk_intermediate_files(root_path, io);
+}
+
+fn walk_intermediate_files(path: &Path, io: &mut IntermediateIoCounters) {
+    if path.is_file() {
+        record_intermediate_file(io, &path.to_string_lossy(), false);
+        return;
+    }
+    let Ok(read_dir) = std::fs::read_dir(path) else { return };
+    for entry in read_dir.flatten() {
+        let p = entry.path();
+        if p.is_dir() {
+            walk_intermediate_files(&p, io);
+        } else {
+            record_intermediate_file(io, &p.to_string_lossy(), false);
+        }
+    }
+}
+
+fn record_intermediate_file(io: &mut IntermediateIoCounters, path: &str, is_read: bool) {
+    let Ok(meta) = std::fs::metadata(path) else { return };
+    if is_read {
+        io.record_read(1, meta.len());
+    } else {
+        io.record_write(1, meta.len());
+    }
 }
 
 fn execute_step(step: &ResolvedStep) -> Result<(u64, u64)> {
@@ -262,7 +327,6 @@ mod tests {
     fn dry_run_leaves_no_artifacts() {
         let dir = tempdir().unwrap();
         let inp = dir.path().join("a.parquet");
-        // minimal parquet from rewrite test fixture path
         let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/dummy.parquet");
         std::fs::copy(fixture, &inp).unwrap();
         let spec_path = dir.path().join("spec.yaml");
@@ -285,10 +349,12 @@ steps:
         let spec = crate::parse_spec(&spec_path).unwrap();
         let before: Vec<_> =
             std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().path()).collect();
-        let _ = dry_run_report(&spec).unwrap();
+        let report = dry_run_report(&spec).unwrap();
         let after: Vec<_> =
             std::fs::read_dir(dir.path()).unwrap().map(|e| e.unwrap().path()).collect();
         assert_eq!(before.len(), after.len());
         assert!(!dir.path().join(".parqonaut-spec").exists());
+        let plan_json = report.plan.as_ref().unwrap();
+        assert!(plan_json.get("pipeline").is_some());
     }
 }

@@ -2,7 +2,9 @@
 
 use crate::error::{MawError, Result};
 use arrow::datatypes::Schema;
-use parqonaut_columnar::schema::{self, unify_types as columnar_unify, widen_types as columnar_widen};
+use parqonaut_columnar::schema::{
+    self, unify_types as columnar_unify, widen_types as columnar_widen,
+};
 use parqonaut_workflow::SchemaConflictPolicy;
 
 pub use parqonaut_columnar::schema::{TypeKind, UnifiedSchema};
@@ -11,7 +13,10 @@ pub fn type_from_arrow(dt: &arrow::datatypes::DataType) -> Result<TypeKind> {
     schema::TypeKind::from_arrow_type(dt).map_err(|e| MawError::Schema(e.to_string()))
 }
 
-pub fn unified_from_schemas(schemas: &[Schema], policy: SchemaConflictPolicy) -> Result<UnifiedSchema> {
+pub fn unified_from_schemas(
+    schemas: &[Schema],
+    policy: SchemaConflictPolicy,
+) -> Result<UnifiedSchema> {
     schema::UnifiedSchema::from_schemas(schemas, policy)
         .map_err(|e| MawError::Schema(e.to_string()))
 }

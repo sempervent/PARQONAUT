@@ -56,9 +56,6 @@ pub fn partition_parquet_file(
         return Err(ParqknifeError::InvalidInput("max_open_partitions must be > 0".into()));
     }
 
-    std::fs::create_dir_all(output_dir)?;
-    let comp = compression.map(compression_from_str).transpose()?;
-
     let file = File::open(input)?;
     let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
     let schema = builder.schema().clone();
@@ -67,14 +64,49 @@ pub fn partition_parquet_file(
             ParqknifeError::InvalidInput(format!("partition column not in schema: {col}"))
         })?;
     }
+    let mut batches = Vec::new();
+    for batch_result in builder.build()? {
+        batches.push(batch_result?);
+    }
+    partition_record_batches(
+        batches,
+        output_dir,
+        partition_by,
+        max_open_partitions,
+        compression,
+        row_group_size_mb,
+    )
+}
+
+/// Write preloaded batches into a hive-style partition tree (in-memory handoff).
+pub fn partition_record_batches(
+    batches: Vec<RecordBatch>,
+    output_dir: &Path,
+    partition_by: &[String],
+    max_open_partitions: usize,
+    compression: Option<&str>,
+    row_group_size_mb: Option<u64>,
+) -> Result<Vec<PathBuf>> {
+    if partition_by.is_empty() {
+        return Err(ParqknifeError::InvalidInput("partition_by required".into()));
+    }
+    if max_open_partitions == 0 {
+        return Err(ParqknifeError::InvalidInput("max_open_partitions must be > 0".into()));
+    }
+    if batches.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    std::fs::create_dir_all(output_dir)?;
+    let comp = compression.map(compression_from_str).transpose()?;
+    let schema = batches[0].schema();
 
     let mut writers: HashMap<String, OpenPartition> = HashMap::new();
     let mut lru: VecDeque<String> = VecDeque::new();
     let mut outputs = Vec::new();
     let mut part_counters: HashMap<String, usize> = HashMap::new();
 
-    for batch_result in builder.build()? {
-        let batch: RecordBatch = batch_result?;
+    for batch in batches {
         let keys = partition_keys(&batch, partition_by)?;
         for (key, sub_batch) in keys {
             if !writers.contains_key(&key) {

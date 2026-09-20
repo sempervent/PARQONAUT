@@ -33,7 +33,7 @@ pub fn rewrite_parquet_with_cast(
 
     let current = schema.field(field_idx);
     let (target_dt, target_nullable) =
-        parse_target(current.data_type(), current.is_nullable(), target_type)?;
+        parse_cast_target(current.data_type(), current.is_nullable(), target_type)?;
 
     let mut new_fields: Vec<Arc<Field>> = schema.fields().iter().cloned().collect();
     new_fields[field_idx] = Arc::new(Field::new(column, target_dt.clone(), target_nullable));
@@ -71,7 +71,7 @@ pub fn rewrite_parquet_with_cast(
     Ok(())
 }
 
-fn parse_target(
+pub fn parse_cast_target(
     current: &DataType,
     current_nullable: bool,
     label: &str,

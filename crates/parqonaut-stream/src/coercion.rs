@@ -60,18 +60,20 @@ impl BatchAligner {
                 }
             }
 
-            let mapped_name = self
-                .column_mapping
-                .get(column_name)
-                .map(String::as_str)
-                .unwrap_or(column_name);
+            let mapped_name =
+                self.column_mapping.get(column_name).map(String::as_str).unwrap_or(column_name);
 
             let source_idx = source_fields.iter().position(|n| n == mapped_name);
 
             let aligned_array = if let Some(source_idx) = source_idx {
                 if source_idx < batch.num_columns() {
                     let source_array = batch.column(source_idx);
-                    self.coerce_column(source_array, source_array.data_type(), target_type, num_rows)?
+                    self.coerce_column(
+                        source_array,
+                        source_array.data_type(),
+                        target_type,
+                        num_rows,
+                    )?
                 } else {
                     self.create_null_column(target_type, num_rows)?
                 }
@@ -161,15 +163,16 @@ impl BatchAligner {
             }
             (DataType::Int64, DataType::Float64) => {
                 let int_array = array.as_any().downcast_ref::<Int64Array>().unwrap();
-                let float_values: Vec<Option<f64>> = (0..num_rows)
-                    .map(|i| {
-                        if int_array.is_null(i) {
-                            None
-                        } else {
-                            Some(int_array.value(i) as f64)
-                        }
-                    })
-                    .collect();
+                let float_values: Vec<Option<f64>> =
+                    (0..num_rows)
+                        .map(|i| {
+                            if int_array.is_null(i) {
+                                None
+                            } else {
+                                Some(int_array.value(i) as f64)
+                            }
+                        })
+                        .collect();
                 Ok(Arc::new(Float64Array::from(float_values)))
             }
             (_, DataType::Utf8) => self.stringify_column(array, num_rows),

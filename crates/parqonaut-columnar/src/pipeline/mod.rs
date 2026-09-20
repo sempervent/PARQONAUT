@@ -9,7 +9,5 @@ mod stages;
 pub use cancel::CancellationToken;
 pub use counters::IntermediateIoCounters;
 pub use plan::ExecutionPlan;
-pub use runner::map_stream;
-pub use stages::{
-    BarrierStage, PipelineStage, SinkKind, SinkStage, SourceStage, TransformStage,
-};
+pub use runner::relay_with_backpressure;
+pub use stages::{BarrierStage, PipelineStage, SinkKind, SinkStage, SourceStage, TransformStage};

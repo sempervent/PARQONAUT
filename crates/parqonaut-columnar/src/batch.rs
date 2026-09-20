@@ -1,6 +1,6 @@
 use arrow::datatypes::SchemaRef;
 use arrow::record_batch::RecordBatch;
-use parqonaut_workflow::{ProgressObserver, ProgressEvent};
+use parqonaut_workflow::{ProgressEvent, ProgressObserver};
 
 use crate::error::ColumnarError;
 use crate::stream::BatchStream;

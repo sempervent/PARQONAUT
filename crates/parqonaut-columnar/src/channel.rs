@@ -40,11 +40,7 @@ pub fn relay_stream(
     stats: Option<Arc<BackpressureStats>>,
     mut cancelled: impl FnMut() -> bool + Send + 'static,
 ) -> BatchStream {
-    let cap = if capacity == 0 {
-        DEFAULT_STREAM_CHANNEL_CAPACITY
-    } else {
-        capacity
-    };
+    let cap = if capacity == 0 { DEFAULT_STREAM_CHANNEL_CAPACITY } else { capacity };
     let (tx, rx) = mpsc::channel::<BatchResult>(cap);
 
     tokio::spawn(async move {
@@ -63,7 +59,5 @@ pub fn relay_stream(
         }
     });
 
-    Box::pin(futures::stream::unfold(rx, |mut rx| async {
-        rx.recv().await.map(|item| (item, rx))
-    }))
+    Box::pin(futures::stream::unfold(rx, |mut rx| async { rx.recv().await.map(|item| (item, rx)) }))
 }

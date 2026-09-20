@@ -28,6 +28,12 @@ indicatif = "0.17"
 rayon = "1.8"
 nom = "7.1"
 parqonaut-workflow = { path = "../parqonaut-workflow" }
+parqonaut-columnar = { path = "../parqonaut-columnar" }
+parqonaut-storage = { path = "../parqonaut-storage", features = ["columnar"] }
+
+[features]
+default = []
+s3 = ["parqonaut-storage/s3"]
 
 [dev-dependencies]
 tempfile = "3.10"

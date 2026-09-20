@@ -26,10 +26,15 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 [dev-dependencies]
 tempfile = "3"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
+arrow = { workspace = true }
+parquet = { workspace = true, features = ["arrow", "async"] }
+parqonaut-columnar = { path = "../parqonaut-columnar" }
+parqonaut-workflow = { path = "../parqonaut-workflow" }
 
 [features]
 default = []
 s3 = ["dep:aws-config", "dep:aws-sdk-s3"]
+columnar = ["dep:arrow", "dep:parquet", "dep:parqonaut-columnar", "dep:parqonaut-workflow"]
 fogbank-fixtures = ["dep:arrow", "dep:parquet"]
 test-util = []
 
@@ -38,6 +43,16 @@ name = "chaos_backend"
 path = "tests/chaos_backend.rs"
 required-features = ["test-util"]
 
+[[test]]
+name = "columnar_batch"
+path = "tests/columnar_batch.rs"
+required-features = ["columnar"]
+
+[[test]]
+name = "columnar_s3_integration"
+path = "tests/columnar_s3_integration.rs"
+required-features = ["columnar", "s3"]
+
 [dependencies.arrow]
 version = "54"
 optional = true
@@ -45,7 +60,15 @@ optional = true
 [dependencies.parquet]
 version = "54"
 optional = true
-features = ["arrow"]
+features = ["arrow", "async"]
+
+[dependencies.parqonaut-columnar]
+path = "../parqonaut-columnar"
+optional = true
+
+[dependencies.parqonaut-workflow]
+path = "../parqonaut-workflow"
+optional = true
 
 [dependencies.aws-config]
 version = "1"

@@ -26,36 +26,15 @@ pub enum SemanticType {
     LargeBinary,
     Date32,
     Date64,
-    Timestamp {
-        unit: TimestampUnit,
-        timezone: TimestampTimezone,
-    },
-    Decimal {
-        precision: u8,
-        scale: i8,
-    },
-    Dictionary {
-        value: Box<SemanticType>,
-    },
-    List {
-        field: Box<SemanticField>,
-    },
-    LargeList {
-        field: Box<SemanticField>,
-    },
-    Struct {
-        fields: Vec<SemanticField>,
-    },
-    Map {
-        key: Box<SemanticType>,
-        value: Box<SemanticField>,
-    },
-    FixedSizeBinary {
-        length: i32,
-    },
-    Unsupported {
-        reason: String,
-    },
+    Timestamp { unit: TimestampUnit, timezone: TimestampTimezone },
+    Decimal { precision: u8, scale: i8 },
+    Dictionary { value: Box<SemanticType> },
+    List { field: Box<SemanticField> },
+    LargeList { field: Box<SemanticField> },
+    Struct { fields: Vec<SemanticField> },
+    Map { key: Box<SemanticType>, value: Box<SemanticField> },
+    FixedSizeBinary { length: i32 },
+    Unsupported { reason: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,21 +97,21 @@ impl SemanticType {
                     Some(s) => TimestampTimezone::Named(s.to_string()),
                 },
             },
-            DataType::Decimal128(p, s) => SemanticType::Decimal {
-                precision: *p,
-                scale: *s,
-            },
-            DataType::Dictionary(_, value) => SemanticType::Dictionary {
-                value: Box::new(SemanticType::from_arrow(value)),
-            },
-            DataType::List(field) => SemanticType::List {
-                field: Box::new(SemanticField::from_arrow_field(field)),
-            },
-            DataType::LargeList(field) => SemanticType::LargeList {
-                field: Box::new(SemanticField::from_arrow_field(field)),
-            },
+            DataType::Decimal128(p, s) => SemanticType::Decimal { precision: *p, scale: *s },
+            DataType::Dictionary(_, value) => {
+                SemanticType::Dictionary { value: Box::new(SemanticType::from_arrow(value)) }
+            }
+            DataType::List(field) => {
+                SemanticType::List { field: Box::new(SemanticField::from_arrow_field(field)) }
+            }
+            DataType::LargeList(field) => {
+                SemanticType::LargeList { field: Box::new(SemanticField::from_arrow_field(field)) }
+            }
             DataType::Struct(fields) => SemanticType::Struct {
-                fields: fields.iter().map(|f| SemanticField::from_arrow_field(f.as_ref())).collect(),
+                fields: fields
+                    .iter()
+                    .map(|f| SemanticField::from_arrow_field(f.as_ref()))
+                    .collect(),
             },
             DataType::Map(field, _) => {
                 let entries = field.data_type();
@@ -144,14 +123,12 @@ impl SemanticType {
                         };
                     }
                 }
-                SemanticType::Unsupported {
-                    reason: format!("map type not normalized: {dt:?}"),
-                }
+                SemanticType::Unsupported { reason: format!("map type not normalized: {dt:?}") }
             }
             DataType::FixedSizeBinary(len) => SemanticType::FixedSizeBinary { length: *len },
-            other => SemanticType::Unsupported {
-                reason: format!("unsupported Arrow type: {other:?}"),
-            },
+            other => {
+                SemanticType::Unsupported { reason: format!("unsupported Arrow type: {other:?}") }
+            }
         }
     }
 

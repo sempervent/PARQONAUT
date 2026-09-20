@@ -97,6 +97,62 @@ impl ObjectLocation {
         Self::Local { path: path.as_ref().to_path_buf() }
     }
 
+    /// Parse a single object URI (`file://…`, local path, or `s3://bucket/key`).
+    pub fn parse(input: &str) -> Result<Self, StorageError> {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return Err(StorageError::InvalidLocation {
+                message: "object location must not be empty".into(),
+            });
+        }
+        if trimmed.starts_with("s3://") {
+            let url = Url::parse(trimmed).map_err(|e| StorageError::InvalidLocation {
+                message: format!("invalid S3 object URI: {e}"),
+            })?;
+            if url.username() != "" || url.password().is_some() {
+                return Err(StorageError::InvalidLocation {
+                    message: "credentials must not be embedded in S3 URIs".into(),
+                });
+            }
+            let bucket = url
+                .host_str()
+                .ok_or_else(|| StorageError::InvalidLocation {
+                    message: "S3 object URI missing bucket".into(),
+                })?
+                .to_string();
+            let key = url.path().trim_start_matches('/').to_string();
+            if key.is_empty() {
+                return Err(StorageError::InvalidLocation {
+                    message: "S3 object URI must include an object key".into(),
+                });
+            }
+            return Ok(Self::S3 { bucket, key });
+        }
+
+        let path = if let Ok(url) = Url::parse(trimmed) {
+            if url.scheme() == "file" {
+                url.to_file_path().map_err(|_| StorageError::InvalidLocation {
+                    message: format!("invalid file URI: {trimmed}"),
+                })?
+            } else {
+                return Err(StorageError::InvalidLocation {
+                    message: format!("unsupported URI scheme for object: {trimmed}"),
+                });
+            }
+        } else {
+            PathBuf::from(trimmed)
+        };
+        let normalized = normalize_local_path(&path);
+        let path = Utf8PathBuf::from_path_buf(normalized).map_err(|_| {
+            StorageError::InvalidLocation { message: "local path must be valid UTF-8".into() }
+        })?;
+        Ok(Self::Local { path })
+    }
+
+    pub fn is_remote(&self) -> bool {
+        matches!(self, Self::S3 { .. })
+    }
+
     pub fn display_uri(&self) -> String {
         match self {
             Self::Local { path } => format!("file://{}", path.as_str()),

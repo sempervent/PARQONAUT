@@ -12,6 +12,20 @@ pub enum ColumnarError {
     Arrow(String),
     #[error("pipeline cancelled")]
     Cancelled,
+    #[error("parquet error: {0}")]
+    Parquet(String),
     #[error("{0}")]
     Other(String),
+}
+
+impl From<parquet::errors::ParquetError> for ColumnarError {
+    fn from(value: parquet::errors::ParquetError) -> Self {
+        Self::Parquet(value.to_string())
+    }
+}
+
+impl From<arrow::error::ArrowError> for ColumnarError {
+    fn from(value: arrow::error::ArrowError) -> Self {
+        Self::Arrow(value.to_string())
+    }
 }

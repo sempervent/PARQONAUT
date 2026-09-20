@@ -1,6 +1,8 @@
 use crate::schema_policy::SchemaPolicy;
 
-pub use parqonaut_columnar::schema::{classify_conversion as classify_conversion_flags, Compatibility, PhysicalType};
+pub use parqonaut_columnar::schema::{
+    classify_conversion as classify_conversion_flags, Compatibility, PhysicalType,
+};
 
 /// Classify conversion from `from` to `to` under repair schema policy.
 pub fn classify_conversion(

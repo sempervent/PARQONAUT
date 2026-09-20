@@ -1,4 +1,4 @@
-use parqonaut_columnar::schema::{TypeKind, widen_types};
+use parqonaut_columnar::schema::{widen_types, TypeKind};
 use parqonaut_workflow::SchemaConflictPolicy;
 use serde::Deserialize;
 use std::fs;

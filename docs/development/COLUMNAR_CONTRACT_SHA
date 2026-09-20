@@ -1,10 +1,20 @@
 # Columnar pipeline contract (v0.9)
 
-Record after contract-freeze commit on `feat/columnar-convergence`:
+Baseline batch-stream freeze:
 
 ```text
 COLUMNAR_CONTRACT_COMMIT=464d54a3c11617a04a13a281aab700d87e6dceaf
-COLUMNAR_CONTRACT_DIGEST=<optional content sha256 after freeze>
+```
+
+Schema compatibility extension (canonical `parqonaut-columnar::schema`):
+
+```text
+COLUMNAR_SCHEMA_CONTRACT_COMMIT=4417381
+```
+
+Canonical stack:
+
+```text
 CANONICAL_ARROW_VERSION=54.3.1
 CANONICAL_PARQUET_VERSION=54.3.1
 DEFAULT_STREAM_CHANNEL_CAPACITY=4

@@ -52,6 +52,15 @@ pub struct TransformReport {
     pub bytes_read: u64,
     #[serde(default)]
     pub bytes_written: u64,
+    /// Parquet files created under spec intermediate staging (v0.9).
+    #[serde(default)]
+    pub intermediate_files_created: u64,
+    #[serde(default)]
+    pub intermediate_bytes_written: u64,
+    #[serde(default)]
+    pub intermediate_files_read: u64,
+    #[serde(default)]
+    pub intermediate_bytes_read: u64,
     /// Legacy totals retained for older `--json` consumers.
     #[serde(default)]
     pub rows: u64,

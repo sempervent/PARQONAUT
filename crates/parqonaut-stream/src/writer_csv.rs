@@ -60,12 +60,8 @@ impl CsvWriter {
     }
 
     fn write_headers(&mut self, batch: &RecordBatch) -> Result<()> {
-        let headers: Vec<String> = batch
-            .schema()
-            .fields()
-            .iter()
-            .map(|f| f.name().clone())
-            .collect();
+        let headers: Vec<String> =
+            batch.schema().fields().iter().map(|f| f.name().clone()).collect();
         self.writer.write_record(&headers)?;
         Ok(())
     }

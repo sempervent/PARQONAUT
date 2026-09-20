@@ -1,21 +1,23 @@
-use crate::error::Result;
-use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, RecordBatch, StringArray};
-use arrow::datatypes::{DataType, Field, Schema};
+use std::fs::File;
+use std::io::Read;
+use std::path::PathBuf;
+
+use arrow::array::{
+    Array, BooleanArray, Float64Array, Int64Array, RecordBatch, StringArray,
+};
+use arrow::datatypes::{Field, Schema, SchemaRef};
 use csv::{ByteRecord, ReaderBuilder};
 use encoding_rs::{Encoding, UTF_8};
 use std::sync::Arc;
-use std::{fs::File, io::Read, path::Path};
 
-pub struct CsvReader {
-    reader: csv::Reader<Box<dyn Read + Send>>,
-    headers: Vec<String>,
-    batch_size: usize,
-    na_values: Vec<String>,
-    encoding: &'static Encoding,
-    pending_record: Option<ByteRecord>,
-}
+use crate::batch::BatchSource;
+use crate::error::ColumnarError;
+use crate::io::util::spawn_blocking_producer;
+use crate::stream::BatchStream;
 
-pub struct CsvConfig {
+/// CSV read options (aligned with `parqonaut-stream` defaults).
+#[derive(Debug, Clone)]
+pub struct CsvReadOptions {
     pub delimiter: Option<u8>,
     pub quote: Option<u8>,
     pub has_headers: bool,
@@ -24,7 +26,7 @@ pub struct CsvConfig {
     pub batch_size: usize,
 }
 
-impl Default for CsvConfig {
+impl Default for CsvReadOptions {
     fn default() -> Self {
         Self {
             delimiter: None,
@@ -37,28 +39,72 @@ impl Default for CsvConfig {
     }
 }
 
-impl CsvReader {
-    pub fn new<P: AsRef<Path>>(path: P, config: &CsvConfig) -> Result<Self> {
-        let path = path.as_ref();
+/// Local CSV batch source.
+pub struct LocalCsvBatchSource {
+    path: PathBuf,
+    options: CsvReadOptions,
+}
 
-        let reader: Box<dyn Read + Send> = if path.to_string_lossy() == "-" {
-            Box::new(std::io::stdin())
-        } else {
-            Box::new(File::open(path)?)
-        };
+impl LocalCsvBatchSource {
+    pub fn new(path: impl Into<PathBuf>, options: CsvReadOptions) -> Self {
+        Self { path: path.into(), options }
+    }
+}
 
+impl BatchSource for LocalCsvBatchSource {
+    fn schema(&self) -> Result<SchemaRef, ColumnarError> {
+        let mut reader = CsvBatchReader::open(&self.path, &self.options)?;
+        let batch = reader
+            .read_batch()?
+            .ok_or_else(|| ColumnarError::Schema("CSV file is empty".into()))?;
+        Ok(batch.schema())
+    }
+
+    fn into_stream(self: Box<Self>) -> Result<BatchStream, ColumnarError> {
+        let path = self.path;
+        let options = self.options;
+        Ok(spawn_blocking_producer(0, move |tx| {
+            let result = (|| -> Result<(), ColumnarError> {
+                let mut reader = CsvBatchReader::open(&path, &options)?;
+                loop {
+                    match reader.read_batch()? {
+                        Some(batch) => {
+                            if tx.blocking_send(Ok(batch)).is_err() {
+                                break;
+                            }
+                        }
+                        None => break,
+                    }
+                }
+                Ok(())
+            })();
+            if let Err(e) = result {
+                let _ = tx.blocking_send(Err(e));
+            }
+        }))
+    }
+}
+
+struct CsvBatchReader {
+    reader: csv::Reader<Box<dyn Read + Send>>,
+    headers: Vec<String>,
+    batch_size: usize,
+    na_values: Vec<String>,
+    encoding: &'static Encoding,
+    pending_record: Option<ByteRecord>,
+}
+
+impl CsvBatchReader {
+    fn open(path: &PathBuf, config: &CsvReadOptions) -> Result<Self, ColumnarError> {
+        let reader: Box<dyn Read + Send> = Box::new(File::open(path)?);
         let mut builder = ReaderBuilder::new();
-
         if let Some(delimiter) = config.delimiter {
             builder.delimiter(delimiter);
         }
-
         if let Some(quote) = config.quote {
             builder.quote(quote);
         }
-
         builder.has_headers(config.has_headers);
-
         let mut reader = builder.from_reader(reader);
 
         let (headers, pending_record) = if config.has_headers {
@@ -66,7 +112,8 @@ impl CsvReader {
             (headers, None)
         } else {
             let mut first = ByteRecord::new();
-            let col_count = if reader.read_byte_record(&mut first)? { first.len() } else { 0 };
+            let col_count =
+                if reader.read_byte_record(&mut first)? { first.len() } else { 0 };
             let headers = (0..col_count).map(|i| format!("col_{}", i + 1)).collect();
             (headers, Some(first))
         };
@@ -80,20 +127,18 @@ impl CsvReader {
         Ok(Self {
             reader,
             headers,
-            batch_size: config.batch_size,
+            batch_size: config.batch_size.max(1),
             na_values: config.na_values.clone(),
             encoding,
             pending_record,
         })
     }
 
-    pub fn read_batch(&mut self) -> Result<Option<RecordBatch>> {
+    fn read_batch(&mut self) -> Result<Option<RecordBatch>, ColumnarError> {
         let mut records = Vec::with_capacity(self.batch_size);
-
         if let Some(record) = self.pending_record.take() {
             records.push(record);
         }
-
         for _ in 0..self.batch_size {
             let mut record = ByteRecord::new();
             if !self.reader.read_byte_record(&mut record)? {
@@ -101,15 +146,13 @@ impl CsvReader {
             }
             records.push(record);
         }
-
         if records.is_empty() {
             return Ok(None);
         }
-
         Ok(Some(self.records_to_batch(&records)?))
     }
 
-    fn records_to_batch(&self, records: &[ByteRecord]) -> Result<RecordBatch> {
+    fn records_to_batch(&self, records: &[ByteRecord]) -> Result<RecordBatch, ColumnarError> {
         let num_columns = self.headers.len();
         let mut columns: Vec<Arc<dyn Array>> = Vec::with_capacity(num_columns);
 
@@ -121,7 +164,6 @@ impl CsvReader {
                 if col_idx < record.len() {
                     let field = &record[col_idx];
                     let field_str = self.decode_field(field)?;
-
                     if self.na_values.contains(&field_str) {
                         values.push(None);
                         nulls.push(true);
@@ -135,8 +177,7 @@ impl CsvReader {
                 }
             }
 
-            let array = self.create_column_array(&values, &nulls)?;
-            columns.push(array);
+            columns.push(self.create_column_array(&values, &nulls)?);
         }
 
         let fields: Vec<Field> = self
@@ -146,15 +187,14 @@ impl CsvReader {
             .map(|(idx, name)| Field::new(name, columns[idx].data_type().clone(), true))
             .collect();
         let schema = Arc::new(Schema::new(fields));
-        RecordBatch::try_new(schema, columns).map_err(|e| e.into())
+        RecordBatch::try_new(schema, columns).map_err(|e| ColumnarError::Arrow(e.to_string()))
     }
 
-    fn decode_field(&self, field: &[u8]) -> Result<String> {
+    fn decode_field(&self, field: &[u8]) -> Result<String, ColumnarError> {
         let field = if field.starts_with(&[0xEF, 0xBB, 0xBF]) { &field[3..] } else { field };
-
         let (decoded, _, had_errors) = self.encoding.decode(field);
         if had_errors {
-            tracing::warn!("Encoding errors detected in field, using lossy conversion");
+            tracing::warn!("encoding errors detected in CSV field, using lossy conversion");
         }
         Ok(decoded.to_string())
     }
@@ -163,7 +203,7 @@ impl CsvReader {
         &self,
         values: &[Option<String>],
         nulls: &[bool],
-    ) -> Result<Arc<dyn Array>> {
+    ) -> Result<Arc<dyn Array>, ColumnarError> {
         let mut has_strings = false;
         let mut has_ints = false;
         let mut has_floats = false;
@@ -208,61 +248,29 @@ impl CsvReader {
             Ok(Arc::new(StringArray::from(string_values)))
         }
     }
+}
 
-    pub fn get_headers(&self) -> &[String] {
-        &self.headers
-    }
-
-    pub fn infer_schema(&mut self) -> Result<Schema> {
-        if let Some(batch) = self.read_batch()? {
-            Ok(batch.schema().as_ref().clone())
-        } else {
-            Ok(Schema::new(
-                self.headers
-                    .iter()
-                    .map(|name| Field::new(name, DataType::Utf8, true))
-                    .collect::<Vec<_>>(),
-            ))
-        }
+impl From<csv::Error> for ColumnarError {
+    fn from(value: csv::Error) -> Self {
+        ColumnarError::Other(value.to_string())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
     use std::fs;
-    use tempfile::tempdir;
 
-    #[test]
-    fn test_csv_reader() {
-        let temp_dir = tempdir().unwrap();
-        let csv_file = temp_dir.path().join("test.csv");
-        fs::write(&csv_file, "a,b,c\n1,2,3\n4,5,6\n").unwrap();
-
-        let config = CsvConfig::default();
-        let mut reader = CsvReader::new(&csv_file, &config).unwrap();
-
-        let batch = reader.read_batch().unwrap().unwrap();
+    #[tokio::test]
+    async fn csv_batch_source_reads_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.csv");
+        fs::write(&path, "a,b\n1,2\n3,4\n").unwrap();
+        let source = LocalCsvBatchSource::new(&path, CsvReadOptions::default());
+        let mut stream = Box::new(source).into_stream().unwrap();
+        let batch = stream.next().await.unwrap().unwrap();
         assert_eq!(batch.num_rows(), 2);
-        assert_eq!(batch.num_columns(), 3);
-    }
-
-    #[test]
-    fn test_csv_without_headers() {
-        let temp_dir = tempdir().unwrap();
-        let csv_file = temp_dir.path().join("test.csv");
-        fs::write(&csv_file, "1,2,3\n4,5,6\n").unwrap();
-
-        let config = CsvConfig { has_headers: false, ..CsvConfig::default() };
-        let mut reader = CsvReader::new(&csv_file, &config).unwrap();
-
-        let batch = reader.read_batch().unwrap().unwrap();
-        assert_eq!(batch.num_rows(), 2);
-        assert_eq!(batch.num_columns(), 3);
-
-        let headers = reader.get_headers();
-        assert_eq!(headers[0], "col_1");
-        assert_eq!(headers[1], "col_2");
-        assert_eq!(headers[2], "col_3");
+        assert_eq!(batch.num_columns(), 2);
     }
 }
