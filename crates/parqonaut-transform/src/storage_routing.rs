@@ -12,10 +12,11 @@ use parqonaut_workflow::NoOpProgressObserver;
 use crate::columnar_io::{ensure_s3_for_remote, needs_storage_routing, ColumnarPipelineIo};
 use crate::engine::{
     encode_partition_value, merge_parquet_files, partition_parquet_file, partition_record_batches,
-    split_parquet_file,
+    pipeline_from_rewrite_ops, split_parquet_file, Pipeline,
 };
 use crate::error::{ParqknifeError, Result};
 use crate::remote::{merge_parquet_storage, rewrite_parquet_storage, run_io_runtime};
+use crate::{FusedOperation, FusedPlanSegment};
 
 pub fn split_parquet_routed(
     io: &ColumnarPipelineIo,
@@ -299,4 +300,235 @@ fn map_storage(e: parqonaut_storage::error::StorageError) -> ParqknifeError {
 
 fn map_columnar(e: ColumnarError) -> ParqknifeError {
     ParqknifeError::InvalidInput(e.to_string())
+}
+
+/// Fused rewrite/partition segment with independent source/sink backends.
+pub fn execute_fused_segment_routed(
+    io: &ColumnarPipelineIo,
+    fused: &FusedPlanSegment,
+) -> Result<(u64, u64)> {
+    let primary_in = fused.inputs.first().map(String::as_str).unwrap_or("");
+    ensure_s3_for_remote(primary_in, &fused.output)?;
+    let io = io.clone();
+    let fused = fused.clone();
+    run_io_runtime(move |handle| {
+        handle.block_on(async move { execute_fused_segment_routed_async(&io, &fused).await })
+    })
+}
+
+async fn execute_fused_segment_routed_async(
+    io: &ColumnarPipelineIo,
+    fused: &FusedPlanSegment,
+) -> Result<(u64, u64)> {
+    let pipeline = fused_pipeline_from_ops(fused)?;
+    let mut partition_by: Option<Vec<String>> = None;
+    for op in &fused.ops {
+        if let FusedOperation::Partition { partition_by: cols } = op {
+            partition_by = Some(cols.clone());
+        }
+    }
+
+    let files_read = fused.inputs.len() as u64;
+    if let Some(cols) = partition_by {
+        let outs =
+            fused_partition_to_storage(io, &fused.inputs, &fused.output, &cols, 64, pipeline)
+                .await?;
+        return Ok((outs.len() as u64, files_read));
+    }
+
+    if fused.output.ends_with(".parquet") {
+        fused_rewrite_to_storage(io, &fused.inputs, &fused.output, pipeline).await?;
+        return Ok((1, files_read));
+    }
+
+    Err(ParqknifeError::SpecError(format!(
+        "unsupported fused routed output layout: {}",
+        fused.output
+    )))
+}
+
+fn fused_pipeline_from_ops(fused: &FusedPlanSegment) -> Result<Option<Pipeline>> {
+    fused
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            FusedOperation::Rewrite { projection, filter, rename, cast, .. } => {
+                Some(pipeline_from_rewrite_ops(
+                    projection.clone(),
+                    filter.as_deref(),
+                    rename.clone(),
+                    cast.clone(),
+                ))
+            }
+            _ => None,
+        })
+        .transpose()
+}
+
+async fn fused_rewrite_to_storage(
+    io: &ColumnarPipelineIo,
+    inputs: &[String],
+    output: &str,
+    pipeline: Option<Pipeline>,
+) -> Result<()> {
+    let out_loc = ObjectLocation::parse(output).map_err(map_storage)?;
+    let sink_backend = io.backend_for(&out_loc);
+    let schema = schema_from_inputs(io, inputs).await?;
+    let stream = fused_input_stream(io, inputs, pipeline);
+    let mut sink = StorageParquetBatchSink::new(sink_backend, out_loc);
+    sink.write_stream(schema, Box::pin(stream), &NoOpProgressObserver).map_err(map_columnar)?;
+    Ok(())
+}
+
+async fn schema_from_inputs(
+    io: &ColumnarPipelineIo,
+    inputs: &[String],
+) -> Result<arrow::datatypes::SchemaRef> {
+    let first = inputs
+        .first()
+        .ok_or_else(|| ParqknifeError::SpecError("fused segment has no inputs".into()))?;
+    let loc = ObjectLocation::parse(first).map_err(map_storage)?;
+    let backend = io.backend_for(&loc);
+    let source = StorageParquetBatchSource::new(backend, loc);
+    source.schema().map_err(map_columnar)
+}
+
+fn fused_input_stream(
+    io: &ColumnarPipelineIo,
+    inputs: &[String],
+    pipeline: Option<Pipeline>,
+) -> BatchStream {
+    Box::pin(FusedInputStream {
+        io: io.clone(),
+        inputs: inputs.to_vec(),
+        input_idx: 0,
+        current: None,
+        pipeline,
+    })
+}
+
+struct FusedInputStream {
+    io: ColumnarPipelineIo,
+    inputs: Vec<String>,
+    input_idx: usize,
+    current: Option<BatchStream>,
+    pipeline: Option<Pipeline>,
+}
+
+impl futures::Stream for FusedInputStream {
+    type Item = std::result::Result<RecordBatch, ColumnarError>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        loop {
+            if self.current.is_none() {
+                if self.input_idx >= self.inputs.len() {
+                    return std::task::Poll::Ready(None);
+                }
+                let uri = self.inputs[self.input_idx].clone();
+                self.input_idx += 1;
+                let loc = match ObjectLocation::parse(&uri) {
+                    Ok(l) => l,
+                    Err(e) => {
+                        return std::task::Poll::Ready(Some(Err(ColumnarError::Other(
+                            e.to_string(),
+                        ))));
+                    }
+                };
+                let backend = self.io.backend_for(&loc);
+                let source = StorageParquetBatchSource::new(backend, loc);
+                match Box::new(source).into_stream() {
+                    Ok(stream) => self.current = Some(stream),
+                    Err(e) => return std::task::Poll::Ready(Some(Err(e))),
+                }
+            }
+
+            let Some(current) = self.current.as_mut() else {
+                continue;
+            };
+            match std::pin::Pin::new(current).poll_next(cx) {
+                std::task::Poll::Ready(Some(Ok(batch))) => {
+                    let batch = if let Some(p) = &self.pipeline {
+                        match p.execute(batch) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                return std::task::Poll::Ready(Some(Err(ColumnarError::Other(
+                                    e.to_string(),
+                                ))));
+                            }
+                        }
+                    } else {
+                        batch
+                    };
+                    return std::task::Poll::Ready(Some(Ok(batch)));
+                }
+                std::task::Poll::Ready(Some(Err(e))) => {
+                    return std::task::Poll::Ready(Some(Err(e)))
+                }
+                std::task::Poll::Ready(None) => {
+                    self.current = None;
+                }
+                std::task::Poll::Pending => return std::task::Poll::Pending,
+            }
+        }
+    }
+}
+
+async fn fused_partition_to_storage(
+    io: &ColumnarPipelineIo,
+    inputs: &[String],
+    output_prefix: &str,
+    partition_by: &[String],
+    max_open: usize,
+    pipeline: Option<Pipeline>,
+) -> Result<Vec<String>> {
+    use std::collections::{HashMap, VecDeque};
+
+    use crate::engine::partition::partition_keys;
+
+    let schema = schema_from_inputs(io, inputs).await?;
+    let mut stream = fused_input_stream(io, inputs, pipeline);
+
+    let mut buffers: HashMap<String, Vec<RecordBatch>> = HashMap::new();
+    let mut part_counters: HashMap<String, usize> = HashMap::new();
+    let mut lru: VecDeque<String> = VecDeque::new();
+    let mut outputs = Vec::new();
+
+    while let Some(item) = stream.next().await {
+        let batch = item.map_err(map_columnar)?;
+        for (key, sub_batch) in partition_keys(&batch, partition_by)? {
+            if !buffers.contains_key(&key) {
+                if buffers.len() >= max_open {
+                    if let Some(evict) = lru.pop_front() {
+                        if let Some(batches) = buffers.remove(&evict) {
+                            let idx = part_counters.get(&evict).copied().unwrap_or(0);
+                            let rel = hive_relative_path(partition_by, &evict, idx);
+                            part_counters.insert(evict.clone(), idx + 1);
+                            let obj = object_under_prefix(output_prefix, &rel)?;
+                            flush_to_object(io, &obj, schema.clone(), &batches).await?;
+                            outputs.push(obj.display_uri());
+                        }
+                    }
+                }
+                part_counters.entry(key.clone()).or_insert(0);
+                buffers.insert(key.clone(), Vec::new());
+                lru.push_back(key.clone());
+            } else if let Some(pos) = lru.iter().position(|k| k == &key) {
+                lru.remove(pos);
+                lru.push_back(key.clone());
+            }
+            buffers.get_mut(&key).unwrap().push(sub_batch);
+        }
+    }
+
+    for (key, batches) in buffers.drain() {
+        let idx = part_counters.get(&key).copied().unwrap_or(0);
+        let rel = hive_relative_path(partition_by, &key, idx);
+        let obj = object_under_prefix(output_prefix, &rel)?;
+        flush_to_object(io, &obj, schema.clone(), &batches).await?;
+        outputs.push(obj.display_uri());
+    }
+    Ok(outputs)
 }
