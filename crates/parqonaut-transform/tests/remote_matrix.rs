@@ -1,7 +1,4 @@
-use std::sync::Arc;
-
-use parqonaut_storage::backend::StorageBackend;
-use parqonaut_storage::LocalStorageBackend;
+use parqonaut_transform::columnar_io::ColumnarPipelineIo;
 use parqonaut_transform::{
     classify_io, merge_parquet_storage, rewrite_parquet_storage, RemoteIoKind,
 };
@@ -38,21 +35,21 @@ fn local_to_local_matrix_rewrite_and_merge() {
     std::fs::write(&a, parquet_fixture()).unwrap();
     std::fs::write(&b, parquet_fixture()).unwrap();
 
-    let backend: Arc<dyn StorageBackend> = Arc::new(LocalStorageBackend::direct());
+    let io = ColumnarPipelineIo::for_test();
     assert_eq!(
         classify_io(&a.to_string_lossy(), &out.to_string_lossy()).unwrap(),
         RemoteIoKind::LocalToLocal
     );
 
     rewrite_parquet_storage(
-        Arc::clone(&backend),
+        &io,
         &a.to_string_lossy(),
         &dir.path().join("copy.parquet").to_string_lossy(),
     )
     .expect("rewrite");
 
     merge_parquet_storage(
-        backend,
+        &io,
         &[a.to_string_lossy().into_owned(), b.to_string_lossy().into_owned()],
         &out.to_string_lossy(),
     )

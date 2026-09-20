@@ -6,13 +6,16 @@
 #![allow(dead_code, unused_imports, unused_variables)]
 
 pub mod cli;
+pub mod columnar_io;
 pub mod engine;
 pub mod error;
 pub mod io;
 pub mod output;
 pub mod remote;
 pub mod spec;
+pub mod storage_routing;
 
+pub use columnar_io::{columnar_io_from_env, ColumnarPipelineIo};
 pub use engine::*;
 pub use engine::{
     merge_parquet_files, partition_parquet_file, rewrite_parquet_file, rewrite_parquet_with_cast,
@@ -27,6 +30,9 @@ pub use remote::{
     RemoteIoKind,
 };
 pub use spec::*;
+pub use storage_routing::{
+    merge_parquet_routed, partition_parquet_routed, rewrite_parquet_routed, split_parquet_routed,
+};
 
 use cli::opts::Commands;
 
@@ -75,7 +81,8 @@ pub async fn partition(
             "partition requires exactly one input Parquet file".into(),
         ));
     }
-    partition_parquet_file(&inputs[0], Path::new(output), &cols, max_open_partitions, None, None)?;
+    let io = columnar_io::columnar_io_from_env()?;
+    storage_routing::partition_parquet_routed(&io, &inputs[0], output, &cols, max_open_partitions)?;
     Ok(())
 }
 
@@ -85,8 +92,14 @@ pub async fn merge(input: &str, output: &str, row_group_size_mb: Option<u64>) ->
 }
 
 pub async fn split(input: &str, output: &str, target_size_mb: Option<u64>) -> Result<()> {
-    let cmd = Commands::Split { target_size_mb, target_row_groups: None };
-    cli::run_split(&cmd, Some(input), Some(output)).await
+    let mb = target_size_mb.unwrap_or(512);
+    let inputs = resolve_inputs(input)?;
+    if inputs.len() != 1 {
+        return Err(ParqknifeError::InvalidInput("split requires exactly one input".into()));
+    }
+    let io = columnar_io::columnar_io_from_env()?;
+    storage_routing::split_parquet_routed(&io, &inputs[0], output, mb)?;
+    Ok(())
 }
 
 use std::path::Path;
