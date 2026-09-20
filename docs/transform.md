@@ -44,4 +44,4 @@ steps:
 
 ## Object storage
 
-**Rewrite** and **merge** on `s3://` paths use `parqonaut-storage` columnar batch sources/sinks (range reads, bounded multipart writes). **Partition**, **split**, and fused in-memory specs remain **local-path** in v0.9; remote legs for those workflows continue via batch/repair orchestration (see [Object storage](./object-storage.md) and [Pipelines](./pipelines.md)).
+**Rewrite**, **merge**, **split**, **partition**, and **fused streamable specs** resolve **independent source and sink backends** (`ColumnarPipelineIo`): local and `s3://` legs compose in all four combinations. Parquet outputs stream through a bounded encoder and multipart upload — no whole-object buffering (see [Object storage](./object-storage.md) and [Pipelines](./pipelines.md)).

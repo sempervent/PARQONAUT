@@ -20,7 +20,7 @@ Multi-step transform YAML compiles into **fused segments** when operations are s
 
 ```bash
 just pipeline-demo      # local CSV drift → unify → fused partition
-just pipeline-s3-demo   # RustFS rewrite (requires just s3-up)
+just pipeline-s3-demo   # RustFS: CSV drift → S3 convert → fused rewrite/partition (zero intermediates)
 ```
 
 See [Architecture](./architecture.md) and [Transform](./transform.md).

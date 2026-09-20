@@ -6,7 +6,17 @@ PARQONAUT uses **`S3StorageBackend`** for remote datasets. URIs use the standard
 s3://bucket/prefix/
 ```
 
-Supported workflows include **scan**, **plan**, **repair**, **batch**, **transform rewrite/merge** on `s3://` Parquet (columnar batch stream via `parqonaut-storage`), and server jobs when storage policy allows the bucket/prefix.
+Supported workflows include **scan**, **plan**, **repair**, **batch**, **transform** (rewrite, merge, split, partition, fused specs), **`prqnt convert`**, and server jobs when storage policy allows the bucket/prefix.
+
+## Streaming Parquet publication (v0.9.1)
+
+Remote Parquet outputs follow:
+
+```text
+RecordBatch stream → Parquet encoder (blocking task) → bounded byte channel → multipart S3 upload → finalized object
+```
+
+Create-only destinations use **`conditional_create`**; direct `write_stream` targets replace on successful finalize. Failed uploads do not commit a readable destination object.
 
 ## RustFS in tests
 

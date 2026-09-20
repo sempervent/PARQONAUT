@@ -2,6 +2,27 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.9.1] - 2026-09-20
+
+Remote pipeline completeness: bounded streaming S3 publication and full local/S3 routing for convert, transform, and fused specs.
+
+### Added
+
+- Authoritative **6×4** remote pipeline matrix tests (`remote_pipeline_matrix`) on RustFS
+- S3 publication regression tests (roundtrip, visibility, failure/retry, conditional create conflict)
+- **`just pipeline-s3-demo`** — CSV drift → S3 convert → fused rewrite/partition with zero intermediate objects
+
+### Fixed
+
+- S3 multipart finalize on stream shutdown (committed objects visible after `finish`)
+- **`prqnt convert`** remote Parquet sinks stream via `write_parquet_batch_stream` (no full-object buffer)
+
+### Changed
+
+- **`s3-integration`** CI job runs storage roundtrip, remote convert, and transform matrix tests
+
+[0.9.1]: https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.1
+
 ## [0.8.1] - 2026-09-20
 
 Patch release correcting transform demo recipes; no intended runtime behavior change from v0.8.0.

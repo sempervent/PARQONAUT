@@ -34,7 +34,6 @@ struct MultipartState {
     next_part_number: i32,
     buffer: Vec<u8>,
     completed: bool,
-    aborted: bool,
     metrics: Arc<StorageMetricsCollector>,
 }
 
@@ -67,13 +66,12 @@ impl MultipartState {
     }
 
     async fn abort(&mut self) {
-        if self.completed || self.aborted {
+        if self.completed {
             return;
         }
         let Some(upload_id) = self.upload_id.take() else {
             return;
         };
-        self.aborted = true;
         let _ = self
             .client
             .abort_multipart_upload()
@@ -147,7 +145,8 @@ impl MultipartState {
         })?;
         let upload =
             CompletedMultipartUpload::builder().set_parts(Some(self.parts.clone())).build();
-        self.client
+        if let Err(e) = self
+            .client
             .complete_multipart_upload()
             .bucket(&self.bucket)
             .key(&self.key)
@@ -155,7 +154,11 @@ impl MultipartState {
             .multipart_upload(upload)
             .send()
             .await
-            .map_err(|e| map_sdk_error(&self.location(), e))?;
+            .map_err(|e| map_sdk_error(&self.location(), e))
+        {
+            self.abort().await;
+            return Err(e);
+        }
         self.completed = true;
         self.metrics.record_put(0);
         Ok(())
@@ -191,7 +194,6 @@ impl MultipartAsyncWrite {
                 next_part_number: 1,
                 buffer: Vec::new(),
                 completed: false,
-                aborted: false,
                 metrics,
             })),
             pending: None,
