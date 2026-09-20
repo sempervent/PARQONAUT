@@ -38,6 +38,44 @@ enum Command {
         #[arg(long, help = "Show detailed column statistics")]
         stats: bool,
     },
+    /// Hive-style partition of a Parquet file
+    Partition {
+        input: PathBuf,
+        #[arg(long = "output")]
+        output: PathBuf,
+        #[arg(long = "by")]
+        partition_by: String,
+        #[arg(long = "max-open-partitions", default_value_t = 64)]
+        max_open_partitions: usize,
+    },
+    /// Merge Parquet files or a dataset directory
+    Merge {
+        /// Input file(s), directory, or glob
+        input: String,
+        #[arg(long = "output")]
+        output: PathBuf,
+        #[arg(long)]
+        row_group_size_mb: Option<u64>,
+    },
+    /// Split a Parquet file into smaller parts
+    Split {
+        input: PathBuf,
+        #[arg(long = "output")]
+        output: PathBuf,
+        #[arg(long)]
+        target_size_mb: Option<u64>,
+        #[arg(long)]
+        target_row_groups: Option<usize>,
+    },
+    /// Declarative multi-step transform workflow
+    Transform {
+        #[arg(long)]
+        spec: PathBuf,
+        #[arg(long)]
+        check: bool,
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Rewrite or recompress a Parquet file
     Rewrite {
         input: PathBuf,
@@ -141,6 +179,14 @@ enum Command {
         plan: bool,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        state: Option<PathBuf>,
+        #[arg(long)]
+        resume: bool,
+        #[arg(long, default_value = "strict")]
+        schema_conflicts: String,
+        #[arg(long = "json-progress")]
+        json_progress: bool,
     },
 }
 
@@ -214,6 +260,18 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         Command::Inspect { input, stats } => {
             transform::run_inspect(input, stats).await?;
         }
+        Command::Partition { input, output, partition_by, max_open_partitions } => {
+            transform::run_partition(input, output, partition_by, max_open_partitions).await?;
+        }
+        Command::Merge { input, output, row_group_size_mb } => {
+            transform::run_merge(input, output, row_group_size_mb).await?;
+        }
+        Command::Split { input, output, target_size_mb, target_row_groups } => {
+            transform::run_split(input, output, target_size_mb, target_row_groups).await?;
+        }
+        Command::Transform { spec, check, dry_run } => {
+            transform::run_transform_spec(spec, check, dry_run, cli.json)?;
+        }
         Command::Rewrite {
             input,
             output,
@@ -265,9 +323,33 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
             BatchCommand::Verify { run_dir } => batch::run_verify(run_dir, cli.json).await?,
         },
-        Command::Convert { inputs, out, out_format, compression, zstd_level, plan, dry_run } => {
-            stream::run_convert(inputs, out, out_format, compression, zstd_level, plan, dry_run)
-                .await?;
+        Command::Convert {
+            inputs,
+            out,
+            out_format,
+            compression,
+            zstd_level,
+            plan,
+            dry_run,
+            state,
+            resume,
+            schema_conflicts,
+            json_progress,
+        } => {
+            stream::run_convert(
+                inputs,
+                out,
+                out_format,
+                compression,
+                zstd_level,
+                plan,
+                dry_run,
+                state,
+                resume,
+                schema_conflicts,
+                json_progress,
+            )
+            .await?;
         }
         Command::Serve { args } => serve::run(args).await?,
     }

@@ -1,6 +1,7 @@
 use parqonaut_stream::{run as run_stream, Cli as StreamCli};
 use std::path::PathBuf;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_convert(
     inputs: Vec<String>,
     out: PathBuf,
@@ -9,6 +10,10 @@ pub async fn run_convert(
     zstd_level: u32,
     plan: bool,
     dry_run: bool,
+    state: Option<PathBuf>,
+    resume: bool,
+    schema_conflicts: String,
+    json_progress: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let cli = StreamCli {
         inputs,
@@ -24,6 +29,7 @@ pub async fn run_convert(
         rename: vec![],
         reorder: false,
         stringify_conflicts: false,
+        schema_conflicts,
         infer_rows: 1000,
         roll_by_bytes: None,
         roll_by_rows: None,
@@ -34,12 +40,13 @@ pub async fn run_convert(
         mem_budget: 1024,
         no_recursive: false,
         follow_symlinks: false,
-        state: None,
-        resume: false,
+        state,
+        resume,
         verify: false,
         progress: true,
         no_progress: false,
         json_logs: false,
+        json_progress,
         plan,
         dry_run,
         verbose: 0,

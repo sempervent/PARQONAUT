@@ -270,6 +270,7 @@ pub(crate) fn apply_operation(
                 None,
                 None,
                 false,
+                None,
             )
             .map_err(|e| RepairError::TransformFailed(e.to_string()))?;
             for rel in input_paths {
