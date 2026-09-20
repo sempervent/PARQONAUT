@@ -60,9 +60,9 @@ async fn put_bytes(backend: &S3StorageBackend, bucket: &str, key: &str, data: &[
         .expect("put fixture");
 }
 
-#[tokio::test]
-async fn remote_matrix_rewrite_and_merge_all_io_kinds() {
-    let Some(backend) = s3_backend().await else {
+#[test]
+fn remote_matrix_rewrite_and_merge_all_io_kinds() {
+    let Some(backend) = futures::executor::block_on(s3_backend()) else {
         eprintln!("skipping remote_matrix_s3: set PARQONAUT_S3_ENDPOINT (just s3-up)");
         return;
     };
@@ -83,8 +83,18 @@ async fn remote_matrix_rewrite_and_merge_all_io_kinds() {
     let s3_copy = format!("s3://{bucket}/{prefix}/copy.parquet");
     let s3_merged = format!("s3://{bucket}/{prefix}/merged.parquet");
 
-    put_bytes(&backend, &bucket, &format!("{prefix}/a.parquet"), &fixture).await;
-    put_bytes(&backend, &bucket, &format!("{prefix}/b.parquet"), &fixture).await;
+    futures::executor::block_on(put_bytes(
+        &backend,
+        &bucket,
+        &format!("{prefix}/a.parquet"),
+        &fixture,
+    ));
+    futures::executor::block_on(put_bytes(
+        &backend,
+        &bucket,
+        &format!("{prefix}/b.parquet"),
+        &fixture,
+    ));
 
     let backend_dyn: Arc<dyn StorageBackend> = backend.clone();
 

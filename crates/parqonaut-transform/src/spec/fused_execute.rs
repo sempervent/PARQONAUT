@@ -8,8 +8,10 @@ use parqonaut_workflow::NoOpProgressObserver;
 
 use crate::engine::partition_record_batches;
 use crate::engine::pipeline_from_rewrite_ops;
+use crate::engine::Pipeline;
 use crate::error::{ParqknifeError, Result};
 use crate::spec::plan::{CompiledSegment, ExecutablePlan, FusedOperation, FusedPlanSegment};
+use arrow::record_batch::RecordBatch;
 
 pub fn execute_fused_plan(
     plan: &ExecutablePlan,
@@ -60,21 +62,7 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
         })
         .transpose()?;
 
-    let mut batches = Vec::new();
-    let inputs = fused.inputs.clone();
-    block_on_async(async {
-        for input in inputs {
-            let mut stream = Box::new(LocalParquetBatchSource::new(input)).into_stream()?;
-            while let Some(item) = stream.next().await {
-                let mut batch = item?;
-                if let Some(p) = &pipeline {
-                    batch = p.execute(batch)?;
-                }
-                batches.push(batch);
-            }
-        }
-        Ok::<(), ParqknifeError>(())
-    })?;
+    let batches = collect_fused_batches(fused.inputs.clone(), pipeline)?;
     let files_read = fused.inputs.len() as u64;
 
     let mut compression: Option<&str> = None;
@@ -124,19 +112,31 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
     Err(ParqknifeError::SpecError(format!("unsupported fused output layout: {}", fused.output)))
 }
 
-fn block_on_async<F, T>(future: F) -> Result<T>
-where
-    F: std::future::Future<Output = Result<T>>,
-{
-    let run = || {
+fn collect_fused_batches(
+    inputs: Vec<String>,
+    pipeline: Option<Pipeline>,
+) -> Result<Vec<RecordBatch>> {
+    let work = move || {
         let rt = tokio::runtime::Runtime::new().map_err(ParqknifeError::Io)?;
-        rt.block_on(future)
+        rt.block_on(async move {
+            let mut batches = Vec::new();
+            for input in inputs {
+                let mut stream = Box::new(LocalParquetBatchSource::new(input)).into_stream()?;
+                while let Some(item) = stream.next().await {
+                    let mut batch = item?;
+                    if let Some(p) = &pipeline {
+                        batch = p.execute(batch)?;
+                    }
+                    batches.push(batch);
+                }
+            }
+            Ok(batches)
+        })
     };
     if tokio::runtime::Handle::try_current().is_ok() {
-        // `prqnt` runs under tokio; nested runtimes panic unless we leave the worker thread first.
-        tokio::task::block_in_place(run)
+        std::thread::spawn(work).join().expect("fused batch collection thread join")
     } else {
-        run()
+        work()
     }
 }
 

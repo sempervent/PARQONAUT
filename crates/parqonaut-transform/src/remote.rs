@@ -40,7 +40,12 @@ pub fn rewrite_parquet_storage(
     input: &str,
     output: &str,
 ) -> Result<WriteSummary> {
-    run_io_runtime(|handle| handle.block_on(rewrite_parquet_storage_async(backend, input, output)))
+    let input = input.to_string();
+    let output = output.to_string();
+    run_io_runtime(move |handle| {
+        handle
+            .block_on(async move { rewrite_parquet_storage_async(backend, &input, &output).await })
+    })
 }
 
 async fn rewrite_parquet_storage_async(
@@ -67,7 +72,11 @@ pub fn merge_parquet_storage(
     inputs: &[String],
     output: &str,
 ) -> Result<WriteSummary> {
-    run_io_runtime(|handle| handle.block_on(merge_parquet_storage_async(backend, inputs, output)))
+    let inputs = inputs.to_vec();
+    let output = output.to_string();
+    run_io_runtime(move |handle| {
+        handle.block_on(async move { merge_parquet_storage_async(backend, &inputs, &output).await })
+    })
 }
 
 async fn merge_parquet_storage_async(
@@ -150,16 +159,17 @@ pub fn default_local_backend(root: impl AsRef<Path>) -> Arc<LocalStorageBackend>
 
 fn run_io_runtime<F, T>(f: F) -> T
 where
-    F: FnOnce(tokio::runtime::Handle) -> T,
+    F: FnOnce(tokio::runtime::Handle) -> T + Send + 'static,
+    T: Send + 'static,
 {
-    let run = || {
+    let work = || {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime required for storage I/O");
         f(rt.handle().clone())
     };
     if tokio::runtime::Handle::try_current().is_ok() {
-        tokio::task::block_in_place(run)
+        std::thread::spawn(work).join().expect("storage I/O thread join")
     } else {
-        run()
+        work()
     }
 }
 
