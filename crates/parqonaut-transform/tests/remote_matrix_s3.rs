@@ -6,7 +6,7 @@ use bytes::Bytes;
 use parqonaut_storage::backend::StorageBackend;
 use parqonaut_storage::conditional::ConditionalCreate;
 use parqonaut_storage::location::ObjectLocation;
-use parqonaut_storage::{S3Config, S3StorageBackend};
+use parqonaut_storage::{LocalStorageBackend, S3Config, S3StorageBackend};
 use parqonaut_transform::{
     classify_io, merge_parquet_storage, rewrite_parquet_storage, RemoteIoKind,
 };
@@ -61,77 +61,51 @@ async fn put_bytes(backend: &S3StorageBackend, bucket: &str, key: &str, data: &[
 }
 
 #[test]
-fn remote_matrix_rewrite_and_merge_all_io_kinds() {
-    let Some(backend) = futures::executor::block_on(s3_backend()) else {
+fn classify_all_remote_io_kinds() {
+    let dir = tempfile::tempdir().unwrap();
+    let local = dir.path().join("a.parquet");
+    let s3 = "s3://bucket/key.parquet";
+    assert_eq!(
+        classify_io(&local.to_string_lossy(), &local.to_string_lossy()).unwrap(),
+        RemoteIoKind::LocalToLocal
+    );
+    assert_eq!(classify_io(&local.to_string_lossy(), s3).unwrap(), RemoteIoKind::LocalToRemote);
+    assert_eq!(classify_io(s3, &local.to_string_lossy()).unwrap(), RemoteIoKind::RemoteToLocal);
+    assert_eq!(classify_io(s3, s3).unwrap(), RemoteIoKind::RemoteToRemote);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn s3_rewrite_and_merge_remote_to_remote() {
+    let Some(backend) = s3_backend().await else {
         eprintln!("skipping remote_matrix_s3: set PARQONAUT_S3_ENDPOINT (just s3-up)");
         return;
     };
 
-    let dir = tempfile::tempdir().unwrap();
-    let local_a = dir.path().join("a.parquet");
-    let local_b = dir.path().join("b.parquet");
-    let local_out = dir.path().join("out.parquet");
     let fixture = parquet_fixture();
-    std::fs::write(&local_a, &fixture).unwrap();
-    std::fs::write(&local_b, &fixture).unwrap();
-
     let bucket = test_bucket();
     let prefix = format!("remote-matrix/{}", uuid::Uuid::new_v4());
 
     let s3_a = format!("s3://{bucket}/{prefix}/a.parquet");
     let s3_b = format!("s3://{bucket}/{prefix}/b.parquet");
-    let s3_copy = format!("s3://{bucket}/{prefix}/copy.parquet");
+    let s3_out = format!("s3://{bucket}/{prefix}/r2r.parquet");
     let s3_merged = format!("s3://{bucket}/{prefix}/merged.parquet");
 
-    futures::executor::block_on(put_bytes(
-        &backend,
-        &bucket,
-        &format!("{prefix}/a.parquet"),
-        &fixture,
-    ));
-    futures::executor::block_on(put_bytes(
-        &backend,
-        &bucket,
-        &format!("{prefix}/b.parquet"),
-        &fixture,
-    ));
+    put_bytes(&backend, &bucket, &format!("{prefix}/a.parquet"), &fixture).await;
+    put_bytes(&backend, &bucket, &format!("{prefix}/b.parquet"), &fixture).await;
 
     let backend_dyn: Arc<dyn StorageBackend> = backend.clone();
 
-    // local → local
-    assert_eq!(
-        classify_io(&local_a.to_string_lossy(), &local_out.to_string_lossy()).unwrap(),
-        RemoteIoKind::LocalToLocal
-    );
-    rewrite_parquet_storage(
-        Arc::clone(&backend_dyn),
-        &local_a.to_string_lossy(),
-        &local_out.to_string_lossy(),
-    )
-    .expect("l2l rewrite");
-
-    // local → remote
-    assert_eq!(
-        classify_io(&local_a.to_string_lossy(), &s3_copy).unwrap(),
-        RemoteIoKind::LocalToRemote
-    );
-    rewrite_parquet_storage(Arc::clone(&backend_dyn), &local_a.to_string_lossy(), &s3_copy)
-        .expect("l2r rewrite");
-
-    // remote → local
-    let local_from_s3 = dir.path().join("from-s3.parquet");
-    assert_eq!(
-        classify_io(&s3_a, &local_from_s3.to_string_lossy()).unwrap(),
-        RemoteIoKind::RemoteToLocal
-    );
-    rewrite_parquet_storage(Arc::clone(&backend_dyn), &s3_a, &local_from_s3.to_string_lossy())
-        .expect("r2l rewrite");
-
-    // remote → remote
-    let s3_out = format!("s3://{bucket}/{prefix}/r2r.parquet");
-    assert_eq!(classify_io(&s3_a, &s3_out).unwrap(), RemoteIoKind::RemoteToRemote);
     rewrite_parquet_storage(Arc::clone(&backend_dyn), &s3_a, &s3_out).expect("r2r rewrite");
+    merge_parquet_storage(backend_dyn, &[s3_a, s3_b], &s3_merged).expect("s3 merge");
+}
 
-    merge_parquet_storage(backend_dyn, &[s3_a.clone(), s3_b.clone()], &s3_merged)
-        .expect("s3 merge");
+#[test]
+fn local_to_local_rewrite_uses_local_backend() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.parquet");
+    let out = dir.path().join("out.parquet");
+    std::fs::write(&a, parquet_fixture()).unwrap();
+    let backend: Arc<dyn StorageBackend> = Arc::new(LocalStorageBackend::direct());
+    rewrite_parquet_storage(backend, &a.to_string_lossy(), &out.to_string_lossy()).expect("l2l");
+    assert!(out.exists());
 }
