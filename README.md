@@ -4,6 +4,8 @@
 
 PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transforming, and repairing Parquet-oriented datasets — from single files to multi-dataset fleets.
 
+![PARQONAUT MASCOT](mascot.png)
+
 It consolidates [Paraclete](https://github.com/sempervent/paraclete), [parqknife](https://github.com/sempervent/parqknife), and [streaming-parquet (maw)](https://github.com/sempervent/streaming-parquet) into one workspace. See [docs/provenance.md](docs/provenance.md) for migration sources.
 
 **Current release:** [v0.9.0](https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.0) — unified Apache Arrow/Parquet **54.3.1** columnar pipeline, in-memory transform fusion, and storage-backed remote rewrite/merge. See [release notes](docs/history/v0.9.0/release-notes.md).
