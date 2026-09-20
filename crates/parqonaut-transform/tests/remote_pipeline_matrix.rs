@@ -2,6 +2,7 @@
 
 #![cfg(feature = "s3")]
 
+#[path = "common/matrix_common.rs"]
 mod matrix_common;
 
 use std::path::PathBuf;

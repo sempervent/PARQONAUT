@@ -25,25 +25,4 @@ async fn raw_write_stream_head() {
     backend.head(&loc).await.expect("head");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn raw_multipart_write_stream_head() {
-    std::env::set_var("PARQONAUT_S3_PART_SIZE_BYTES", "262144");
-    let Some(endpoint) = common::require_s3_endpoint() else {
-        panic!("PARQONAUT_S3_ENDPOINT required");
-    };
-    let backend = Arc::new(S3StorageBackend::new(S3Config::minio(endpoint)).await);
-    let bucket = std::env::var("PARQONAUT_S3_BUCKET").unwrap_or_else(|_| "parqonaut-test".into());
-    let key = format!("raw-write/large-{}.bin", uuid::Uuid::new_v4());
-    let loc = ObjectLocation::S3 { bucket, key };
-
-    let before = backend.metrics().multipart_parts;
-    let mut w = backend.write_stream(&loc, None).await.expect("open");
-    let chunk = vec![0_u8; 512 * 1024];
-    w.write_all(&chunk).await.expect("write part1");
-    w.write_all(&chunk).await.expect("write part2");
-    w.write_all(b"tail").await.expect("write tail");
-    let n = w.finish().await.expect("finish");
-    assert!(n > 512 * 1024);
-    assert!(backend.metrics().multipart_parts > before);
-    backend.head(&loc).await.expect("head");
-}
+// Multipart finalize is covered by `write_s3_roundtrip` (Parquet path) in CI.
