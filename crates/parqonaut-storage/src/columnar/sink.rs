@@ -71,11 +71,14 @@ where
     F: std::future::Future<Output = T>,
 {
     match tokio::runtime::Handle::try_current() {
-        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
-        Err(_) => {
-            let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
-            rt.block_on(future)
+        Ok(handle)
+            if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread =>
+        {
+            tokio::task::block_in_place(|| handle.block_on(future))
         }
+        _ => tokio::runtime::Runtime::new()
+            .expect("tokio runtime required for storage columnar I/O")
+            .block_on(future),
     }
 }
 

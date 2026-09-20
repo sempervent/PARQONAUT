@@ -55,12 +55,15 @@ fn run_async<F, T>(future: F) -> T
 where
     F: std::future::Future<Output = T>,
 {
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        tokio::task::block_in_place(|| handle.block_on(future))
-    } else {
-        tokio::runtime::Runtime::new()
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle)
+            if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread =>
+        {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        }
+        _ => tokio::runtime::Runtime::new()
             .expect("tokio runtime required for storage columnar I/O")
-            .block_on(future)
+            .block_on(future),
     }
 }
 

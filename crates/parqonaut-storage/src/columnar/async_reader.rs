@@ -16,7 +16,6 @@ use crate::parquet_range::read_parquet_footer;
 pub struct StorageAsyncFileReader<B: StorageBackend + ?Sized> {
     backend: Arc<B>,
     object: ObjectLocation,
-    object_size: u64,
     metadata: Arc<ParquetMetaData>,
 }
 
@@ -25,17 +24,13 @@ impl<B: StorageBackend + ?Sized> StorageAsyncFileReader<B> {
         if !backend.capabilities().range_reads {
             return Err(StorageError::UnsupportedCapability { capability: "range_reads".into() });
         }
-        let head = backend.head(&object).await?;
+        let _head = backend.head(&object).await?;
         let metadata = load_metadata(backend.as_ref(), &object).await?;
-        Ok(Self { backend, object, object_size: head.size, metadata })
+        Ok(Self { backend, object, metadata })
     }
 
     pub fn metadata(&self) -> &ParquetMetaData {
         &self.metadata
-    }
-
-    pub fn object_size(&self) -> u64 {
-        self.object_size
     }
 }
 
@@ -47,9 +42,11 @@ async fn load_metadata<B: StorageBackend + ?Sized>(
     let trailer: [u8; 8] = footer.footer[footer.footer.len() - 8..].try_into().map_err(|_| {
         StorageError::InvalidLocation { message: "invalid Parquet footer trailer".into() }
     })?;
-    let metadata_len = ParquetMetaDataReader::decode_footer(&trailer).map_err(|e| {
-        StorageError::InvalidLocation { message: format!("Parquet footer decode: {e}") }
-    })?;
+    let metadata_len = ParquetMetaDataReader::decode_footer_tail(&trailer)
+        .map_err(|e| StorageError::InvalidLocation {
+            message: format!("Parquet footer decode: {e}"),
+        })?
+        .metadata_length();
     if metadata_len as usize + 8 != footer.footer.len() {
         return Err(StorageError::InvalidLocation {
             message: format!(

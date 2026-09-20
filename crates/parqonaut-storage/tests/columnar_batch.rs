@@ -67,8 +67,8 @@ async fn memory_backend_parquet_read_uses_bounded_ranges() {
     );
 }
 
-#[test]
-fn local_to_local_rewrite_via_storage_backend() {
+#[tokio::test(flavor = "multi_thread")]
+async fn local_to_local_rewrite_via_storage_backend() {
     let dir = tempfile::tempdir().unwrap();
     let input_path = dir.path().join("in.parquet");
     let output_path = dir.path().join("out.parquet");

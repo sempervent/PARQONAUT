@@ -66,14 +66,9 @@ impl BatchSource for LocalCsvBatchSource {
         Ok(spawn_blocking_producer(0, move |tx| {
             let result = (|| -> Result<(), ColumnarError> {
                 let mut reader = CsvBatchReader::open(&path, &options)?;
-                loop {
-                    match reader.read_batch()? {
-                        Some(batch) => {
-                            if tx.blocking_send(Ok(batch)).is_err() {
-                                break;
-                            }
-                        }
-                        None => break,
+                while let Some(batch) = reader.read_batch()? {
+                    if tx.blocking_send(Ok(batch)).is_err() {
+                        break;
                     }
                 }
                 Ok(())
