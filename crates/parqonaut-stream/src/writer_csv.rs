@@ -1,5 +1,7 @@
 use crate::error::Result;
-use arrow2::{array::*, chunk::Chunk, datatypes::DataType};
+use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, StringArray};
+use arrow::datatypes::DataType;
+use arrow::record_batch::RecordBatch;
 use csv::{Writer, WriterBuilder};
 use std::{
     fs::{File, OpenOptions},
@@ -10,10 +12,6 @@ use std::{
 pub struct CsvWriter {
     writer: Writer<BufWriter<File>>,
     headers_written: bool,
-    #[allow(dead_code)]
-    delimiter: u8,
-    #[allow(dead_code)]
-    quote: u8,
     na_string: String,
 }
 
@@ -38,32 +36,22 @@ impl CsvWriter {
             .quote(config.quote)
             .from_writer(BufWriter::new(file));
 
-        Ok(Self {
-            writer,
-            headers_written: false,
-            delimiter: config.delimiter,
-            quote: config.quote,
-            na_string: config.na_string.clone(),
-        })
+        Ok(Self { writer, headers_written: false, na_string: config.na_string.clone() })
     }
 
-    pub fn write_batch(&mut self, batch: &Chunk<Box<dyn Array>>) -> Result<()> {
-        // Write headers if not already written
+    pub fn write_batch(&mut self, batch: &RecordBatch) -> Result<()> {
         if !self.headers_written {
             self.write_headers(batch)?;
             self.headers_written = true;
         }
 
-        // Write data rows
-        for row_idx in 0..batch.len() {
+        for row_idx in 0..batch.num_rows() {
             let mut record = Vec::new();
-
-            for col_idx in 0..batch.arrays().len() {
-                let array = &*batch.arrays()[col_idx];
-                let value = self.array_value_to_string(array, row_idx)?;
+            for col_idx in 0..batch.num_columns() {
+                let array = batch.column(col_idx);
+                let value = self.array_value_to_string(array.as_ref(), row_idx)?;
                 record.push(value);
             }
-
             self.writer.write_record(&record)?;
         }
 
@@ -71,11 +59,13 @@ impl CsvWriter {
         Ok(())
     }
 
-    fn write_headers(&mut self, batch: &Chunk<Box<dyn Array>>) -> Result<()> {
-        // For now, use generic column names
-        let headers: Vec<String> =
-            (0..batch.arrays().len()).map(|i| format!("col_{}", i + 1)).collect();
-
+    fn write_headers(&mut self, batch: &RecordBatch) -> Result<()> {
+        let headers: Vec<String> = batch
+            .schema()
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect();
         self.writer.write_record(&headers)?;
         Ok(())
     }
@@ -86,8 +76,8 @@ impl CsvWriter {
         }
 
         match array.data_type() {
-            DataType::Utf8 => {
-                let string_array = array.as_any().downcast_ref::<Utf8Array<i32>>().unwrap();
+            DataType::Utf8 | DataType::LargeUtf8 => {
+                let string_array = array.as_any().downcast_ref::<StringArray>().unwrap();
                 Ok(string_array.value(row_idx).to_string())
             }
             DataType::Int64 => {
@@ -102,15 +92,11 @@ impl CsvWriter {
                 let bool_array = array.as_any().downcast_ref::<BooleanArray>().unwrap();
                 Ok(bool_array.value(row_idx).to_string())
             }
-            _ => {
-                // Default to string representation
-                Ok("unknown".to_string())
-            }
+            _ => Ok("unknown".to_string()),
         }
     }
 
     pub fn finish(self) -> Result<()> {
-        // Writer is automatically closed when dropped
         Ok(())
     }
 }
@@ -118,11 +104,10 @@ impl CsvWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow2::{
-        array::{Int64Array, Utf8Array},
-        chunk::Chunk,
-    };
+    use arrow::array::{Int64Array, StringArray};
+    use arrow::datatypes::{Field, Schema};
     use std::fs;
+    use std::sync::Arc;
     use tempfile::tempdir;
 
     #[test]
@@ -130,9 +115,18 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let csv_file = temp_dir.path().join("output.csv");
 
-        let a = Int64Array::from_slice([1, 2, 3]);
-        let b = Utf8Array::<i32>::from_slice(["x", "y", "z"]);
-        let batch = Chunk::new(vec![a.boxed(), b.boxed()]);
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("a", DataType::Int64, false),
+            Field::new("b", DataType::Utf8, false),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2, 3])),
+                Arc::new(StringArray::from(vec!["x", "y", "z"])),
+            ],
+        )
+        .unwrap();
 
         let config = CsvWriterConfig::default();
         let mut writer = CsvWriter::new(&csv_file, &config).unwrap();
@@ -140,7 +134,7 @@ mod tests {
         writer.finish().unwrap();
 
         let content = fs::read_to_string(&csv_file).unwrap();
-        assert!(content.contains("col_1,col_2"));
+        assert!(content.contains("a,b"));
         assert!(content.contains("1,x"));
         assert!(content.contains("2,y"));
         assert!(content.contains("3,z"));

@@ -7,8 +7,8 @@ authors = ["parqknife contributors"]
 description = "Parquet transformation engine (parqknife lineage)"
 
 [dependencies]
-arrow = { version = "54", features = [] }
-parquet = { version = "54", features = ["arrow"] }
+arrow = { workspace = true }
+parquet = { workspace = true }
 clap = { version = "4.5", features = ["derive", "env"] }
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"

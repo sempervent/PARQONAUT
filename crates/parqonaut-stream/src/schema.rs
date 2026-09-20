@@ -1,5 +1,5 @@
 use crate::error::{MawError, Result};
-use arrow2::datatypes::{DataType, Field, Schema};
+use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
 use parqonaut_workflow::SchemaConflictPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -31,14 +31,14 @@ impl TypeKind {
             DataType::Int64 => Ok(TypeKind::I64),
             DataType::Float32 => Ok(TypeKind::F32),
             DataType::Float64 => Ok(TypeKind::F64),
-            DataType::Utf8 => Ok(TypeKind::Utf8),
-            DataType::Binary => Ok(TypeKind::Binary),
+            DataType::Utf8 | DataType::LargeUtf8 => Ok(TypeKind::Utf8),
+            DataType::Binary | DataType::LargeBinary => Ok(TypeKind::Binary),
             DataType::Date32 => Ok(TypeKind::Date),
             DataType::Date64 => Ok(TypeKind::Datetime),
             DataType::Timestamp(_, _) => Ok(TypeKind::Datetime),
-            other => {
-                Err(MawError::Schema(format!("unsupported Arrow type for unification: {other:?}")))
-            }
+            other => Err(MawError::Schema(format!(
+                "unsupported Arrow type for unification: {other:?}"
+            ))),
         }
     }
 
@@ -54,9 +54,7 @@ impl TypeKind {
             TypeKind::F64 => DataType::Float64,
             TypeKind::Utf8 => DataType::Utf8,
             TypeKind::Date => DataType::Date32,
-            TypeKind::Datetime => {
-                DataType::Timestamp(arrow2::datatypes::TimeUnit::Millisecond, None)
-            }
+            TypeKind::Datetime => DataType::Timestamp(TimeUnit::Millisecond, None),
             TypeKind::Binary => DataType::Binary,
         }
     }
@@ -65,14 +63,14 @@ impl TypeKind {
 #[derive(Debug, Clone)]
 pub struct UnifiedSchema {
     pub schema: Schema,
-    pub column_mapping: HashMap<String, String>, // original -> unified name
-    pub type_mapping: HashMap<String, TypeKind>, // column -> type
+    pub column_mapping: HashMap<String, String>,
+    pub type_mapping: HashMap<String, TypeKind>,
 }
 
 impl Default for UnifiedSchema {
     fn default() -> Self {
         Self {
-            schema: Schema::from(vec![]),
+            schema: Schema::empty(),
             column_mapping: HashMap::new(),
             type_mapping: HashMap::new(),
         }
@@ -90,8 +88,8 @@ impl UnifiedSchema {
         let mut column_order: Vec<String> = Vec::new();
 
         for schema in schemas {
-            for field in &schema.fields {
-                let column_name = field.name.clone();
+            for field in schema.fields() {
+                let column_name = field.name().to_string();
                 let type_kind = TypeKind::from_arrow_type(field.data_type())?;
 
                 if let Some(existing_type) = column_types.get(&column_name) {
@@ -111,7 +109,7 @@ impl UnifiedSchema {
             fields.push(Field::new(column_name.clone(), arrow_type, true));
         }
 
-        unified.schema = Schema::from(fields);
+        unified.schema = Schema::new(fields);
         unified.type_mapping = column_types;
 
         Ok(unified)
@@ -135,7 +133,6 @@ pub fn unify_types(
     widen_types(left, right, stringify_conflicts, policy)
 }
 
-/// Widens two types according to the deterministic widening rules
 pub fn widen_types(
     left: &TypeKind,
     right: &TypeKind,
@@ -144,7 +141,6 @@ pub fn widen_types(
 ) -> Result<TypeKind> {
     use TypeKind::*;
 
-    // Handle nulls
     if left == &Null {
         return Ok(right.clone());
     }
@@ -152,14 +148,11 @@ pub fn widen_types(
         return Ok(left.clone());
     }
 
-    // Same type
     if left == right {
         return Ok(left.clone());
     }
 
-    // Type widening rules
     match (left, right) {
-        // Bool + Number -> Number
         (Bool, I8) | (I8, Bool) => Ok(I8),
         (Bool, I16) | (I16, Bool) => Ok(I16),
         (Bool, I32) | (I32, Bool) => Ok(I32),
@@ -167,7 +160,6 @@ pub fn widen_types(
         (Bool, F32) | (F32, Bool) => Ok(F32),
         (Bool, F64) | (F64, Bool) => Ok(F64),
 
-        // Integer widening
         (I8, I16) | (I16, I8) => Ok(I16),
         (I8, I32) | (I32, I8) => Ok(I32),
         (I8, I64) | (I64, I8) => Ok(I64),
@@ -175,7 +167,6 @@ pub fn widen_types(
         (I16, I64) | (I64, I16) => Ok(I64),
         (I32, I64) | (I64, I32) => Ok(I64),
 
-        // Integer + Float -> Float
         (I8, F32) | (F32, I8) => Ok(F32),
         (I8, F64) | (F64, I8) => Ok(F64),
         (I16, F32) | (F32, I16) => Ok(F32),
@@ -185,13 +176,10 @@ pub fn widen_types(
         (I64, F32) | (F32, I64) => Ok(F64),
         (I64, F64) | (F64, I64) => Ok(F64),
 
-        // Float widening
         (F32, F64) | (F64, F32) => Ok(F64),
 
-        // Date + Datetime -> Datetime
         (Date, Datetime) | (Datetime, Date) => Ok(Datetime),
 
-        // String conflicts
         (Utf8, _) | (_, Utf8) if stringify_conflicts => Ok(Utf8),
         (Binary, _) | (_, Binary) if stringify_conflicts => Ok(Utf8),
 

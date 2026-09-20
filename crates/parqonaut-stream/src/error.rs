@@ -32,9 +32,6 @@ pub enum MawError {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
-    #[error("Parquet2 error: {0}")]
-    Parquet2(#[from] arrow2::io::parquet::read::ParquetError),
-
     #[error("Walkdir error: {0}")]
     Walkdir(#[from] walkdir::Error),
 
@@ -46,3 +43,15 @@ pub enum MawError {
 }
 
 pub type Result<T> = std::result::Result<T, MawError>;
+
+impl From<arrow::error::ArrowError> for MawError {
+    fn from(value: arrow::error::ArrowError) -> Self {
+        MawError::Arrow(value.to_string())
+    }
+}
+
+impl From<parquet::errors::ParquetError> for MawError {
+    fn from(value: parquet::errors::ParquetError) -> Self {
+        MawError::Parquet(value.to_string())
+    }
+}

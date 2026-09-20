@@ -14,7 +14,9 @@ use crate::{
     writer_csv::{CsvWriter, CsvWriterConfig},
     writer_parquet::{ParquetWriter, ParquetWriterConfig},
 };
-use arrow2::{array::Array, chunk::Chunk};
+use arrow::datatypes::SchemaRef;
+use arrow::record_batch::RecordBatch;
+use parquet::basic::Compression;
 use parqonaut_workflow::{
     JsonLinesProgressObserver, NoOpProgressObserver, ProgressEvent, ProgressEventKind,
     ProgressObserver, SchemaConflictPolicy, TerminalProgressObserver,
@@ -274,23 +276,24 @@ impl Pipeline {
                         let mut writer = CsvWriter::new(output_path, &config)?;
                         while let Some(batch) = reader.read_batch()? {
                             let aligned = aligner.align_batch_with_source(batch, &source_fields)?;
-                            rows += aligned.len() as u64;
+                            rows += aligned.num_rows() as u64;
                             writer.write_batch(&aligned)?;
                         }
                         writer.finish()?;
                     }
                     OutputFormat::Parquet => {
-                        let schema = Arc::new(aligner.unified_schema().schema.clone());
+                        let schema: SchemaRef =
+                            Arc::new(aligner.unified_schema().schema.clone());
                         let parquet_compression = compression_from_cli(cli);
                         let config = ParquetWriterConfig {
                             compression: parquet_compression,
-                            zstd_level: cli.zstd_level,
+                            zstd_level: cli.zstd_level as i32,
                             ..ParquetWriterConfig::default()
                         };
                         let mut writer: Option<ParquetWriter> = None;
                         while let Some(batch) = reader.read_batch()? {
                             let aligned = aligner.align_batch_with_source(batch, &source_fields)?;
-                            rows += aligned.len() as u64;
+                            rows += aligned.num_rows() as u64;
                             if writer.is_none() {
                                 writer =
                                     Some(ParquetWriter::new(output_path, schema.clone(), &config)?);
@@ -306,21 +309,27 @@ impl Pipeline {
             FileFormat::Parquet => {
                 let mut reader = ParquetReader::new(&file.path, cli.infer_rows.max(1))?;
                 let source_fields: Vec<String> =
-                    reader.get_schema().fields.iter().map(|f| f.name.clone()).collect();
+                    reader
+                        .get_schema()
+                        .fields()
+                        .iter()
+                        .map(|f| f.name().to_string())
+                        .collect();
 
                 match output_format {
                     OutputFormat::Parquet => {
-                        let schema = Arc::new(aligner.unified_schema().schema.clone());
+                        let schema: SchemaRef =
+                            Arc::new(aligner.unified_schema().schema.clone());
                         let parquet_compression = compression_from_cli(cli);
                         let config = ParquetWriterConfig {
                             compression: parquet_compression,
-                            zstd_level: cli.zstd_level,
+                            zstd_level: cli.zstd_level as i32,
                             ..ParquetWriterConfig::default()
                         };
                         let mut writer: Option<ParquetWriter> = None;
                         while let Some(batch) = reader.read_batch()? {
                             let aligned = aligner.align_batch_with_source(batch, &source_fields)?;
-                            rows += aligned.len() as u64;
+                            rows += aligned.num_rows() as u64;
                             if writer.is_none() {
                                 writer =
                                     Some(ParquetWriter::new(output_path, schema.clone(), &config)?);
@@ -336,7 +345,7 @@ impl Pipeline {
                         let mut writer = CsvWriter::new(output_path, &config)?;
                         while let Some(batch) = reader.read_batch()? {
                             let aligned = aligner.align_batch_with_source(batch, &source_fields)?;
-                            rows += aligned.len() as u64;
+                            rows += aligned.num_rows() as u64;
                             writer.write_batch(&aligned)?;
                         }
                         writer.finish()?;
@@ -409,7 +418,7 @@ impl Pipeline {
         output_path: PathBuf,
         output_format: OutputFormat,
     ) -> Result<()> {
-        let (tx, rx) = mpsc::channel::<Chunk<Box<dyn Array>>>(8);
+        let (tx, rx) = mpsc::channel::<RecordBatch>(8);
 
         let aligner = Arc::new(BatchAligner::new(
             unified_schema.clone(),
@@ -440,7 +449,7 @@ impl Pipeline {
     async fn spawn_readers(
         &self,
         input_files: &[InputFile],
-        tx: mpsc::Sender<Chunk<Box<dyn Array>>>,
+        tx: mpsc::Sender<RecordBatch>,
         aligner: Arc<BatchAligner>,
     ) -> Result<Vec<tokio::task::JoinHandle<Result<()>>>> {
         let mut handles = Vec::new();
@@ -478,7 +487,12 @@ impl Pipeline {
                     FileFormat::Parquet => {
                         let mut reader = ParquetReader::new(&file_path, 64_000)?;
                         let source_fields: Vec<String> =
-                            reader.get_schema().fields.iter().map(|f| f.name.clone()).collect();
+                            reader
+                        .get_schema()
+                        .fields()
+                        .iter()
+                        .map(|f| f.name().to_string())
+                        .collect();
 
                         while let Some(batch) = reader.read_batch()? {
                             let aligned =
@@ -502,7 +516,7 @@ impl Pipeline {
         &self,
         output_path: PathBuf,
         output_format: OutputFormat,
-        mut rx: mpsc::Receiver<Chunk<Box<dyn Array>>>,
+        mut rx: mpsc::Receiver<RecordBatch>,
         unified_schema: Arc<UnifiedSchema>,
     ) -> Result<tokio::task::JoinHandle<Result<()>>> {
         let compression = self.cli.compression.clone();
@@ -522,19 +536,10 @@ impl Pipeline {
                 }
                 OutputFormat::Parquet => {
                     let schema = Arc::new(unified_schema.schema.clone());
-                    let parquet_compression = match compression {
-                        crate::cli::Compression::None => {
-                            parquet2::compression::Compression::Uncompressed
-                        }
-                        crate::cli::Compression::Snappy => {
-                            parquet2::compression::Compression::Snappy
-                        }
-                        crate::cli::Compression::Gzip => parquet2::compression::Compression::Gzip,
-                        crate::cli::Compression::Zstd => parquet2::compression::Compression::Zstd,
-                    };
+                    let parquet_compression = compression_from_cli_opts(&compression);
                     let config = ParquetWriterConfig {
                         compression: parquet_compression,
-                        zstd_level,
+                        zstd_level: zstd_level as i32,
                         ..ParquetWriterConfig::default()
                     };
 
@@ -554,12 +559,16 @@ impl Pipeline {
     }
 }
 
-fn compression_from_cli(cli: &Cli) -> parquet2::compression::Compression {
-    match cli.compression {
-        crate::cli::Compression::None => parquet2::compression::Compression::Uncompressed,
-        crate::cli::Compression::Snappy => parquet2::compression::Compression::Snappy,
-        crate::cli::Compression::Gzip => parquet2::compression::Compression::Gzip,
-        crate::cli::Compression::Zstd => parquet2::compression::Compression::Zstd,
+fn compression_from_cli(cli: &Cli) -> Compression {
+    compression_from_cli_opts(&cli.compression)
+}
+
+fn compression_from_cli_opts(compression: &crate::cli::Compression) -> Compression {
+    match compression {
+        crate::cli::Compression::None => Compression::UNCOMPRESSED,
+        crate::cli::Compression::Snappy => Compression::SNAPPY,
+        crate::cli::Compression::Gzip => Compression::GZIP(Default::default()),
+        crate::cli::Compression::Zstd => Compression::ZSTD(Default::default()),
     }
 }
 

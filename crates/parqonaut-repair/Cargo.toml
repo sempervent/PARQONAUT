@@ -23,8 +23,8 @@ uuid = { workspace = true, features = ["v5"] }
 sha2 = { workspace = true }
 hex = { workspace = true }
 camino = { workspace = true }
-arrow = "54"
-parquet = { version = "54", features = ["arrow"] }
+arrow = { workspace = true }
+parquet = { workspace = true }
 tokio = { version = "1.43", features = ["rt-multi-thread", "macros"] }
 toml = "0.8"
 walkdir = "2.5"
@@ -35,8 +35,8 @@ s3 = ["parqonaut-storage/s3"]
 
 [dev-dependencies]
 tempfile = "3"
-arrow = "54"
-parquet = { version = "54", features = ["arrow"] }
+arrow = { workspace = true }
+parquet = { workspace = true }
 parqonaut-transform = { path = "../parqonaut-transform" }
 parqonaut-storage = { path = "../parqonaut-storage" }
 

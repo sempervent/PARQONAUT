@@ -2,7 +2,7 @@ use crate::csv_in::{CsvConfig, CsvReader};
 use crate::discover::{FileFormat, InputFile};
 use crate::error::Result;
 use crate::parquet_in::ParquetReader;
-use arrow2::datatypes::Schema;
+use arrow::datatypes::Schema;
 
 pub fn schema_for_input(file: &InputFile) -> Result<Schema> {
     match file.format {

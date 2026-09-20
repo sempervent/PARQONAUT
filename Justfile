@@ -45,7 +45,10 @@ docs:
 naming-check:
     scripts/check-active-naming.sh
 
-ci: fmt-check lint test naming-check
+columnar-check:
+    bash scripts/columnar-check.sh
+
+ci: fmt-check lint test naming-check columnar-check
 
 api-demo:
     #!/usr/bin/env bash
