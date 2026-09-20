@@ -1,5 +1,6 @@
 use crate::error::{MawError, Result};
 use arrow2::datatypes::{DataType, Field, Schema};
+use parqonaut_workflow::SchemaConflictPolicy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -20,22 +21,24 @@ pub enum TypeKind {
 }
 
 impl TypeKind {
-    pub fn from_arrow_type(dt: &DataType) -> Self {
+    pub fn from_arrow_type(dt: &DataType) -> Result<Self> {
         match dt {
-            DataType::Null => TypeKind::Null,
-            DataType::Boolean => TypeKind::Bool,
-            DataType::Int8 => TypeKind::I8,
-            DataType::Int16 => TypeKind::I16,
-            DataType::Int32 => TypeKind::I32,
-            DataType::Int64 => TypeKind::I64,
-            DataType::Float32 => TypeKind::F32,
-            DataType::Float64 => TypeKind::F64,
-            DataType::Utf8 => TypeKind::Utf8,
-            DataType::Binary => TypeKind::Binary,
-            DataType::Date32 => TypeKind::Date,
-            DataType::Date64 => TypeKind::Datetime,
-            DataType::Timestamp(_, _) => TypeKind::Datetime,
-            _ => TypeKind::Utf8, // Default to string for unknown types
+            DataType::Null => Ok(TypeKind::Null),
+            DataType::Boolean => Ok(TypeKind::Bool),
+            DataType::Int8 => Ok(TypeKind::I8),
+            DataType::Int16 => Ok(TypeKind::I16),
+            DataType::Int32 => Ok(TypeKind::I32),
+            DataType::Int64 => Ok(TypeKind::I64),
+            DataType::Float32 => Ok(TypeKind::F32),
+            DataType::Float64 => Ok(TypeKind::F64),
+            DataType::Utf8 => Ok(TypeKind::Utf8),
+            DataType::Binary => Ok(TypeKind::Binary),
+            DataType::Date32 => Ok(TypeKind::Date),
+            DataType::Date64 => Ok(TypeKind::Datetime),
+            DataType::Timestamp(_, _) => Ok(TypeKind::Datetime),
+            other => {
+                Err(MawError::Schema(format!("unsupported Arrow type for unification: {other:?}")))
+            }
         }
     }
 
@@ -81,36 +84,31 @@ impl UnifiedSchema {
         Self::default()
     }
 
-    pub fn from_schemas(schemas: &[Schema], stringify_conflicts: bool) -> Result<Self> {
+    pub fn from_schemas(schemas: &[Schema], policy: SchemaConflictPolicy) -> Result<Self> {
         let mut unified = Self::new();
         let mut column_types: HashMap<String, TypeKind> = HashMap::new();
+        let mut column_order: Vec<String> = Vec::new();
 
-        // Collect all columns and their types
         for schema in schemas {
             for field in &schema.fields {
-                let column_name = &field.name;
-                let type_kind = TypeKind::from_arrow_type(field.data_type());
+                let column_name = field.name.clone();
+                let type_kind = TypeKind::from_arrow_type(field.data_type())?;
 
-                if let Some(existing_type) = column_types.get(column_name) {
-                    // Type conflict - need to widen
-                    let widened = widen_types(existing_type, &type_kind, stringify_conflicts)?;
-                    column_types.insert(column_name.clone(), widened);
+                if let Some(existing_type) = column_types.get(&column_name) {
+                    let widened = unify_types(existing_type, &type_kind, policy)?;
+                    column_types.insert(column_name, widened);
                 } else {
-                    column_types.insert(column_name.clone(), type_kind);
+                    column_order.push(column_name.clone());
+                    column_types.insert(column_name, type_kind);
                 }
             }
         }
 
-        // Build unified schema
         let mut fields = Vec::new();
-        let mut sorted_columns: Vec<_> = column_types.keys().collect();
-        sorted_columns.sort();
-
-        for column_name in sorted_columns {
-            let type_kind = &column_types[column_name];
+        for column_name in column_order {
+            let type_kind = &column_types[&column_name];
             let arrow_type = type_kind.to_arrow_type();
-            let field = Field::new(column_name, arrow_type, true); // nullable
-            fields.push(field);
+            fields.push(Field::new(column_name.clone(), arrow_type, true));
         }
 
         unified.schema = Schema::from(fields);
@@ -128,11 +126,21 @@ impl UnifiedSchema {
     }
 }
 
+pub fn unify_types(
+    left: &TypeKind,
+    right: &TypeKind,
+    policy: SchemaConflictPolicy,
+) -> Result<TypeKind> {
+    let stringify_conflicts = matches!(policy, SchemaConflictPolicy::Stringify);
+    widen_types(left, right, stringify_conflicts, policy)
+}
+
 /// Widens two types according to the deterministic widening rules
 pub fn widen_types(
     left: &TypeKind,
     right: &TypeKind,
     stringify_conflicts: bool,
+    policy: SchemaConflictPolicy,
 ) -> Result<TypeKind> {
     use TypeKind::*;
 
@@ -187,7 +195,10 @@ pub fn widen_types(
         (Utf8, _) | (_, Utf8) if stringify_conflicts => Ok(Utf8),
         (Binary, _) | (_, Binary) if stringify_conflicts => Ok(Utf8),
 
-        // Default: error for incompatible types
+        _ if matches!(policy, SchemaConflictPolicy::Strict) => Err(MawError::Schema(format!(
+            "Cannot unify incompatible types under strict policy: {:?} and {:?}",
+            left, right
+        ))),
         _ => Err(MawError::Schema(format!(
             "Cannot unify incompatible types: {:?} and {:?}",
             left, right
@@ -201,20 +212,29 @@ mod tests {
 
     #[test]
     fn test_type_widening() {
-        assert_eq!(widen_types(&TypeKind::Null, &TypeKind::I32, false).unwrap(), TypeKind::I32);
-        assert_eq!(widen_types(&TypeKind::I32, &TypeKind::Null, false).unwrap(), TypeKind::I32);
-        assert_eq!(widen_types(&TypeKind::I32, &TypeKind::I64, false).unwrap(), TypeKind::I64);
-        assert_eq!(widen_types(&TypeKind::I32, &TypeKind::F64, false).unwrap(), TypeKind::F64);
-        assert_eq!(widen_types(&TypeKind::Bool, &TypeKind::I32, false).unwrap(), TypeKind::I32);
+        let widen = SchemaConflictPolicy::Widen;
         assert_eq!(
-            widen_types(&TypeKind::Date, &TypeKind::Datetime, false).unwrap(),
+            widen_types(&TypeKind::Null, &TypeKind::I32, false, widen).unwrap(),
+            TypeKind::I32
+        );
+        assert_eq!(
+            widen_types(&TypeKind::I32, &TypeKind::I64, false, widen).unwrap(),
+            TypeKind::I64
+        );
+        assert_eq!(
+            widen_types(&TypeKind::Date, &TypeKind::Datetime, false, widen).unwrap(),
             TypeKind::Datetime
         );
     }
 
     #[test]
     fn test_stringify_conflicts() {
-        assert_eq!(widen_types(&TypeKind::I32, &TypeKind::Utf8, true).unwrap(), TypeKind::Utf8);
-        assert!(widen_types(&TypeKind::I32, &TypeKind::Utf8, false).is_err());
+        let strict = SchemaConflictPolicy::Strict;
+        let stringify = SchemaConflictPolicy::Stringify;
+        assert_eq!(
+            widen_types(&TypeKind::I32, &TypeKind::Utf8, true, stringify).unwrap(),
+            TypeKind::Utf8
+        );
+        assert!(widen_types(&TypeKind::I32, &TypeKind::Utf8, false, strict).is_err());
     }
 }
