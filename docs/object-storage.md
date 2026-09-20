@@ -6,7 +6,7 @@ PARQONAUT uses **`S3StorageBackend`** for remote datasets. URIs use the standard
 s3://bucket/prefix/
 ```
 
-Supported workflows include **scan**, **plan**, **repair**, **batch**, and server jobs when storage policy allows the bucket/prefix.
+Supported workflows include **scan**, **plan**, **repair**, **batch**, **transform rewrite/merge** on `s3://` Parquet (columnar batch stream via `parqonaut-storage`), and server jobs when storage policy allows the bucket/prefix.
 
 ## RustFS in tests
 

@@ -45,7 +45,10 @@ docs:
 naming-check:
     scripts/check-active-naming.sh
 
-ci: fmt-check lint test naming-check
+columnar-check:
+    bash scripts/columnar-check.sh
+
+ci: fmt-check lint test naming-check columnar-check
 
 api-demo:
     #!/usr/bin/env bash
@@ -243,6 +246,12 @@ stream-demo:
     echo "4,5,6" >> target/stream-demo/two.csv
     cargo run -p parqonaut-cli --bin prqnt -- convert target/stream-demo/*.csv \
         -o target/stream-demo/out.parquet --out-format parquet --schema-conflicts widen
+
+pipeline-demo:
+    bash scripts/pipeline-demo.sh
+
+pipeline-s3-demo:
+    bash scripts/pipeline-s3-demo.sh
 
 stream-resume-demo:
     #!/usr/bin/env bash

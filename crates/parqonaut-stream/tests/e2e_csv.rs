@@ -107,7 +107,8 @@ async fn test_csv_to_parquet() {
     run(cli).await.unwrap();
     assert!(output.exists());
 
-    let mut file = std::fs::File::open(&output).unwrap();
-    let metadata = parquet2::read::read_metadata(&mut file).unwrap();
-    assert_eq!(metadata.row_groups[0].num_rows(), 2);
+    use parquet::file::reader::FileReader;
+    let file = std::fs::File::open(&output).unwrap();
+    let reader = parquet::file::serialized_reader::SerializedFileReader::new(file).unwrap();
+    assert_eq!(reader.metadata().file_metadata().num_rows(), 2);
 }

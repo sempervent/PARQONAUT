@@ -1,6 +1,6 @@
 # Transform workflows
 
-PARQONAUT v0.8 adds first-class Parquet transform commands and declarative multi-step specs.
+PARQONAUT v0.9 runs Parquet transforms on the shared **`parqonaut-columnar`** batch pipeline (Apache Arrow/Parquet **54.3.1**). Streamable transform spec steps can fuse in memory with **zero intermediate Parquet staging**; barriers (for example **split**) appear explicitly in dry-run plans.
 
 ## Commands
 
@@ -22,7 +22,7 @@ prqnt transform --spec workflow.yaml --dry-run --json
 
 ## Spec format
 
-Sequential steps only (v0.8): step *N* output feeds step *N+1* unless an operation declares its own source. Intermediate results live under `.parqonaut-spec-<execution-id>/` and are removed after success.
+Sequential steps only: step *N* output feeds step *N+1* unless an operation declares its own source. When the compiled plan is **fully streamable**, steps run in memory and no `.parqonaut-spec-*` directory is created. Non-fusible steps (barriers) may still materialize under `.parqonaut-spec-<execution-id>/` until the run completes.
 
 Canonical example (`fixtures/transform/specs/rewrite-partition.yaml`):
 
@@ -44,4 +44,4 @@ steps:
 
 ## Object storage
 
-Transform spec and partition/merge/split commands are **local-path only in v0.8**. Remote dataset repair and publication continue to use `parqonaut-storage` via scan/repair/batch (see [Object storage](./object-storage.md)).
+**Rewrite** and **merge** on `s3://` paths use `parqonaut-storage` columnar batch sources/sinks (range reads, bounded multipart writes). **Partition**, **split**, and fused in-memory specs remain **local-path** in v0.9; remote legs for those workflows continue via batch/repair orchestration (see [Object storage](./object-storage.md) and [Pipelines](./pipelines.md)).

@@ -21,8 +21,8 @@ hex = { workspace = true }
 toml = "0.8"
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite", "migrate", "uuid", "chrono"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "signal"] }
-arrow = "54"
-parquet = { version = "54", features = ["arrow"] }
+arrow = { workspace = true }
+parquet = { workspace = true }
 
 [features]
 default = ["s3"]

@@ -294,11 +294,16 @@ mod tests {
 
     #[cfg(feature = "s3")]
     #[test]
-    fn production_runtime_selects_s3_backend_for_remote_locations() {
-        let runtime = BatchStorageRuntime::new(4);
+    fn runtime_routes_s3_locations_to_remote_backend() {
+        let runtime = BatchStorageRuntime::with_remote_backend(
+            4,
+            MemoryStorageBackend::new(StorageCapabilities::S3),
+        );
         match runtime.repair_backend_for(&DatasetLocation::parse("s3://bucket/prefix/").unwrap()) {
-            RepairBackend::S3(_) => {}
-            _ => panic!("expected S3 backend for s3:// location"),
+            RepairBackend::Memory(_) => {}
+            RepairBackend::Local(_) | RepairBackend::S3(_) => {
+                panic!("expected in-memory remote stand-in for s3:// location in unit test")
+            }
         }
     }
 

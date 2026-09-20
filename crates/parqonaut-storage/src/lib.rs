@@ -21,6 +21,9 @@ pub mod metrics;
 pub mod noop;
 pub mod parquet_range;
 pub mod publication;
+
+#[cfg(feature = "columnar")]
+pub mod columnar;
 pub mod redact;
 pub mod stream;
 
@@ -45,6 +48,12 @@ pub use stream::{ObjectReadStream, ObjectWriteStream};
 
 #[cfg(feature = "s3")]
 pub use s3::{S3Config, S3StorageBackend};
+
+#[cfg(feature = "columnar")]
+pub use columnar::{
+    StorageParquetBatchSink, StorageParquetBatchSource, StorageParquetReadOptions,
+    StorageParquetWriteOptions,
+};
 
 #[cfg(any(test, feature = "test-util"))]
 pub use chaos::FaultInjectingBackend;

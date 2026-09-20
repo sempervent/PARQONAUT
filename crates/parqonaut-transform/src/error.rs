@@ -11,6 +11,9 @@ pub enum ParqknifeError {
     #[error("Arrow error: {0}")]
     Arrow(#[from] arrow::error::ArrowError),
 
+    #[error("Columnar error: {0}")]
+    Columnar(#[from] parqonaut_columnar::ColumnarError),
+
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 

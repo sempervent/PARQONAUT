@@ -2,12 +2,12 @@
 
 Detailed planning lives in the repository at `docs/development/pre-1.0-roadmap.md` (not part of the public site nav).
 
-| Theme | Direction |
-|-------|-----------|
-| Columnar convergence | Unify Arrow/Parquet stacks across repair, transform, stream (target v0.9) |
-| In-memory pipelines | Typed `DatasetSource` → `RecordBatchStream` → sinks (design in development/) |
-| Plugin execution | Extend repair/plugin protocol for external operators |
-| TUI / dashboard | Consume shared `ProgressEvent` contract (v0.8 foundation) |
-| 1.0 hardening | Stability, performance, and operational guarantees |
+| Release | Direction |
+|---------|-----------|
+| **v0.9.0** (current) | Unified Arrow/Parquet 54 stack, canonical schema compatibility, in-memory transform fusion, storage columnar I/O |
+| **v0.10.0** | Plugin execution bridge (see [plugin boundaries](./development/plugin-execution-boundaries.md)) |
+| **v0.11.0** | TUI + web dashboard on shared progress/contracts |
+| **v0.12.x** | 1.0 hardening |
+| **v1.0.0** | Stable API and operational guarantees |
 
 No release dates are committed here.

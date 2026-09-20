@@ -10,6 +10,7 @@ pub mod engine;
 pub mod error;
 pub mod io;
 pub mod output;
+pub mod remote;
 pub mod spec;
 
 pub use engine::*;
@@ -21,6 +22,10 @@ pub use error::*;
 pub use io::*;
 pub use output::*;
 pub use parqonaut_workflow::TransformReport;
+pub use remote::{
+    classify_io, default_local_backend, merge_parquet_storage, rewrite_parquet_storage,
+    RemoteIoKind,
+};
 pub use spec::*;
 
 use cli::opts::Commands;

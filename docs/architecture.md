@@ -44,9 +44,11 @@ paraclete-service →  HTTP router, auth, metrics, OpenAPI
 
 Historical crate names (`paraclete-*`) reflect provenance; see [Provenance](./provenance.md) and [ADR index](./adr/README.md).
 
-## Arrow/Parquet stacks
+## Columnar execution (v0.9+)
 
-Three stacks coexist (scan vs transform vs stream). Convergence is deferred — [ADR-0002](./adr/ADR-0002-coexisting-arrow-stacks.md).
+Product engines share **Apache Arrow / Parquet 54.3.1** and `parqonaut-columnar` batch-stream contracts (`BatchSource`, `BatchSink`, bounded `BatchStream`). Stream conversion, transform, repair data movers, and storage-backed I/O converge on `RecordBatch` pipelines. See [ADR-0015](./adr/ADR-0015-columnar-stack-convergence.md) and [Pipelines](./pipelines.md).
+
+Prior multi-stack layout is documented in [ADR-0002](./adr/ADR-0002-coexisting-arrow-stacks.md) (superseded).
 
 ## Further reading
 

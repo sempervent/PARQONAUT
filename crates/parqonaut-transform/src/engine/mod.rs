@@ -16,9 +16,13 @@ pub use compat::{
 };
 pub use filter::*;
 pub use merge::{merge_parquet_files, rewrite_parquet_file, split_parquet_file};
-pub use partition::{encode_partition_value, partition_parquet_file, HIVE_DEFAULT_PARTITION};
+pub use partition::{
+    encode_partition_value, partition_parquet_file, partition_record_batches,
+    HIVE_DEFAULT_PARTITION,
+};
 pub use pipeline::*;
 pub use rename::rewrite_parquet_with_rename;
 pub use schema::*;
 pub use stats::*;
+pub use transforms::pipeline_from_rewrite_ops;
 pub use transforms::*;

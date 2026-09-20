@@ -1,11 +1,9 @@
 use crate::error::Result;
-use arrow2::{
-    array::{Array, BooleanArray, Float64Array, Int64Array, Utf8Array},
-    chunk::Chunk,
-    datatypes::DataType,
-};
+use arrow::array::{Array, BooleanArray, Float64Array, Int64Array, RecordBatch, StringArray};
+use arrow::datatypes::{DataType, Field, Schema};
 use csv::{ByteRecord, ReaderBuilder};
 use encoding_rs::{Encoding, UTF_8};
+use std::sync::Arc;
 use std::{fs::File, io::Read, path::Path};
 
 pub struct CsvReader {
@@ -89,7 +87,7 @@ impl CsvReader {
         })
     }
 
-    pub fn read_batch(&mut self) -> Result<Option<Chunk<Box<dyn Array>>>> {
+    pub fn read_batch(&mut self) -> Result<Option<RecordBatch>> {
         let mut records = Vec::with_capacity(self.batch_size);
 
         if let Some(record) = self.pending_record.take() {
@@ -108,17 +106,14 @@ impl CsvReader {
             return Ok(None);
         }
 
-        // Convert to Chunk
-        let batch = self.records_to_batch(&records)?;
-        Ok(Some(batch))
+        Ok(Some(self.records_to_batch(&records)?))
     }
 
-    fn records_to_batch(&self, records: &[ByteRecord]) -> Result<Chunk<Box<dyn Array>>> {
+    fn records_to_batch(&self, records: &[ByteRecord]) -> Result<RecordBatch> {
         let num_columns = self.headers.len();
-        let mut columns: Vec<Box<dyn Array>> = Vec::with_capacity(num_columns);
+        let mut columns: Vec<Arc<dyn Array>> = Vec::with_capacity(num_columns);
 
         for col_idx in 0..num_columns {
-            let _column_name = &self.headers[col_idx];
             let mut values = Vec::with_capacity(records.len());
             let mut nulls = Vec::with_capacity(records.len());
 
@@ -140,23 +135,21 @@ impl CsvReader {
                 }
             }
 
-            // Infer column type and create array
             let array = self.create_column_array(&values, &nulls)?;
             columns.push(array);
         }
 
-        let _schema = arrow2::datatypes::Schema::from(
-            self.headers
-                .iter()
-                .map(|name| arrow2::datatypes::Field::new(name, DataType::Utf8, true))
-                .collect::<Vec<_>>(),
-        );
-
-        Ok(Chunk::new(columns))
+        let fields: Vec<Field> = self
+            .headers
+            .iter()
+            .enumerate()
+            .map(|(idx, name)| Field::new(name, columns[idx].data_type().clone(), true))
+            .collect();
+        let schema = Arc::new(Schema::new(fields));
+        RecordBatch::try_new(schema, columns).map_err(|e| e.into())
     }
 
     fn decode_field(&self, field: &[u8]) -> Result<String> {
-        // Handle BOM
         let field = if field.starts_with(&[0xEF, 0xBB, 0xBF]) { &field[3..] } else { field };
 
         let (decoded, _, had_errors) = self.encoding.decode(field);
@@ -170,8 +163,7 @@ impl CsvReader {
         &self,
         values: &[Option<String>],
         nulls: &[bool],
-    ) -> Result<Box<dyn Array>> {
-        // Try to infer the best type for this column
+    ) -> Result<Arc<dyn Array>> {
         let mut has_strings = false;
         let mut has_ints = false;
         let mut has_floats = false;
@@ -181,7 +173,6 @@ impl CsvReader {
             if *is_null {
                 continue;
             }
-
             if let Some(val) = value {
                 if val.parse::<i64>().is_ok() {
                     has_ints = true;
@@ -195,32 +186,26 @@ impl CsvReader {
             }
         }
 
-        // Create the appropriate array type
         if has_strings || (!has_ints && !has_floats && !has_bools) {
-            // String array
             let string_values: Vec<Option<&str>> =
                 values.iter().map(|v| v.as_ref().map(|s| s.as_str())).collect();
-            Ok(Box::new(Utf8Array::<i32>::from(string_values)))
+            Ok(Arc::new(StringArray::from(string_values)))
         } else if has_floats {
-            // Float array
             let float_values: Vec<Option<f64>> =
                 values.iter().map(|v| v.as_ref().and_then(|s| s.parse().ok())).collect();
-            Ok(Box::new(Float64Array::from(float_values)))
+            Ok(Arc::new(Float64Array::from(float_values)))
         } else if has_ints {
-            // Integer array
             let int_values: Vec<Option<i64>> =
                 values.iter().map(|v| v.as_ref().and_then(|s| s.parse().ok())).collect();
-            Ok(Box::new(Int64Array::from(int_values)))
+            Ok(Arc::new(Int64Array::from(int_values)))
         } else if has_bools {
-            // Boolean array
             let bool_values: Vec<Option<bool>> =
                 values.iter().map(|v| v.as_ref().and_then(|s| s.parse().ok())).collect();
-            Ok(Box::new(BooleanArray::from(bool_values)))
+            Ok(Arc::new(BooleanArray::from(bool_values)))
         } else {
-            // Default to string
             let string_values: Vec<Option<&str>> =
                 values.iter().map(|v| v.as_ref().map(|s| s.as_str())).collect();
-            Ok(Box::new(Utf8Array::<i32>::from(string_values)))
+            Ok(Arc::new(StringArray::from(string_values)))
         }
     }
 
@@ -228,23 +213,11 @@ impl CsvReader {
         &self.headers
     }
 
-    /// Build an Arrow schema from headers and a sample batch (or header-only UTF8 columns).
-    pub fn infer_schema(&mut self) -> Result<arrow2::datatypes::Schema> {
-        use arrow2::datatypes::{Field, Schema};
-
+    pub fn infer_schema(&mut self) -> Result<Schema> {
         if let Some(batch) = self.read_batch()? {
-            let fields = self
-                .headers
-                .iter()
-                .enumerate()
-                .map(|(idx, name)| {
-                    let dt = batch.arrays()[idx].data_type().clone();
-                    Field::new(name, dt, true)
-                })
-                .collect::<Vec<_>>();
-            Ok(Schema::from(fields))
+            Ok(batch.schema().as_ref().clone())
         } else {
-            Ok(Schema::from(
+            Ok(Schema::new(
                 self.headers
                     .iter()
                     .map(|name| Field::new(name, DataType::Utf8, true))
@@ -270,8 +243,8 @@ mod tests {
         let mut reader = CsvReader::new(&csv_file, &config).unwrap();
 
         let batch = reader.read_batch().unwrap().unwrap();
-        assert_eq!(batch.len(), 2);
-        assert_eq!(batch.arrays().len(), 3);
+        assert_eq!(batch.num_rows(), 2);
+        assert_eq!(batch.num_columns(), 3);
     }
 
     #[test]
@@ -284,8 +257,8 @@ mod tests {
         let mut reader = CsvReader::new(&csv_file, &config).unwrap();
 
         let batch = reader.read_batch().unwrap().unwrap();
-        assert_eq!(batch.len(), 2);
-        assert_eq!(batch.arrays().len(), 3);
+        assert_eq!(batch.num_rows(), 2);
+        assert_eq!(batch.num_columns(), 3);
 
         let headers = reader.get_headers();
         assert_eq!(headers[0], "col_1");

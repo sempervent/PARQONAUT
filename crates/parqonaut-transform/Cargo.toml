@@ -7,8 +7,8 @@ authors = ["parqknife contributors"]
 description = "Parquet transformation engine (parqknife lineage)"
 
 [dependencies]
-arrow = { version = "54", features = [] }
-parquet = { version = "54", features = ["arrow"] }
+arrow = { workspace = true }
+parquet = { workspace = true }
 clap = { version = "4.5", features = ["derive", "env"] }
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
@@ -28,6 +28,15 @@ indicatif = "0.17"
 rayon = "1.8"
 nom = "7.1"
 parqonaut-workflow = { path = "../parqonaut-workflow" }
+parqonaut-columnar = { path = "../parqonaut-columnar" }
+parqonaut-storage = { path = "../parqonaut-storage", features = ["columnar"] }
+
+[features]
+default = []
+s3 = ["parqonaut-storage/s3"]
 
 [dev-dependencies]
 tempfile = "3.10"
+bytes = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+uuid = { version = "1.10", features = ["v4"] }

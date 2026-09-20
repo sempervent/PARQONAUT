@@ -2,6 +2,8 @@
 
 PARQONAUT resolves schema drift using deterministic comparison, a compatibility lattice, and explicit policy. No inference or AI is used.
 
+v0.9 centralizes batch/stream/repair compatibility in **`parqonaut-columnar::schema`** (see `docs/development/COLUMNAR_CONTRACT_SHA`). Stream `--schema-conflicts widen` and repair planning both consult the same semantic rules.
+
 ## Structured schema diff
 
 Each field difference records:

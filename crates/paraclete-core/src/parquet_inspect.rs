@@ -73,8 +73,9 @@ pub fn inspect_parquet_footer_buffer(
     let trailer: [u8; 8] = footer[footer.len() - 8..]
         .try_into()
         .map_err(|_| CoreError::Parquet("invalid Parquet footer trailer".into()))?;
-    let metadata_len = ParquetMetaDataReader::decode_footer(&trailer)
-        .map_err(|e| CoreError::Parquet(e.to_string()))?;
+    let metadata_len = ParquetMetaDataReader::decode_footer_tail(&trailer)
+        .map_err(|e| CoreError::Parquet(e.to_string()))?
+        .metadata_length();
     if metadata_len + 8 != footer.len() {
         return Err(CoreError::Parquet(format!(
             "footer buffer length {} does not match metadata length {metadata_len}",
