@@ -9,15 +9,13 @@ use parqonaut_storage::columnar::StorageParquetBatchSource;
 use parqonaut_storage::location::ObjectLocation;
 use parqonaut_transform::ColumnarPipelineIo;
 
-pub fn require_s3_endpoint() {
+pub fn require_s3_endpoint() -> bool {
     if std::env::var("PARQONAUT_S3_ENDPOINT").is_err()
         && std::env::var("PARQONAUT_S3_INTEGRATION").as_deref() == Ok("1")
     {
         panic!("PARQONAUT_S3_INTEGRATION=1 requires PARQONAUT_S3_ENDPOINT");
     }
-    if std::env::var("PARQONAUT_S3_ENDPOINT").is_err() {
-        panic!("set PARQONAUT_S3_ENDPOINT (just s3-up)");
-    }
+    std::env::var("PARQONAUT_S3_ENDPOINT").is_ok()
 }
 
 pub fn test_bucket() -> String {

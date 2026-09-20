@@ -31,8 +31,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-just s3-up
-just s3-fixtures
+if [[ -z "${PARQONAUT_S3_ENDPOINT:-}" ]]; then
+  bash scripts/s3-test/up.sh
+  source scripts/s3-test/env.sh
+fi
+bash scripts/s3-test/fixtures.sh
 
 cargo build -q -p parqonaut-cli --bin prqnt --features s3
 PRQNT="$ROOT/target/debug/prqnt"

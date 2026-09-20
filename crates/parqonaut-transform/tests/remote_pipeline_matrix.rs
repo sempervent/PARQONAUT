@@ -18,7 +18,9 @@ use parqonaut_transform::{
 
 #[tokio::test(flavor = "multi_thread")]
 async fn matrix_rewrite_four_legs() {
-    require_s3_endpoint();
+    if !require_s3_endpoint() {
+        return;
+    }
     let (io, s3) = s3_io().await;
     let bucket = test_bucket();
     let work = tempfile::tempdir().unwrap();
@@ -34,7 +36,9 @@ async fn matrix_rewrite_four_legs() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn matrix_merge_four_legs() {
-    require_s3_endpoint();
+    if !require_s3_endpoint() {
+        return;
+    }
     let (io, s3) = s3_io().await;
     let bucket = test_bucket();
     let work = tempfile::tempdir().unwrap();
@@ -52,7 +56,9 @@ async fn matrix_merge_four_legs() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn matrix_split_four_legs() {
-    require_s3_endpoint();
+    if !require_s3_endpoint() {
+        return;
+    }
     let (io, s3) = s3_io().await;
     let bucket = test_bucket();
     let work = tempfile::tempdir().unwrap();
@@ -75,7 +81,9 @@ async fn matrix_split_four_legs() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn matrix_partition_four_legs() {
-    require_s3_endpoint();
+    if !require_s3_endpoint() {
+        return;
+    }
     let (io, s3) = s3_io().await;
     let bucket = test_bucket();
     let work = tempfile::tempdir().unwrap();
@@ -98,7 +106,9 @@ async fn matrix_partition_four_legs() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn matrix_fused_spec_four_legs() {
-    require_s3_endpoint();
+    if !require_s3_endpoint() {
+        return;
+    }
     let (_io, s3) = s3_io().await;
     let bucket = test_bucket();
     let work = tempfile::tempdir().unwrap();
@@ -128,7 +138,9 @@ async fn matrix_fused_spec_four_legs() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn matrix_convert_four_legs() {
-    require_s3_endpoint();
+    if !require_s3_endpoint() {
+        return;
+    }
     let (_io, s3) = s3_io().await;
     let bucket = test_bucket();
     let work = tempfile::tempdir().unwrap();
