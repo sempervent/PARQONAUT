@@ -80,6 +80,25 @@ where
     }
 }
 
+/// Async Parquet upload from a batch stream (no blocking `BatchSink` wrapper).
+pub async fn write_parquet_batch_stream<B: StorageBackend + ?Sized>(
+    backend: Arc<B>,
+    object: ObjectLocation,
+    schema: SchemaRef,
+    stream: BatchStream,
+    progress: &dyn ProgressObserver,
+) -> Result<WriteSummary, ColumnarError> {
+    write_stream_async(
+        backend,
+        object,
+        StorageParquetWriteOptions::default(),
+        schema,
+        stream,
+        progress,
+    )
+    .await
+}
+
 async fn write_stream_async<B: StorageBackend + ?Sized>(
     backend: Arc<B>,
     object: ObjectLocation,

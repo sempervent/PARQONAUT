@@ -55,7 +55,7 @@ impl Pipeline {
         });
     }
 
-    fn conflict_policy(&self) -> SchemaConflictPolicy {
+    pub(crate) fn conflict_policy(&self) -> SchemaConflictPolicy {
         if self.cli.stringify_conflicts {
             return SchemaConflictPolicy::Stringify;
         }
@@ -84,7 +84,8 @@ impl Pipeline {
         let unified_schema = self.build_unified_schema(&input_files, policy).await?;
         let unified_arc = Arc::new(unified_schema);
 
-        let output_path = self.cli.out.clone().unwrap_or_else(|| PathBuf::from("output"));
+        let output_spec = self.cli.out.clone().unwrap_or_else(|| "output".into());
+        let output_path = PathBuf::from(&output_spec);
         let output_format = self.determine_output_format(&output_path)?;
 
         if self.cli.state.is_some() {
@@ -552,7 +553,7 @@ fn compression_from_cli(cli: &Cli) -> Compression {
     compression_from_cli_opts(&cli.compression)
 }
 
-fn compression_from_cli_opts(compression: &crate::cli::Compression) -> Compression {
+pub(crate) fn compression_from_cli_opts(compression: &crate::cli::Compression) -> Compression {
     match compression {
         crate::cli::Compression::None => Compression::UNCOMPRESSED,
         crate::cli::Compression::Snappy => Compression::SNAPPY,

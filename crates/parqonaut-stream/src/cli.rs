@@ -13,9 +13,9 @@ pub struct Cli {
     #[arg(required = true)]
     pub inputs: Vec<String>,
 
-    /// Output file path
+    /// Output file path or `s3://bucket/key.parquet`
     #[arg(short = 'o', long = "out")]
-    pub out: Option<PathBuf>,
+    pub out: Option<String>,
 
     /// Output format (csv or parquet)
     #[arg(long = "out-format", value_enum)]

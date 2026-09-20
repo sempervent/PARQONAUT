@@ -168,7 +168,7 @@ enum Command {
         #[arg(required = true)]
         inputs: Vec<String>,
         #[arg(short = 'o', long = "out")]
-        out: PathBuf,
+        out: String,
         #[arg(long = "out-format")]
         out_format: Option<parqonaut_stream::cli::OutputFormat>,
         #[arg(long, default_value = "none")]

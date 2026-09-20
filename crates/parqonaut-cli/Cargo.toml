@@ -23,8 +23,8 @@ parqonaut-app = { path = "../parqonaut-app", features = ["s3"] }
 dirs = "6"
 toml = "0.8"
 url = "2"
-parqonaut-transform = { path = "../parqonaut-transform" }
-parqonaut-stream = { path = "../parqonaut-stream" }
+parqonaut-transform = { path = "../parqonaut-transform", features = ["s3"] }
+parqonaut-stream = { path = "../parqonaut-stream", features = ["storage"] }
 parqonaut-repair = { path = "../parqonaut-repair" }
 parqonaut-storage = { path = "../parqonaut-storage" }
 parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }

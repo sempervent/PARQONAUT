@@ -15,7 +15,7 @@ async fn test_csv_to_csv_identity() {
 
     let cli = Cli {
         inputs: vec![csv1.to_string_lossy().to_string(), csv2.to_string_lossy().to_string()],
-        out: Some(output.clone()),
+        out: Some(output.to_string_lossy().into_owned()),
         out_format: None,
         delimiter: None,
         quote: None,
@@ -68,7 +68,7 @@ async fn test_csv_to_parquet() {
 
     let cli = Cli {
         inputs: vec![csv.to_string_lossy().to_string()],
-        out: Some(output.clone()),
+        out: Some(output.to_string_lossy().into_owned()),
         out_format: Some(parqonaut_stream::cli::OutputFormat::Parquet),
         delimiter: None,
         quote: None,

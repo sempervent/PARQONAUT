@@ -16,6 +16,9 @@ pub mod state;
 pub mod writer_csv;
 pub mod writer_parquet;
 
+#[cfg(feature = "storage")]
+pub mod storage_convert;
+
 pub use cli::Cli;
 pub use error::{MawError, Result};
 
@@ -41,6 +44,11 @@ pub async fn run(cli: Cli) -> Result<()> {
     if cli.dry_run {
         info!("Dry run mode: would process inputs without writing output");
         return Ok(());
+    }
+
+    #[cfg(feature = "storage")]
+    if storage_convert::needs_storage_routing(&cli) {
+        return storage_convert::execute(cli).await;
     }
 
     let pipeline = pipeline::Pipeline::new(cli);
