@@ -1,0 +1,11 @@
+# Columnar pipeline contract (v0.9)
+
+Record after contract-freeze commit on `feat/columnar-convergence`:
+
+```text
+COLUMNAR_CONTRACT_COMMIT=<pending>
+COLUMNAR_CONTRACT_DIGEST=<optional content sha256 after freeze>
+CANONICAL_ARROW_VERSION=54.3.1
+CANONICAL_PARQUET_VERSION=54.3.1
+DEFAULT_STREAM_CHANNEL_CAPACITY=4
+```

@@ -15,11 +15,12 @@ members = [
     "crates/parqonaut-storage",
     "crates/parqonaut-app",
     "crates/parqonaut-workflow",
+    "crates/parqonaut-columnar",
     "xtask",
 ]
 
 [workspace.package]
-version = "0.8.1"
+version = "0.9.0"
 edition = "2021"
 license = "MIT"
 authors = ["Joshua Grant"]
@@ -39,7 +40,8 @@ sha2 = "0.10"
 hex = "0.4"
 rand = "0.8"
 walkdir = "2.5"
-parquet = "53"
+arrow = { version = "54.3.1", default-features = false, features = ["csv", "ipc"] }
+parquet = { version = "54.3.1", default-features = false, features = ["arrow", "snap", "flate2", "lz4", "zstd"] }
 paraclete-types = { path = "crates/paraclete-types" }
 paraclete-plugin-protocol = { path = "crates/paraclete-plugin-protocol" }
 sqlx = { version = "0.8.3", features = ["runtime-tokio", "sqlite", "postgres", "migrate", "uuid", "chrono"] }

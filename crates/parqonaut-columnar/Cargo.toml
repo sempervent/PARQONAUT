@@ -1,0 +1,16 @@
+[package]
+name = "parqonaut-columnar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Shared Apache Arrow RecordBatch streaming boundary for PARQONAUT engines"
+
+[dependencies]
+arrow = { workspace = true }
+arrow-schema = "54.3.1"
+parqonaut-workflow = { path = "../parqonaut-workflow" }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+futures = "0.3"
+tracing = { workspace = true }
