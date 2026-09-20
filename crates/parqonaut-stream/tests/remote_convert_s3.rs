@@ -170,9 +170,9 @@ async fn convert_four_storage_legs() -> StreamResult<()> {
         }
 
         let cli = base_cli(vec![input.clone()], Some(output.clone()));
-        parqonaut_stream::run(cli).await.map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("{label} convert: {e}"))
-        })?;
+        parqonaut_stream::run(cli)
+            .await
+            .map_err(|e| std::io::Error::other(format!("{label} convert: {e}")))?;
         let (rows, schema) = read_parquet_rows(&output).await;
         assert_eq!(rows, 3, "{label} row count");
         assert_eq!(schema.field(0).name(), "id", "{label} schema");
