@@ -9,6 +9,7 @@ Patch release correcting transform demo recipes; no intended runtime behavior ch
 ### Fixed
 
 - `just transform-demo` aligned with `prqnt` flags (`--output`, `--by`, Parquet glob for merge)
+- S3 batch verify sees Parquet under committed publication prefixes; `s3-resume` demo uses non-overlapping sources
 
 [0.8.1]: https://github.com/sempervent/PARQONAUT/releases/tag/v0.8.1
 

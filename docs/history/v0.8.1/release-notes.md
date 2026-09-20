@@ -7,6 +7,7 @@ No intended runtime behavior change from v0.8.0.
 ## Changes
 
 - `Justfile`: use `--output`, `--by`, and an explicit Parquet glob for merge (was `-o`, `--partition-by`, and directory merge input)
+- S3 batch demos: non-overlapping fixture paths; inventory lists committed publication data for verification; batch configs accept path-style local output overrides
 
 ## Upgrade
 

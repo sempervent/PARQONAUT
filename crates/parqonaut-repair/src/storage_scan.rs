@@ -13,7 +13,7 @@ use paraclete_types::{
     ScanTarget,
 };
 use parqonaut_storage::backend::StorageBackend;
-use parqonaut_storage::inventory::{list_remote_inventory, relative_object_key};
+use parqonaut_storage::inventory::{dataset_object_relative_key, list_remote_inventory};
 use parqonaut_storage::location::{DatasetLocation, ObjectLocation};
 use parqonaut_storage::memory::MemoryStorageBackend;
 use parqonaut_storage::parquet_range::read_parquet_footer;
@@ -162,7 +162,7 @@ async fn scan_remote_dataset<B: StorageBackend>(
 
     let mut assets_sorted: Vec<ResolvedAsset> = Vec::new();
     for object in &inventory.objects {
-        let Some(relative) = relative_object_key(location, &object.location) else {
+        let Some(relative) = dataset_object_relative_key(location, &object.location) else {
             continue;
         };
         let path = Utf8PathBuf::from(object.location.display_uri());
