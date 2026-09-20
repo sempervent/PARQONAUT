@@ -12,6 +12,10 @@ Usage: prqnt [OPTIONS] <COMMAND>
 Commands:
   scan       Forensic scan of local paths or s3:// dataset prefixes
   inspect    Inspect Parquet schema and row-group metadata
+  partition  Hive-style partition of a Parquet file
+  merge      Merge Parquet files or a dataset directory
+  split      Split a Parquet file into smaller parts
+  transform  Declarative multi-step transform workflow
   rewrite    Rewrite or recompress a Parquet file
   diagnose   Diagnose dataset repair opportunities from scan evidence
   plan       Generate an evidence-bound repair plan
@@ -95,14 +99,30 @@ Arguments:
   <INPUTS>...  Input file(s), directories, or globs
 
 Options:
-      --json                       Emit JSON where supported
-  -o, --out <OUT>                  
-      --out-format <OUT_FORMAT>    [possible values: csv, parquet]
-      --compression <COMPRESSION>  [default: none] [possible values: none, snappy, gzip, zstd]
-      --zstd-level <ZSTD_LEVEL>    [default: 3]
-      --plan                       
-      --dry-run                    
-  -h, --help                       Print help
+      --json
+          Emit JSON where supported
+  -o, --out <OUT>
+          
+      --out-format <OUT_FORMAT>
+          [possible values: csv, parquet]
+      --compression <COMPRESSION>
+          [default: none] [possible values: none, snappy, gzip, zstd]
+      --zstd-level <ZSTD_LEVEL>
+          [default: 3]
+      --plan
+          
+      --dry-run
+          
+      --state <STATE>
+          
+      --resume
+          
+      --schema-conflicts <SCHEMA_CONFLICTS>
+          [default: strict]
+      --json-progress
+          
+  -h, --help
+          Print help
 ```
 
 ## `diagnose`

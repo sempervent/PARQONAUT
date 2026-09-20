@@ -1,10 +1,6 @@
 use crate::error::{MawError, Result};
 use crate::schema::UnifiedSchema;
-use arrow2::{
-    array::*,
-    chunk::Chunk,
-    datatypes::{DataType, Schema},
-};
+use arrow2::{array::*, chunk::Chunk, datatypes::DataType};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -17,6 +13,10 @@ pub struct BatchAligner {
 }
 
 impl BatchAligner {
+    pub fn unified_schema(&self) -> &Arc<UnifiedSchema> {
+        &self.unified_schema
+    }
+
     pub fn new(
         unified_schema: Arc<UnifiedSchema>,
         column_mapping: HashMap<String, String>,
@@ -33,32 +33,38 @@ impl BatchAligner {
         }
     }
 
-    pub fn align_batch(&self, batch: Chunk<Box<dyn Array>>) -> Result<Chunk<Box<dyn Array>>> {
+    pub fn align_batch_with_source(
+        &self,
+        batch: Chunk<Box<dyn Array>>,
+        source_fields: &[String],
+    ) -> Result<Chunk<Box<dyn Array>>> {
         let mut aligned_columns = Vec::new();
-        let mut aligned_fields = Vec::new();
 
         for field in &self.unified_schema.schema.fields {
             let column_name = &field.name;
             let target_type = field.data_type();
 
-            // Check if column should be included
             if let Some(include) = &self.include_columns {
                 if !include.contains(column_name) {
                     continue;
                 }
             }
 
-            // Check if column should be excluded
             if let Some(exclude) = &self.exclude_columns {
                 if exclude.contains(column_name) {
                     continue;
                 }
             }
 
-            // Find the source column (handle renames)
-            let source_column = self.find_source_column(column_name);
+            let mapped_name = self
+                .column_mapping
+                .get(column_name)
+                .map(String::as_str)
+                .unwrap_or(column_name.as_str());
 
-            let aligned_array = if let Some(source_idx) = source_column {
+            let source_idx = source_fields.iter().position(|n| n == mapped_name);
+
+            let aligned_array = if let Some(source_idx) = source_idx {
                 if source_idx < batch.arrays().len() {
                     let source_array = &*batch.arrays()[source_idx];
                     self.coerce_column(
@@ -71,30 +77,13 @@ impl BatchAligner {
                     self.create_null_column(target_type, batch.len())?
                 }
             } else {
-                // Column doesn't exist in source - create null column
                 self.create_null_column(target_type, batch.len())?
             };
 
             aligned_columns.push(aligned_array);
-            aligned_fields.push(field.clone());
         }
 
-        let _aligned_schema = Schema::from(aligned_fields);
         Ok(Chunk::new(aligned_columns))
-    }
-
-    fn find_source_column(&self, unified_name: &str) -> Option<usize> {
-        if let Some(original) = self.column_mapping.get(unified_name) {
-            return self.unified_schema.schema.fields.iter().position(|f| f.name == *original);
-        }
-
-        for (original, mapped) in &self.column_mapping {
-            if mapped == unified_name {
-                return self.unified_schema.schema.fields.iter().position(|f| f.name == *original);
-            }
-        }
-
-        self.unified_schema.schema.fields.iter().position(|f| f.name == unified_name)
     }
 
     fn coerce_column(
@@ -106,13 +95,25 @@ impl BatchAligner {
     ) -> Result<Box<dyn Array>> {
         if source_type == target_type {
             return match target_type {
+                DataType::Int32 => {
+                    let v = array.as_any().downcast_ref::<Int32Array>().unwrap();
+                    Ok(Box::new(v.clone()) as Box<dyn Array>)
+                }
                 DataType::Int64 => {
-                    let values = array.as_any().downcast_ref::<Int64Array>().unwrap();
-                    Ok(Box::new(values.clone()))
+                    let v = array.as_any().downcast_ref::<Int64Array>().unwrap();
+                    Ok(Box::new(v.clone()) as Box<dyn Array>)
+                }
+                DataType::Float64 => {
+                    let v = array.as_any().downcast_ref::<Float64Array>().unwrap();
+                    Ok(Box::new(v.clone()) as Box<dyn Array>)
                 }
                 DataType::Utf8 => {
-                    let values = array.as_any().downcast_ref::<Utf8Array<i32>>().unwrap();
-                    Ok(Box::new(values.clone()))
+                    let v = array.as_any().downcast_ref::<Utf8Array<i32>>().unwrap();
+                    Ok(Box::new(v.clone()) as Box<dyn Array>)
+                }
+                DataType::Boolean => {
+                    let v = array.as_any().downcast_ref::<BooleanArray>().unwrap();
+                    Ok(Box::new(v.clone()) as Box<dyn Array>)
                 }
                 _ => self.create_null_column(target_type, num_rows),
             };
@@ -176,32 +177,9 @@ impl BatchAligner {
                 Ok(Box::new(Float64Array::from(float_values)))
             }
 
-            // Any type to string
-            (_, DataType::Utf8) => {
-                let string_values: Vec<Option<&str>> = (0..num_rows)
-                    .map(|i| {
-                        if array.is_null(i) {
-                            None
-                        } else {
-                            Some("converted") // Simplified - would need proper string conversion
-                        }
-                    })
-                    .collect();
-                Ok(Box::new(Utf8Array::<i32>::from(string_values)))
-            }
-
-            // Default: return as string if stringify_conflicts is enabled
-            _ if self.stringify_conflicts => {
-                let string_values: Vec<Option<&str>> = (0..num_rows)
-                    .map(|i| {
-                        if array.is_null(i) {
-                            None
-                        } else {
-                            Some("converted") // Simplified - would need proper string conversion
-                        }
-                    })
-                    .collect();
-                Ok(Box::new(Utf8Array::<i32>::from(string_values)))
+            (_, DataType::Utf8) => self.stringify_column(array, num_rows),
+            _ if self.stringify_conflicts && matches!(target_type, DataType::Utf8) => {
+                self.stringify_column(array, num_rows)
             }
 
             _ => Err(MawError::Schema(format!(
@@ -209,6 +187,46 @@ impl BatchAligner {
                 source_type, target_type
             ))),
         }
+    }
+}
+
+fn array_value_display(array: &dyn Array, index: usize) -> String {
+    use arrow2::array::*;
+    if array.is_null(index) {
+        return String::new();
+    }
+    match array.data_type() {
+        DataType::Utf8 => {
+            let a = array.as_any().downcast_ref::<Utf8Array<i32>>().unwrap();
+            a.value(index).to_string()
+        }
+        DataType::Int64 => {
+            let a = array.as_any().downcast_ref::<Int64Array>().unwrap();
+            a.value(index).to_string()
+        }
+        DataType::Int32 => {
+            let a = array.as_any().downcast_ref::<Int32Array>().unwrap();
+            a.value(index).to_string()
+        }
+        DataType::Float64 => {
+            let a = array.as_any().downcast_ref::<Float64Array>().unwrap();
+            a.value(index).to_string()
+        }
+        DataType::Boolean => {
+            let a = array.as_any().downcast_ref::<BooleanArray>().unwrap();
+            a.value(index).to_string()
+        }
+        other => format!("{other:?}"),
+    }
+}
+
+impl BatchAligner {
+    fn stringify_column(&self, array: &dyn Array, num_rows: usize) -> Result<Box<dyn Array>> {
+        let owned: Vec<Option<String>> = (0..num_rows)
+            .map(|i| if array.is_null(i) { None } else { Some(array_value_display(array, i)) })
+            .collect();
+        let refs: Vec<Option<&str>> = owned.iter().map(|o| o.as_deref()).collect();
+        Ok(Box::new(Utf8Array::<i32>::from(refs)))
     }
 
     fn create_null_column(&self, data_type: &DataType, num_rows: usize) -> Result<Box<dyn Array>> {
@@ -265,7 +283,8 @@ mod tests {
         let column_mapping = HashMap::new();
         let aligner = BatchAligner::new(unified_schema, column_mapping, None, None, false);
 
-        let aligned = aligner.align_batch(batch).unwrap();
+        let aligned =
+            aligner.align_batch_with_source(batch, &["a".to_string(), "b".to_string()]).unwrap();
         assert_eq!(aligned.len(), 3);
     }
 }

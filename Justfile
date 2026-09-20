@@ -212,6 +212,60 @@ batch-resume-demo:
     echo "=== verify ==="
     cargo run -p parqonaut-cli --bin prqnt -- batch verify --run-dir "$run_dir" || true
 
+transform-demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf target/transform-demo
+    mkdir -p target/transform-demo
+    echo "=== merge ==="
+    cargo run -p parqonaut-cli --bin prqnt -- merge fixtures/transform/merge-compatible/ \
+        -o target/transform-demo/merged.parquet
+    echo "=== rewrite ==="
+    cargo run -p parqonaut-cli --bin prqnt -- rewrite target/transform-demo/merged.parquet \
+        target/transform-demo/rewritten.parquet --compression zstd
+    echo "=== partition ==="
+    cargo run -p parqonaut-cli --bin prqnt -- partition target/transform-demo/rewritten.parquet \
+        -o target/transform-demo/parted --partition-by region
+    echo "=== split ==="
+    cargo run -p parqonaut-cli --bin prqnt -- split target/transform-demo/rewritten.parquet \
+        -o target/transform-demo/split --target-size-mb 1
+    echo "=== transform spec (dry-run) ==="
+    cargo run -p parqonaut-cli --bin prqnt -- transform --spec fixtures/transform/specs/split.yaml --dry-run --json
+
+stream-demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf target/stream-demo
+    mkdir -p target/stream-demo
+    echo "a,b,c" > target/stream-demo/one.csv
+    echo "1,2,3" >> target/stream-demo/one.csv
+    echo "x,y,z" > target/stream-demo/two.csv
+    echo "4,5,6" >> target/stream-demo/two.csv
+    cargo run -p parqonaut-cli --bin prqnt -- convert target/stream-demo/*.csv \
+        -o target/stream-demo/out.parquet --out-format parquet --schema-conflicts widen
+
+stream-resume-demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf target/stream-resume-demo
+    mkdir -p target/stream-resume-demo
+    echo "k,v" > target/stream-resume-demo/a.csv
+    echo "1,2" >> target/stream-resume-demo/a.csv
+    echo "k,v" > target/stream-resume-demo/b.csv
+    echo "3,4" >> target/stream-resume-demo/b.csv
+    export PARQONAUT_STREAM_INTERRUPT_AFTER=0
+    cargo run -p parqonaut-cli --bin prqnt -- convert target/stream-resume-demo/*.csv \
+        -o target/stream-resume-demo/out.parquet --out-format parquet \
+        --state target/stream-resume-demo/state.json || test $? -ne 0
+    unset PARQONAUT_STREAM_INTERRUPT_AFTER
+    cargo run -p parqonaut-cli --bin prqnt -- convert target/stream-resume-demo/*.csv \
+        -o target/stream-resume-demo/out.parquet --out-format parquet \
+        --state target/stream-resume-demo/state.json --resume
+    cargo run -p parqonaut-cli --bin prqnt -- convert target/stream-resume-demo/*.csv \
+        -o target/stream-resume-demo/out.parquet --out-format parquet \
+        --state target/stream-resume-demo/state.json --resume
+    test -f target/stream-resume-demo/out.parquet
+
 demo:
     #!/usr/bin/env bash
     set -euo pipefail

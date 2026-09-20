@@ -1,0 +1,7 @@
+schema-version: 1
+input: fixtures/transform/split-basic/input.parquet
+output: target/spec-demo/split-out
+steps:
+  - operation:
+      type: split
+      target-size-mb: 1

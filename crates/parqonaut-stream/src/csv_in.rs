@@ -227,6 +227,31 @@ impl CsvReader {
     pub fn get_headers(&self) -> &[String] {
         &self.headers
     }
+
+    /// Build an Arrow schema from headers and a sample batch (or header-only UTF8 columns).
+    pub fn infer_schema(&mut self) -> Result<arrow2::datatypes::Schema> {
+        use arrow2::datatypes::{Field, Schema};
+
+        if let Some(batch) = self.read_batch()? {
+            let fields = self
+                .headers
+                .iter()
+                .enumerate()
+                .map(|(idx, name)| {
+                    let dt = batch.arrays()[idx].data_type().clone();
+                    Field::new(name, dt, true)
+                })
+                .collect::<Vec<_>>();
+            Ok(Schema::from(fields))
+        } else {
+            Ok(Schema::from(
+                self.headers
+                    .iter()
+                    .map(|name| Field::new(name, DataType::Utf8, true))
+                    .collect::<Vec<_>>(),
+            ))
+        }
+    }
 }
 
 #[cfg(test)]

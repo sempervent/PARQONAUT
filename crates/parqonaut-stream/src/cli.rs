@@ -2,7 +2,7 @@ use clap::{Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 #[command(
     name = "maw",
     about = "A high-performance CLI for streaming and concatenating CSV and Parquet files",
@@ -59,9 +59,13 @@ pub struct Cli {
     #[arg(long)]
     pub reorder: bool,
 
-    /// Coerce type conflicts to strings
+    /// Coerce type conflicts to strings (deprecated; prefer --schema-conflicts)
     #[arg(long)]
     pub stringify_conflicts: bool,
+
+    /// Schema conflict policy: strict, widen, stringify
+    #[arg(long, default_value = "strict")]
+    pub schema_conflicts: String,
 
     /// Number of rows to sample for schema inference
     #[arg(long, default_value = "1000")]
@@ -131,6 +135,10 @@ pub struct Cli {
     /// JSON structured logging
     #[arg(long)]
     pub json_logs: bool,
+
+    /// Emit progress events as JSON Lines on stderr
+    #[arg(long = "json-progress")]
+    pub json_progress: bool,
 
     /// Print execution plan and exit
     #[arg(long)]

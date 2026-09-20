@@ -2,6 +2,30 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.8.0] - 2026-09-20
+
+Transform and streaming workflow release.
+
+### Added
+
+- `prqnt partition`, `prqnt merge`, `prqnt split`, and `prqnt transform --spec` (YAML pipelines)
+- Typed spec compilation (`Spec` → `ExecutablePlan` → execution → `TransformReport`)
+- Schema discovery, unification, and batch alignment in `prqnt convert` with conflict policies
+- Resumable streaming conversion with checkpoint identity, stale detection, and staged output
+- `parqonaut-workflow` progress and plan contracts; progress observer implementations
+- Transform/stream fixtures, demos (`just transform-demo`, `stream-demo`, `stream-resume-demo`)
+- Public docs: [transform](docs/transform.md), [streaming](docs/streaming.md), [roadmap](docs/roadmap.md)
+
+### Changed
+
+- Workspace version **0.8.0**; golden repair plans regenerated for version field
+
+### Note
+
+Apache Arrow / Parquet stack convergence remains planned for **v0.9.0** (see `docs/development/columnar-convergence-plan.md`).
+
+[0.8.0]: https://github.com/sempervent/PARQONAUT/releases/tag/v0.8.0
+
 ## [0.7.1] - 2026-09-19
 
 Documentation and delivery infrastructure release. No intended runtime behavior changes.

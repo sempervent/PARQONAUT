@@ -11,6 +11,7 @@ pub mod parquet_in;
 pub mod pipeline;
 pub mod progress;
 pub mod schema;
+pub mod schema_introspect;
 pub mod state;
 pub mod writer_csv;
 pub mod writer_parquet;

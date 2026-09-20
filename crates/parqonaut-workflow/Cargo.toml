@@ -1,0 +1,15 @@
+[package]
+name = "parqonaut-workflow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Engine-neutral transform/stream contracts (progress, schema policy, plans)"
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }

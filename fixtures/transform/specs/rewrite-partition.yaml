@@ -1,0 +1,11 @@
+schema-version: 1
+input: fixtures/transform/partition-basic/input.parquet
+output: target/spec-demo/processed
+steps:
+  - operation:
+      type: rewrite
+      compression: zstd
+  - operation:
+      type: partition
+      partition-by:
+        - region

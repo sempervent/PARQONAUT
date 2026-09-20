@@ -1,0 +1,15 @@
+{
+  "vectors": [
+    {"name": "null+int32", "left": "Null", "right": "I32", "policy": "widen", "expect": "I32"},
+    {"name": "int8+int16", "left": "I8", "right": "I16", "policy": "widen", "expect": "I16"},
+    {"name": "int16+int32", "left": "I16", "right": "I32", "policy": "widen", "expect": "I32"},
+    {"name": "int32+int64", "left": "I32", "right": "I64", "policy": "widen", "expect": "I64"},
+    {"name": "int32+float64", "left": "I32", "right": "F64", "policy": "widen", "expect": "F64"},
+    {"name": "float32+float64", "left": "F32", "right": "F64", "policy": "widen", "expect": "F64"},
+    {"name": "date+datetime", "left": "Date", "right": "Datetime", "policy": "widen", "expect": "Datetime"},
+    {"name": "utf8+int32 strict", "left": "Utf8", "right": "I32", "policy": "strict", "expect_error": true},
+    {"name": "utf8+int32 stringify", "left": "Utf8", "right": "I32", "policy": "stringify", "expect": "Utf8"},
+    {"name": "binary+utf8 strict", "left": "Binary", "right": "Utf8", "policy": "strict", "expect_error": true},
+    {"name": "binary+utf8 stringify", "left": "Binary", "right": "Utf8", "policy": "stringify", "expect": "Utf8"}
+  ]
+}

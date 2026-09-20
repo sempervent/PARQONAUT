@@ -6,7 +6,7 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 
 It consolidates [Paraclete](https://github.com/sempervent/paraclete), [parqknife](https://github.com/sempervent/parqknife), and [streaming-parquet (maw)](https://github.com/sempervent/streaming-parquet) into one workspace. See [docs/provenance.md](docs/provenance.md) for migration sources.
 
-**Current release:** [v0.7.1](https://github.com/sempervent/PARQONAUT/releases/tag/v0.7.1) — unified `prqnt` CLI plus `prqnt serve` HTTP API; local and S3-capable scan/repair/batch workflows.
+**Current release:** [v0.8.0](https://github.com/sempervent/PARQONAUT/releases/tag/v0.8.0) — transform workflows (`partition`, `merge`, `split`, declarative specs) and schema-unified streaming conversion with resumable checkpoints.
 
 **Documentation:** [PARQONAUT docs](https://sempervent.github.io/PARQONAUT/) (GitHub Pages)
 
@@ -20,7 +20,9 @@ PARQONAUT provides the **`prqnt`** command.
 | `prqnt serve` | server | PARQONAUT HTTP API (`/api/v1`) with durable async scan jobs |
 | `prqnt inspect <file>` | transform | Parquet schema and row-group metadata |
 | `prqnt rewrite <in> <out> [--compression zstd]` | transform | Rewrite Parquet with optional recompression |
-| `prqnt convert <inputs...> -o <out>` | stream | Stream CSV → Parquet (or concatenate CSV) |
+| `prqnt partition / merge / split` | transform | Hive partition, merge, and size-based split |
+| `prqnt transform --spec workflow.yaml` | transform | Multi-step declarative transform pipeline |
+| `prqnt convert <inputs...> -o <out>` | stream | Schema-unified CSV/Parquet streaming conversion |
 | `prqnt doctor <path> [--policy policy.toml]` | repair | Scan → diagnose → plan (optional `--repair`) |
 | `prqnt plan <path> [--policy policy.toml]` | repair | Generate durable repair plan JSON |
 | `prqnt repair <path> --plan plan.json --output out/` | repair | Execute plan; `--authorize <op_id>` for ReviewRequired |

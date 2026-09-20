@@ -2,6 +2,7 @@ mod cast;
 mod compat;
 mod filter;
 mod merge;
+mod partition;
 mod pipeline;
 mod rename;
 mod schema;
@@ -15,6 +16,7 @@ pub use compat::{
 };
 pub use filter::*;
 pub use merge::{merge_parquet_files, rewrite_parquet_file, split_parquet_file};
+pub use partition::{encode_partition_value, partition_parquet_file, HIVE_DEFAULT_PARTITION};
 pub use pipeline::*;
 pub use rename::rewrite_parquet_with_rename;
 pub use schema::*;

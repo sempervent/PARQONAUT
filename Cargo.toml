@@ -14,11 +14,12 @@ members = [
     "crates/parqonaut-orchestrator",
     "crates/parqonaut-storage",
     "crates/parqonaut-app",
+    "crates/parqonaut-workflow",
     "xtask",
 ]
 
 [workspace.package]
-version = "0.7.1"
+version = "0.8.0"
 edition = "2021"
 license = "MIT"
 authors = ["Joshua Grant"]
