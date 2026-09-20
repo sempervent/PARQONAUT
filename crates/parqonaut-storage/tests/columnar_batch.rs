@@ -10,14 +10,13 @@ use arrow::record_batch::RecordBatch;
 use bytes::Bytes;
 use futures::StreamExt;
 use parquet::arrow::ArrowWriter;
-use parqonaut_columnar::batch::{BatchSink, BatchSource};
+use parqonaut_columnar::{BatchSink, BatchSource};
 use parqonaut_storage::backend::StorageBackend;
 use parqonaut_storage::capabilities::StorageCapabilities;
 use parqonaut_storage::columnar::{StorageParquetBatchSink, StorageParquetBatchSource};
 use parqonaut_storage::conditional::ConditionalCreate;
 use parqonaut_storage::location::ObjectLocation;
 use parqonaut_storage::memory::MemoryStorageBackend;
-use parqonaut_storage::metrics::StorageMetrics;
 use parqonaut_workflow::NoOpProgressObserver;
 
 fn write_parquet_bytes(rows: i64) -> Vec<u8> {
@@ -40,7 +39,7 @@ fn write_parquet_bytes(rows: i64) -> Vec<u8> {
     buf
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn memory_backend_parquet_read_uses_bounded_ranges() {
     let backend = Arc::new(MemoryStorageBackend::new(StorageCapabilities::LOCAL));
     let object = ObjectLocation::S3 {
@@ -68,8 +67,8 @@ async fn memory_backend_parquet_read_uses_bounded_ranges() {
     );
 }
 
-#[tokio::test]
-async fn local_to_local_rewrite_via_storage_backend() {
+#[test]
+fn local_to_local_rewrite_via_storage_backend() {
     let dir = tempfile::tempdir().unwrap();
     let input_path = dir.path().join("in.parquet");
     let output_path = dir.path().join("out.parquet");

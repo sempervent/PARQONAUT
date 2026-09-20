@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use futures::StreamExt;
-use parqonaut_columnar::batch::BatchSource;
+use parqonaut_columnar::BatchSource;
 use parqonaut_storage::backend::StorageBackend;
 use parqonaut_storage::columnar::StorageParquetBatchSource;
 use parqonaut_storage::location::ObjectLocation;
