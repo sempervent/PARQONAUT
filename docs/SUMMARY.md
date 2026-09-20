@@ -10,6 +10,8 @@
 # CLI
 
 - [Command overview](./cli.md)
+- [Transform workflows](./transform.md)
+- [Streaming conversion](./streaming.md)
 - [Scanning](./scan.md)
 - [Diagnosis and repair](./repair.md)
 - [Schema reconciliation](./schema-reconciliation.md)
@@ -45,6 +47,7 @@
 - [CLI reference (generated)](./reference/cli.md)
 - [Rust API (rustdoc)](./rust-api.md)
 - [Changelog](./changelog.md)
+- [Pre-1.0 roadmap](./roadmap.md)
 - [Licensing](./licensing.md)
 
 # Contributors
