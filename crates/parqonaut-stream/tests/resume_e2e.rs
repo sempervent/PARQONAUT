@@ -2,7 +2,12 @@ use parqonaut_stream::{run, Cli};
 use std::fs;
 use tempfile::tempdir;
 
-fn base_cli(inputs: Vec<String>, out: std::path::PathBuf, state: std::path::PathBuf, resume: bool) -> Cli {
+fn base_cli(
+    inputs: Vec<String>,
+    out: std::path::PathBuf,
+    state: std::path::PathBuf,
+    resume: bool,
+) -> Cli {
     Cli {
         inputs,
         out: Some(out),
