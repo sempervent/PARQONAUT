@@ -2,6 +2,16 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.8.1] - 2026-09-20
+
+Patch release correcting transform demo recipes; no intended runtime behavior change from v0.8.0.
+
+### Fixed
+
+- `just transform-demo` aligned with `prqnt` flags (`--output`, `--by`, Parquet glob for merge)
+
+[0.8.1]: https://github.com/sempervent/PARQONAUT/releases/tag/v0.8.1
+
 ## [0.8.0] - 2026-09-20
 
 Transform and streaming workflow release.
