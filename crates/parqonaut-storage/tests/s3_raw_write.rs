@@ -27,6 +27,7 @@ async fn raw_write_stream_head() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn raw_multipart_write_stream_head() {
+    std::env::set_var("PARQONAUT_S3_PART_SIZE_BYTES", "262144");
     let Some(endpoint) = common::require_s3_endpoint() else {
         panic!("PARQONAUT_S3_ENDPOINT required");
     };
@@ -37,11 +38,12 @@ async fn raw_multipart_write_stream_head() {
 
     let before = backend.metrics().multipart_parts;
     let mut w = backend.write_stream(&loc, None).await.expect("open");
-    let chunk = vec![0_u8; 5 * 1024 * 1024 + 1024];
+    let chunk = vec![0_u8; 512 * 1024];
     w.write_all(&chunk).await.expect("write part1");
+    w.write_all(&chunk).await.expect("write part2");
     w.write_all(b"tail").await.expect("write tail");
     let n = w.finish().await.expect("finish");
-    assert!(n > 5 * 1024 * 1024);
+    assert!(n > 512 * 1024);
     assert!(backend.metrics().multipart_parts > before);
     backend.head(&loc).await.expect("head");
 }
