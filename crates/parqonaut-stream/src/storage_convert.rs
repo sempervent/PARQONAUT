@@ -99,7 +99,7 @@ fn resolve_convert_inputs(
             out.push(ConvertInput::RemoteParquet(input.clone()));
             continue;
         }
-        let files = discover_inputs(&[input.clone()], config)?;
+        let files = discover_inputs(std::slice::from_ref(input), config)?;
         out.extend(files.into_iter().map(ConvertInput::Local));
     }
     Ok(out)
