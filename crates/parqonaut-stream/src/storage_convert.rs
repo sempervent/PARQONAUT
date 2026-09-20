@@ -7,18 +7,13 @@ use std::sync::Arc;
 
 use arrow::datatypes::Schema;
 use arrow::record_batch::RecordBatch;
-use bytes::Bytes;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use parqonaut_columnar::BatchSource;
 use parqonaut_storage::backend::StorageBackend;
-use parqonaut_storage::columnar::StorageParquetBatchSource;
-use parqonaut_storage::conditional::ConditionalCreate;
+use parqonaut_storage::columnar::{write_parquet_batch_stream, StorageParquetBatchSource};
 use parqonaut_storage::location::ObjectLocation;
 use parqonaut_storage::{LocalStorageBackend, S3Config, S3StorageBackend};
 use parqonaut_workflow::{NoOpProgressObserver, SchemaConflictPolicy};
-use parquet::arrow::ArrowWriter;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
 use crate::cli::{Cli, Compression, OutputFormat};
 use crate::coercion::BatchAligner;
@@ -218,34 +213,31 @@ async fn write_remote_parquet(
 ) -> Result<()> {
     let loc =
         ObjectLocation::parse(output_spec).map_err(|e| MawError::InvalidInput(e.to_string()))?;
-    let batches: Vec<RecordBatch> = rx.iter().collect();
-    if batches.is_empty() {
+    let local = Arc::new(LocalStorageBackend::direct());
+    let s3 = Arc::new(S3StorageBackend::new(S3Config::from_env()).await);
+    let backend: Arc<dyn StorageBackend> = if loc.is_remote() { s3 } else { local };
+    let stream = sync_receiver_batch_stream(rx);
+    let summary = write_parquet_batch_stream(backend, loc, schema, stream, &NoOpProgressObserver)
+        .await
+        .map_err(|e| MawError::Parquet(e.to_string()))?;
+    if summary.rows_written == 0 {
         return Err(MawError::InvalidInput("remote convert wrote no rows".into()));
     }
-    let mut buf = Vec::new();
-    {
-        let mut writer = ArrowWriter::try_new(&mut buf, schema, None)
-            .map_err(|e| MawError::Parquet(e.to_string()))?;
-        for batch in &batches {
-            writer.write(batch).map_err(|e| MawError::Parquet(e.to_string()))?;
-        }
-        writer.close().map_err(|e| MawError::Parquet(e.to_string()))?;
-    }
-    if loc.is_remote() {
-        let s3: Arc<dyn StorageBackend> =
-            Arc::new(S3StorageBackend::new(S3Config::from_env()).await);
-        s3.conditional_create(&loc, ConditionalCreate::must_not_exist(), Bytes::from(buf))
-            .await
-            .map_err(|e| MawError::InvalidInput(e.to_string()))?;
-    } else if let ObjectLocation::Local { path } = loc {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(MawError::Io)?;
-        }
-        std::fs::write(path, buf).map_err(MawError::Io)?;
-    } else {
-        return Err(MawError::InvalidInput("unsupported remote convert output location".into()));
-    }
     Ok(())
+}
+
+fn sync_receiver_batch_stream(rx: Receiver<RecordBatch>) -> parqonaut_columnar::BatchStream {
+    let rx = Arc::new(std::sync::Mutex::new(rx));
+    Box::pin(futures::stream::unfold(rx, |rx| async move {
+        let recv = tokio::task::spawn_blocking({
+            let rx = Arc::clone(&rx);
+            move || rx.lock().expect("batch rx lock").recv()
+        })
+        .await
+        .ok()?;
+        let batch = recv.ok()?;
+        Some((Ok(batch), rx))
+    }))
 }
 
 fn read_input(
