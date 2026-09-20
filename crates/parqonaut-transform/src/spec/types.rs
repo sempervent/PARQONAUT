@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Spec {
+    pub schema_version: u32,
     pub input: Option<String>,
     pub output: Option<String>,
     pub steps: Vec<Step>,
@@ -39,6 +40,7 @@ pub enum Operation {
         rebuild_stats: bool,
     },
     Partition {
+        #[serde(alias = "partition-by")]
         partition_by: Vec<String>,
     },
     Merge {
@@ -46,9 +48,9 @@ pub enum Operation {
         row_group_size_mb: Option<u64>,
     },
     Split {
-        #[serde(default)]
+        #[serde(default, alias = "target-size-mb")]
         target_size_mb: Option<u64>,
-        #[serde(default)]
+        #[serde(default, alias = "target-row-groups")]
         target_row_groups: Option<usize>,
     },
 }

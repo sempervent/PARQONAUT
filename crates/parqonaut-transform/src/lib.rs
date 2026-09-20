@@ -14,12 +14,13 @@ pub mod spec;
 
 pub use engine::*;
 pub use engine::{
-    merge_parquet_files, rewrite_parquet_file, rewrite_parquet_with_cast,
-    rewrite_parquet_with_rename, split_parquet_file,
+    merge_parquet_files, partition_parquet_file, rewrite_parquet_file, rewrite_parquet_with_cast,
+    rewrite_parquet_with_rename, split_parquet_file, HIVE_DEFAULT_PARTITION,
 };
 pub use error::*;
 pub use io::*;
 pub use output::*;
+pub use parqonaut_workflow::TransformReport;
 pub use spec::*;
 
 use cli::opts::Commands;
@@ -31,6 +32,60 @@ pub async fn inspect(input: &str, stats: bool) -> Result<()> {
 }
 
 /// Rewrite Parquet from `input` to `output` with optional transforms.
+/// Run a declarative transform spec (YAML/JSON).
+pub fn transform_spec(
+    path: &std::path::Path,
+    check_only: bool,
+    dry_run: bool,
+) -> Result<TransformReport> {
+    use parqonaut_workflow::TransformReport;
+    let spec = parse_spec(path)?;
+    if check_only {
+        validate_spec(&spec)?;
+        let _plan = crate::spec::compile_plan(&spec)?;
+        return Ok(TransformReport {
+            schema_version: parqonaut_workflow::TRANSFORM_SPEC_SCHEMA_VERSION,
+            operations_attempted: spec.steps.len() as u64,
+            source_locations: spec.input.clone().map(|s| vec![s]).unwrap_or_default(),
+            ..TransformReport::default()
+        });
+    }
+    if dry_run {
+        return dry_run_report(&spec);
+    }
+    execute_spec(&spec)
+}
+
+pub async fn partition(
+    input: &str,
+    output: &str,
+    partition_by: &str,
+    max_open_partitions: usize,
+) -> Result<()> {
+    let cols: Vec<String> =
+        partition_by.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    let inputs = resolve_inputs(input)?;
+    if inputs.len() != 1 {
+        return Err(ParqknifeError::InvalidInput(
+            "partition requires exactly one input Parquet file".into(),
+        ));
+    }
+    partition_parquet_file(&inputs[0], Path::new(output), &cols, max_open_partitions, None, None)?;
+    Ok(())
+}
+
+pub async fn merge(input: &str, output: &str, row_group_size_mb: Option<u64>) -> Result<()> {
+    let cmd = Commands::Merge { row_group_size_mb };
+    cli::run_merge(&cmd, Some(input), Some(output)).await
+}
+
+pub async fn split(input: &str, output: &str, target_size_mb: Option<u64>) -> Result<()> {
+    let cmd = Commands::Split { target_size_mb, target_row_groups: None };
+    cli::run_split(&cmd, Some(input), Some(output)).await
+}
+
+use std::path::Path;
+
 pub async fn rewrite(
     input: &str,
     output: &str,

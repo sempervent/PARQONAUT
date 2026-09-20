@@ -11,6 +11,7 @@ use crate::output::{compression_from_str, ParquetWriter};
 
 /// Merge sorted Parquet inputs into one or more output files capped at `target_bytes`.
 /// Returns paths of written output files (relative to `output_dir` when possible).
+#[allow(clippy::too_many_arguments)]
 pub fn merge_parquet_files(
     inputs: &[String],
     output_dir: &Path,
@@ -19,6 +20,7 @@ pub fn merge_parquet_files(
     compression: Option<&str>,
     row_group_size_mb: Option<u64>,
     rebuild_stats: bool,
+    exact_output: Option<&Path>,
 ) -> Result<Vec<PathBuf>> {
     if inputs.is_empty() {
         return Err(ParqknifeError::InvalidInput("no inputs for merge".into()));
@@ -56,8 +58,13 @@ pub fn merge_parquet_files(
                 if let Some(w) = writer.take() {
                     w.close()?;
                 }
-                let out_path =
-                    output_dir.join(format!("{output_basename}-part-{part_idx:04}.parquet"));
+                let out_path = if part_idx == 0 {
+                    exact_output.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+                        output_dir.join(format!("{output_basename}-part-{part_idx:04}.parquet"))
+                    })
+                } else {
+                    output_dir.join(format!("{output_basename}-part-{part_idx:04}.parquet"))
+                };
                 part_idx += 1;
                 current_bytes = 0;
                 let out_file = File::create(&out_path)?;
@@ -139,5 +146,6 @@ pub fn split_parquet_file(
         compression,
         row_group_size_mb,
         rebuild_stats,
+        None,
     )
 }

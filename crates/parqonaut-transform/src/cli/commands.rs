@@ -1,5 +1,8 @@
 use crate::cli::opts::Commands;
-use crate::engine::{parse_filter, FilterTransform, Pipeline, ProjectionTransform};
+use crate::engine::{
+    merge_parquet_files, parse_filter, split_parquet_file, FilterTransform, Pipeline,
+    ProjectionTransform,
+};
 use crate::error::{ParqknifeError, Result};
 use crate::io::resolve_inputs;
 use crate::output::{compression_from_str, ParquetWriter};
@@ -161,25 +164,97 @@ fn rewrite_file(
 
 pub async fn run_partition(
     cmd: &Commands,
-    _input: Option<&str>,
-    _output: Option<&str>,
+    input: Option<&str>,
+    output: Option<&str>,
 ) -> Result<()> {
-    if let Commands::Partition { .. } = cmd {
-        warn!("Partition command not yet fully implemented");
+    if let Commands::Partition { partition_by } = cmd {
+        let input_path = input.ok_or_else(|| {
+            ParqknifeError::InvalidInput("Input path required for partition".to_string())
+        })?;
+        let output_path = output.ok_or_else(|| {
+            ParqknifeError::InvalidInput("Output directory required for partition".to_string())
+        })?;
+        let cols: Vec<String> = partition_by
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let inputs = resolve_inputs(input_path)?;
+        if inputs.len() != 1 {
+            return Err(ParqknifeError::InvalidInput(
+                "partition requires exactly one input Parquet file".into(),
+            ));
+        }
+        crate::engine::partition_parquet_file(
+            &inputs[0],
+            std::path::Path::new(output_path),
+            &cols,
+            64,
+            None,
+            None,
+        )?;
     }
     Ok(())
 }
 
-pub async fn run_merge(cmd: &Commands, _input: Option<&str>, _output: Option<&str>) -> Result<()> {
-    if let Commands::Merge { .. } = cmd {
-        warn!("Merge command not yet fully implemented");
+pub async fn run_merge(cmd: &Commands, input: Option<&str>, output: Option<&str>) -> Result<()> {
+    if let Commands::Merge { row_group_size_mb } = cmd {
+        let input_path = input.ok_or_else(|| {
+            ParqknifeError::InvalidInput("Input path required for merge".to_string())
+        })?;
+        let output_path = output.ok_or_else(|| {
+            ParqknifeError::InvalidInput("Output path required for merge".to_string())
+        })?;
+        let inputs = resolve_inputs(input_path)?;
+        let out = std::path::Path::new(output_path);
+        let (dir, base) = if out.extension().is_some() {
+            (
+                out.parent().unwrap_or_else(|| std::path::Path::new(".")),
+                out.file_stem().and_then(|s| s.to_str()).unwrap_or("merged"),
+            )
+        } else {
+            (out, "merged")
+        };
+        let target_bytes = 512 * 1024 * 1024;
+        let exact = out.extension().is_some().then_some(out);
+        merge_parquet_files(
+            &inputs.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            dir,
+            base,
+            target_bytes,
+            None,
+            *row_group_size_mb,
+            false,
+            exact,
+        )?;
     }
     Ok(())
 }
 
-pub async fn run_split(cmd: &Commands, _input: Option<&str>, _output: Option<&str>) -> Result<()> {
-    if let Commands::Split { .. } = cmd {
-        warn!("Split command not yet fully implemented");
+pub async fn run_split(cmd: &Commands, input: Option<&str>, output: Option<&str>) -> Result<()> {
+    if let Commands::Split { target_size_mb, target_row_groups: _ } = cmd {
+        let input_path = input.ok_or_else(|| {
+            ParqknifeError::InvalidInput("Input path required for split".to_string())
+        })?;
+        let output_path = output.ok_or_else(|| {
+            ParqknifeError::InvalidInput("Output directory required for split".to_string())
+        })?;
+        let inputs = resolve_inputs(input_path)?;
+        if inputs.len() != 1 {
+            return Err(ParqknifeError::InvalidInput(
+                "split requires exactly one input Parquet file".into(),
+            ));
+        }
+        let mb = target_size_mb.unwrap_or(512);
+        split_parquet_file(
+            &inputs[0],
+            std::path::Path::new(output_path),
+            "part",
+            mb * 1024 * 1024,
+            None,
+            None,
+            false,
+        )?;
     }
     Ok(())
 }

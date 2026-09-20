@@ -1,0 +1,9 @@
+schema-version: 1
+input: fixtures/transform/merge-compatible/
+output: target/spec-demo/merged.parquet
+steps:
+  - operation:
+      type: merge
+  - operation:
+      type: rewrite
+      compression: snappy
