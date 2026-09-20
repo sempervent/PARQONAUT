@@ -3,6 +3,7 @@
 
 mod batch;
 mod error;
+pub mod schema;
 mod stream;
 
 pub use batch::{BatchSink, BatchSource, WriteSummary};

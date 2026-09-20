@@ -34,6 +34,7 @@ walkdir = "2.4"
 rayon = "1.8"
 crc64fast = "1.1.0"
 parqonaut-workflow = { path = "../parqonaut-workflow" }
+parqonaut-columnar = { path = "../parqonaut-columnar" }
 sha2 = { workspace = true }
 hex = { workspace = true }
 

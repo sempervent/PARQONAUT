@@ -10,6 +10,8 @@ description = "Shared Apache Arrow RecordBatch streaming boundary for PARQONAUT 
 arrow = { workspace = true }
 arrow-schema = "54.3.1"
 parqonaut-workflow = { path = "../parqonaut-workflow" }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 futures = "0.3"

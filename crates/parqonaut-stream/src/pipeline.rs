@@ -107,7 +107,7 @@ impl Pipeline {
         let files = input_files.to_vec();
         tokio::task::spawn_blocking(move || {
             let schemas = schemas_for_inputs(&files)?;
-            UnifiedSchema::from_schemas(&schemas, policy)
+            crate::schema::unified_from_schemas(&schemas, policy)
         })
         .await
         .map_err(|e| MawError::InvalidInput(format!("schema task join error: {e}")))?
