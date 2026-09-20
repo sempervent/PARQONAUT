@@ -36,6 +36,7 @@
 # Architecture
 
 - [Architecture overview](./architecture.md)
+- [Shared pipelines](./pipelines.md)
 - [Storage architecture](./storage-architecture.md)
 - [Repair plan contract](./plan-contract.md)
 - [ADR index](./adr/README.md)
