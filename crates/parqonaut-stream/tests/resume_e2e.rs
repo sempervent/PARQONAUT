@@ -49,6 +49,7 @@ fn base_cli(
 
 #[tokio::test]
 async fn interrupt_resume_and_idempotent_second_resume() {
+    unsafe { std::env::remove_var("PARQONAUT_STREAM_INTERRUPT_AFTER") };
     let dir = tempdir().unwrap();
     let a = dir.path().join("a.csv");
     let b = dir.path().join("b.csv");
@@ -93,6 +94,7 @@ async fn interrupt_resume_and_idempotent_second_resume() {
 
 #[tokio::test]
 async fn stale_checkpoint_when_source_changes() {
+    unsafe { std::env::remove_var("PARQONAUT_STREAM_INTERRUPT_AFTER") };
     let dir = tempdir().unwrap();
     let a = dir.path().join("a.csv");
     fs::write(&a, "x,y\n1,2\n").unwrap();
