@@ -119,6 +119,8 @@ Options:
           
       --schema-conflicts <SCHEMA_CONFLICTS>
           [default: strict]
+      --json-progress
+          
   -h, --help
           Print help
 ```
