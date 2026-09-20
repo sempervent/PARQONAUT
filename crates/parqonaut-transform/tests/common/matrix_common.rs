@@ -188,6 +188,7 @@ impl Leg {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn materialize(
         &self,
         work: &tempfile::TempDir,
