@@ -247,6 +247,12 @@ stream-demo:
     cargo run -p parqonaut-cli --bin prqnt -- convert target/stream-demo/*.csv \
         -o target/stream-demo/out.parquet --out-format parquet --schema-conflicts widen
 
+pipeline-demo:
+    bash scripts/pipeline-demo.sh
+
+pipeline-s3-demo:
+    bash scripts/pipeline-s3-demo.sh
+
 stream-resume-demo:
     #!/usr/bin/env bash
     set -euo pipefail

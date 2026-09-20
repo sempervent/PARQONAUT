@@ -37,3 +37,5 @@ s3 = ["parqonaut-storage/s3"]
 
 [dev-dependencies]
 tempfile = "3.10"
+bytes = "1"
+uuid = { version = "1.10", features = ["v4"] }

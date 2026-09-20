@@ -60,10 +60,9 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
         })
         .transpose()?;
 
-    let rt = tokio::runtime::Runtime::new().map_err(ParqknifeError::Io)?;
     let mut batches = Vec::new();
     let inputs = fused.inputs.clone();
-    rt.block_on(async {
+    block_on_async(async {
         for input in inputs {
             let mut stream = Box::new(LocalParquetBatchSource::new(input)).into_stream()?;
             while let Some(item) = stream.next().await {
@@ -123,6 +122,22 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
     }
 
     Err(ParqknifeError::SpecError(format!("unsupported fused output layout: {}", fused.output)))
+}
+
+fn block_on_async<F, T>(future: F) -> Result<T>
+where
+    F: std::future::Future<Output = Result<T>>,
+{
+    let run = || {
+        let rt = tokio::runtime::Runtime::new().map_err(ParqknifeError::Io)?;
+        rt.block_on(future)
+    };
+    if tokio::runtime::Handle::try_current().is_ok() {
+        // `prqnt` runs under tokio; nested runtimes panic unless we leave the worker thread first.
+        tokio::task::block_in_place(run)
+    } else {
+        run()
+    }
 }
 
 fn compression_label(c: &crate::spec::types::Compression) -> &'static str {

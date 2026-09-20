@@ -2,6 +2,8 @@
 
 ## Status
 
+Superseded by [ADR-0015](./ADR-0015-columnar-stack-convergence.md) (v0.9.0 columnar convergence). Historical record retained.
+
 Accepted (2026-09-17)
 
 ## Context

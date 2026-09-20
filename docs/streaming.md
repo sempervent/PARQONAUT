@@ -1,6 +1,6 @@
 # Streaming conversion
 
-`prqnt convert` runs the schema-aware streaming engine (`parqonaut-stream`).
+`prqnt convert` runs the schema-aware streaming engine (`parqonaut-stream`) on **Apache Arrow/Parquet 54.3.1** `RecordBatch` streams via `parqonaut-columnar`.
 
 ## Schema discovery and unification
 
