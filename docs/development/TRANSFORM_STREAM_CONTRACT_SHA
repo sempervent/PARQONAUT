@@ -1,0 +1,32 @@
+# Transform/stream contract freeze (v0.8.0)
+
+Frozen types live in `crates/parqonaut-workflow`:
+
+- `ProgressEvent`, `ProgressObserver`, `ProgressMetrics`
+- `SchemaConflictPolicy`
+- `StreamCheckpoint`, `StreamExecutionIdentity` (contract sketch; stream runtime uses `parqonaut-stream::state`)
+- `TransformPlan`, `TransformOperation`, `TransformReport`, `TRANSFORM_SPEC_SCHEMA_VERSION`
+
+## Content digest (not a Git commit)
+
+SHA-256 over the concatenated hashes of `crates/parqonaut-workflow/src/*.rs`:
+
+```text
+TRANSFORM_STREAM_CONTRACT_DIGEST=6e12d29eb0be19c154e46855dd558f3649029535c304cd281181da2deb591e10
+```
+
+Regenerate after intentional contract changes:
+
+```bash
+shasum -a 256 crates/parqonaut-workflow/src/*.rs | shasum -a 256
+```
+
+## Git commit that records this freeze
+
+Set after the freeze commit lands on the release branch:
+
+```text
+TRANSFORM_STREAM_CONTRACT_COMMIT=<40-char git SHA>
+```
+
+Do not confuse the 64-character content digest with a Git object name.
