@@ -218,17 +218,17 @@ transform-demo:
     rm -rf target/transform-demo
     mkdir -p target/transform-demo
     echo "=== merge ==="
-    cargo run -p parqonaut-cli --bin prqnt -- merge fixtures/transform/merge-compatible/ \
-        -o target/transform-demo/merged.parquet
+    cargo run -p parqonaut-cli --bin prqnt -- merge 'fixtures/transform/merge-compatible/*.parquet' \
+        --output target/transform-demo/merged.parquet
     echo "=== rewrite ==="
     cargo run -p parqonaut-cli --bin prqnt -- rewrite target/transform-demo/merged.parquet \
         target/transform-demo/rewritten.parquet --compression zstd
     echo "=== partition ==="
     cargo run -p parqonaut-cli --bin prqnt -- partition target/transform-demo/rewritten.parquet \
-        -o target/transform-demo/parted --partition-by region
+        --output target/transform-demo/parted --by region
     echo "=== split ==="
     cargo run -p parqonaut-cli --bin prqnt -- split target/transform-demo/rewritten.parquet \
-        -o target/transform-demo/split --target-size-mb 1
+        --output target/transform-demo/split --target-size-mb 1
     echo "=== transform spec (dry-run) ==="
     cargo run -p parqonaut-cli --bin prqnt -- transform --spec fixtures/transform/specs/split.yaml --dry-run --json
 
