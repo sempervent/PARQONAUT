@@ -10,6 +10,7 @@ pub mod plugins;
 pub mod policy;
 pub mod repair;
 pub mod scan;
+pub mod transform;
 
 pub use contracts::{
     BatchCheckRequest, BatchPlanRequest, BatchPlanResult, BatchRepairRequest, BatchRepairResult,
@@ -21,6 +22,7 @@ pub use contracts::{
 pub use error::ApplicationError;
 pub use policy::StoragePolicy;
 
+use parqonaut_transform::TransformReport;
 use scan::AppScanRequest;
 
 /// Shared application facade holding server location policy.
@@ -109,5 +111,13 @@ impl ParqonautApp {
         req: BatchVerifyRequest,
     ) -> Result<BatchVerifyResult, ApplicationError> {
         batch::batch_verify(&req)
+    }
+
+    pub fn transform_spec(
+        &self,
+        spec_path: &std::path::Path,
+    ) -> Result<TransformReport, ApplicationError> {
+        let _ = self.policy();
+        transform::run_transform_spec(spec_path)
     }
 }

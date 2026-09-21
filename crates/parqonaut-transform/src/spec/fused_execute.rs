@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use futures::StreamExt;
+use parqonaut_columnar::io::LocalParquetBatchSink;
 use parqonaut_columnar::io::LocalParquetBatchSource;
 use parqonaut_columnar::pipeline::IntermediateIoCounters;
 use parqonaut_columnar::{BatchSink, BatchSource};
@@ -11,6 +12,7 @@ use crate::engine::partition_record_batches;
 use crate::engine::pipeline_from_rewrite_ops;
 use crate::engine::Pipeline;
 use crate::error::{ParqknifeError, Result};
+use crate::spec::fused_chain::FusedTransformChain;
 use crate::spec::plan::{CompiledSegment, ExecutablePlan, FusedOperation, FusedPlanSegment};
 use crate::storage_routing::execute_fused_segment_routed;
 use arrow::record_batch::RecordBatch;
@@ -54,25 +56,34 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
         return execute_fused_segment_routed(&io, fused);
     }
 
-    let pipeline = fused
-        .ops
-        .iter()
-        .find_map(|op| match op {
-            FusedOperation::Rewrite { projection, filter, rename, cast, .. } => {
-                Some(pipeline_from_rewrite_ops(
-                    projection.clone(),
-                    filter.as_deref(),
-                    rename.clone(),
-                    cast.clone(),
-                ))
-            }
-            _ => None,
-        })
-        .transpose()?;
+    let has_plugin = fused.ops.iter().any(|op| matches!(op, FusedOperation::Plugin(_)));
+    let chain = if has_plugin {
+        Some(FusedTransformChain::from_segment(fused, &fused.execution_id)?)
+    } else {
+        None
+    };
 
-    let batches = collect_fused_batches(fused.inputs.clone(), pipeline)?;
+    let pipeline = if has_plugin {
+        None
+    } else {
+        fused
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                FusedOperation::Rewrite { projection, filter, rename, cast, .. } => {
+                    Some(pipeline_from_rewrite_ops(
+                        projection.clone(),
+                        filter.as_deref(),
+                        rename.clone(),
+                        cast.clone(),
+                    ))
+                }
+                _ => None,
+            })
+            .transpose()?
+    };
+
     let files_read = fused.inputs.len() as u64;
-
     let mut compression: Option<&str> = None;
     let mut row_group_size_mb: Option<u64> = None;
     let mut partition_by: Option<Vec<String>> = None;
@@ -89,8 +100,11 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
             FusedOperation::Merge { row_group_size_mb: rg } => {
                 row_group_size_mb = *rg;
             }
+            FusedOperation::Plugin(_) => {}
         }
     }
+
+    let batches = stream_local_batches(fused.inputs.clone(), pipeline, chain)?;
 
     if let Some(cols) = partition_by {
         let outs = partition_record_batches(
@@ -111,7 +125,7 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
             .ok_or_else(|| ParqknifeError::SpecError("fused rewrite produced no batches".into()))?;
         let stream: parqonaut_columnar::BatchStream =
             Box::pin(futures::stream::iter(batches.into_iter().map(Ok)));
-        let mut sink = parqonaut_columnar::io::LocalParquetBatchSink::new(&fused.output);
+        let mut sink = LocalParquetBatchSink::new(&fused.output);
         sink.write_stream(schema, stream, &NoOpProgressObserver)
             .map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
         return Ok((1, files_read));
@@ -120,9 +134,10 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
     Err(ParqknifeError::SpecError(format!("unsupported fused output layout: {}", fused.output)))
 }
 
-fn collect_fused_batches(
+fn stream_local_batches(
     inputs: Vec<String>,
     pipeline: Option<Pipeline>,
+    mut chain: Option<FusedTransformChain>,
 ) -> Result<Vec<RecordBatch>> {
     let work = move || {
         let rt = tokio::runtime::Runtime::new().map_err(ParqknifeError::Io)?;
@@ -132,11 +147,16 @@ fn collect_fused_batches(
                 let mut stream = Box::new(LocalParquetBatchSource::new(input)).into_stream()?;
                 while let Some(item) = stream.next().await {
                     let mut batch = item?;
-                    if let Some(p) = &pipeline {
+                    if let Some(c) = chain.as_mut() {
+                        batch = c.apply(batch)?;
+                    } else if let Some(p) = &pipeline {
                         batch = p.execute(batch)?;
                     }
                     batches.push(batch);
                 }
+            }
+            if let Some(mut c) = chain {
+                c.finish()?;
             }
             Ok(batches)
         })

@@ -292,6 +292,9 @@ fn execute_step(step: &ResolvedStep) -> Result<(u64, u64)> {
             let outs = resolve_inputs(&step.output)?;
             Ok((outs.len() as u64, read))
         }
+        Operation::Plugin { .. } => Err(ParqknifeError::SpecError(
+            "plugin transform steps are only supported via fused execution".into(),
+        )),
     }
 }
 

@@ -30,6 +30,8 @@ nom = "7.1"
 parqonaut-workflow = { path = "../parqonaut-workflow" }
 parqonaut-columnar = { path = "../parqonaut-columnar" }
 parqonaut-storage = { path = "../parqonaut-storage", features = ["columnar"] }
+parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
+parqonaut-plugin-protocol = { path = "../parqonaut-plugin-protocol" }
 
 [features]
 default = []

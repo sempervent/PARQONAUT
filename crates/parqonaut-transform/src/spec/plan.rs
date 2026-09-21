@@ -1,5 +1,7 @@
 use crate::error::{ParqknifeError, Result};
 use crate::io::resolve_inputs;
+use crate::spec::plugin::resolve_pinned_batch_plugin;
+use crate::spec::plugin::PinnedBatchPlugin;
 use crate::spec::types::{Operation, Spec};
 use parqonaut_columnar::pipeline::{
     BarrierStage, ExecutionPlan, PipelineStage, SinkKind, SinkStage, SourceStage, TransformStage,
@@ -46,6 +48,7 @@ pub struct FusedPlanSegment {
     pub ops: Vec<FusedOperation>,
     pub is_intermediate: bool,
     pub storage: StorageKind,
+    pub execution_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +83,7 @@ pub enum FusedOperation {
         #[serde(default)]
         row_group_size_mb: Option<u64>,
     },
+    Plugin(PinnedBatchPlugin),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,6 +139,10 @@ fn operation_to_contract(op: &Operation) -> parqonaut_workflow::TransformOperati
                 target_row_groups: *target_row_groups,
             }
         }
+        Operation::Plugin { plugin, .. } => parqonaut_workflow::TransformOperation::Rewrite {
+            compression: Some(format!("plugin:{plugin}")),
+            row_group_size_mb: None,
+        },
     }
 }
 
@@ -199,6 +207,10 @@ fn operation_to_fused(op: &Operation) -> Result<FusedOperation> {
             Ok(FusedOperation::Merge { row_group_size_mb: *row_group_size_mb })
         }
         Operation::Split { .. } => Err(ParqknifeError::SpecError("split is not fusible".into())),
+        Operation::Plugin { plugin, config } => {
+            let pinned = resolve_pinned_batch_plugin(plugin, config.clone())?;
+            Ok(FusedOperation::Plugin(pinned))
+        }
     }
 }
 
@@ -328,6 +340,7 @@ pub fn compile_plan(spec: &Spec) -> Result<ExecutablePlan> {
             ops: fused_ops,
             is_intermediate: !is_last,
             storage: storage_kind(&segment_output),
+            execution_id: execution_id.clone(),
         }));
 
         current_inputs = predict_outputs_from_fused(segments.last().unwrap(), &current_inputs)?;
@@ -361,6 +374,7 @@ fn fused_op_label(op: &FusedOperation) -> String {
             format!("partition({})", partition_by.join(","))
         }
         FusedOperation::Merge { .. } => "merge".into(),
+        FusedOperation::Plugin(p) => format!("plugin({})", p.name),
     }
 }
 
@@ -370,7 +384,7 @@ fn predict_outputs_from_fused(segment: &CompiledSegment, inputs: &[String]) -> R
     };
     let last = fused.ops.last().expect("fused segment");
     match last {
-        FusedOperation::Rewrite { .. } => {
+        FusedOperation::Rewrite { .. } | FusedOperation::Plugin(_) => {
             if inputs.len() == 1 && fused.output.ends_with(".parquet") {
                 Ok(vec![fused.output.clone()])
             } else {
@@ -427,6 +441,11 @@ fn validate_step(operation: &Operation, inputs: &[String], output: &str) -> Resu
                 ));
             }
         }
+        Operation::Plugin { .. } => {
+            if inputs.is_empty() {
+                return Err(ParqknifeError::SpecError("plugin step requires inputs".into()));
+            }
+        }
     }
     if output.trim().is_empty() {
         return Err(ParqknifeError::SpecError("step output path required".into()));
@@ -462,6 +481,22 @@ fn predict_outputs(operation: &Operation, output: &str, inputs: &[String]) -> Re
             }
         }
         Operation::Split { .. } => resolve_inputs(output),
+        Operation::Plugin { .. } => {
+            if inputs.len() == 1 && output.ends_with(".parquet") {
+                Ok(vec![output.to_string()])
+            } else {
+                Ok(inputs
+                    .iter()
+                    .map(|inp| {
+                        let name = Path::new(inp)
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("out.parquet");
+                        Path::new(output).join(name).to_string_lossy().into_owned()
+                    })
+                    .collect())
+            }
+        }
     }
 }
 

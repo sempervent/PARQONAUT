@@ -16,6 +16,7 @@ use crate::engine::{
 };
 use crate::error::{ParqknifeError, Result};
 use crate::remote::{merge_parquet_storage, rewrite_parquet_storage, run_io_runtime};
+use crate::spec::fused_chain::FusedTransformChain;
 use crate::{FusedOperation, FusedPlanSegment};
 
 pub fn split_parquet_routed(
@@ -320,7 +321,16 @@ async fn execute_fused_segment_routed_async(
     io: &ColumnarPipelineIo,
     fused: &FusedPlanSegment,
 ) -> Result<(u64, u64)> {
-    let pipeline = fused_pipeline_from_ops(fused)?;
+    let has_plugin = fused.ops.iter().any(|op| matches!(op, FusedOperation::Plugin(_)));
+    let chain = if has_plugin {
+        Some(std::sync::Arc::new(std::sync::Mutex::new(FusedTransformChain::from_segment(
+            fused,
+            &fused.execution_id,
+        )?)))
+    } else {
+        None
+    };
+    let pipeline = if has_plugin { None } else { fused_pipeline_from_ops(fused)? };
     let mut partition_by: Option<Vec<String>> = None;
     for op in &fused.ops {
         if let FusedOperation::Partition { partition_by: cols } = op {
@@ -330,14 +340,26 @@ async fn execute_fused_segment_routed_async(
 
     let files_read = fused.inputs.len() as u64;
     if let Some(cols) = partition_by {
-        let outs =
-            fused_partition_to_storage(io, &fused.inputs, &fused.output, &cols, 64, pipeline)
-                .await?;
+        let outs = fused_partition_to_storage(
+            io,
+            &fused.inputs,
+            &fused.output,
+            &cols,
+            64,
+            pipeline,
+            chain.clone(),
+        )
+        .await?;
         return Ok((outs.len() as u64, files_read));
     }
 
     if fused.output.ends_with(".parquet") {
-        fused_rewrite_to_storage(io, &fused.inputs, &fused.output, pipeline).await?;
+        fused_rewrite_to_storage(io, &fused.inputs, &fused.output, pipeline, chain.clone()).await?;
+        if let Some(chain) = chain {
+            if let Ok(mut guard) = chain.lock() {
+                guard.finish()?;
+            }
+        }
         return Ok((1, files_read));
     }
 
@@ -370,11 +392,12 @@ async fn fused_rewrite_to_storage(
     inputs: &[String],
     output: &str,
     pipeline: Option<Pipeline>,
+    chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
 ) -> Result<()> {
     let out_loc = ObjectLocation::parse(output).map_err(map_storage)?;
     let sink_backend = io.backend_for(&out_loc);
     let schema = schema_from_inputs(io, inputs).await?;
-    let stream = fused_input_stream(io, inputs, pipeline);
+    let stream = fused_input_stream(io, inputs, pipeline, chain);
     let mut sink = StorageParquetBatchSink::new(sink_backend, out_loc);
     sink.write_stream(schema, Box::pin(stream), &NoOpProgressObserver).map_err(map_columnar)?;
     Ok(())
@@ -397,6 +420,7 @@ fn fused_input_stream(
     io: &ColumnarPipelineIo,
     inputs: &[String],
     pipeline: Option<Pipeline>,
+    chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
 ) -> BatchStream {
     Box::pin(FusedInputStream {
         io: io.clone(),
@@ -404,6 +428,7 @@ fn fused_input_stream(
         input_idx: 0,
         current: None,
         pipeline,
+        chain,
     })
 }
 
@@ -413,6 +438,7 @@ struct FusedInputStream {
     input_idx: usize,
     current: Option<BatchStream>,
     pipeline: Option<Pipeline>,
+    chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
 }
 
 impl futures::Stream for FusedInputStream {
@@ -450,7 +476,23 @@ impl futures::Stream for FusedInputStream {
             };
             match std::pin::Pin::new(current).poll_next(cx) {
                 std::task::Poll::Ready(Some(Ok(batch))) => {
-                    let batch = if let Some(p) = &self.pipeline {
+                    let batch = if let Some(chain) = &self.chain {
+                        match chain.lock() {
+                            Ok(mut guard) => match guard.apply(batch) {
+                                Ok(b) => b,
+                                Err(e) => {
+                                    return std::task::Poll::Ready(Some(Err(
+                                        ColumnarError::Other(e.to_string()),
+                                    )));
+                                }
+                            },
+                            Err(e) => {
+                                return std::task::Poll::Ready(Some(Err(ColumnarError::Other(
+                                    e.to_string(),
+                                ))));
+                            }
+                        }
+                    } else if let Some(p) = &self.pipeline {
                         match p.execute(batch) {
                             Ok(b) => b,
                             Err(e) => {
@@ -483,13 +525,15 @@ async fn fused_partition_to_storage(
     partition_by: &[String],
     max_open: usize,
     pipeline: Option<Pipeline>,
+    chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
 ) -> Result<Vec<String>> {
     use std::collections::{HashMap, VecDeque};
 
     use crate::engine::partition::partition_keys;
 
     let schema = schema_from_inputs(io, inputs).await?;
-    let mut stream = fused_input_stream(io, inputs, pipeline);
+    let mut stream = fused_input_stream(io, inputs, pipeline, chain.clone());
+    let chain_for_finish = chain.clone();
 
     let mut buffers: HashMap<String, Vec<RecordBatch>> = HashMap::new();
     let mut part_counters: HashMap<String, usize> = HashMap::new();
@@ -529,6 +573,11 @@ async fn fused_partition_to_storage(
         let obj = object_under_prefix(output_prefix, &rel)?;
         flush_to_object(io, &obj, schema.clone(), &batches).await?;
         outputs.push(obj.display_uri());
+    }
+    if let Some(chain) = chain_for_finish {
+        if let Ok(mut guard) = chain.lock() {
+            guard.finish()?;
+        }
     }
     Ok(outputs)
 }
