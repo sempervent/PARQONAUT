@@ -44,4 +44,10 @@ pub enum PluginHostError {
     ResultPolicyViolation(String),
     #[error("plugin {name} does not support phase {phase:?}")]
     UnsupportedPhase { name: String, phase: String },
+    #[error("plugin schema mismatch: {0}")]
+    PluginSchemaMismatch(String),
+    #[error("plugin output expansion exceeded: {0}")]
+    PluginOutputExpansionExceeded(String),
+    #[error("stale plugin: expected digest {expected}, current {actual}")]
+    StalePlugin { expected: String, actual: String },
 }

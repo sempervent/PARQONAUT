@@ -16,9 +16,9 @@ use serde::Deserialize;
 use crate::catalog::CatalogEntry;
 use crate::env::plugin_child_env;
 use crate::error::PluginHostError;
-use crate::policy::PluginResourcePolicy;
+use crate::policy::{BatchResourcePolicy, PluginResourcePolicy};
 
-const RUNNER_MODULE: &str = "parqonaut_plugins.runner";
+pub(crate) const RUNNER_MODULE: &str = "parqonaut_plugins.runner";
 
 /// Optional cooperative cancellation (set before/during execute).
 #[derive(Debug, Clone, Default)]
@@ -44,6 +44,7 @@ pub struct PluginRuntimeConfig {
     /// Directory containing the `parqonaut_plugins` package (typically `.../src`).
     pub sdk_src_root: Option<PathBuf>,
     pub policy: PluginResourcePolicy,
+    pub batch_policy: BatchResourcePolicy,
 }
 
 impl Default for PluginRuntimeConfig {
@@ -52,6 +53,7 @@ impl Default for PluginRuntimeConfig {
             python_executable: std::env::var("PARQONAUT_PLUGIN_PYTHON").ok().map(PathBuf::from),
             sdk_src_root: std::env::var("PARQONAUT_PLUGIN_SDK_PATH").ok().map(PathBuf::from),
             policy: PluginResourcePolicy::default(),
+            batch_policy: BatchResourcePolicy::default(),
         }
     }
 }
@@ -110,6 +112,7 @@ impl ScanPluginExecutor {
         let mut child = Command::new(&python)
             .arg("-m")
             .arg(RUNNER_MODULE)
+            .arg("scan")
             .current_dir(&entry.root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -228,7 +231,7 @@ fn map_protocol_validate_err(e: parqonaut_plugin_protocol::PluginProtocolError) 
     }
 }
 
-fn resolve_python(
+pub(crate) fn resolve_python(
     plugin_root: &Path,
     runtime: &PluginRuntimeConfig,
 ) -> Result<PathBuf, PluginHostError> {
@@ -240,6 +243,14 @@ fn resolve_python(
             "configured python not found: {}",
             p.display()
         )));
+    }
+    if let Some(sdk) = &runtime.sdk_src_root {
+        let sdk_venv = sdk.parent().map(|p| p.join(".venv").join("bin").join("python"));
+        if let Some(p) = sdk_venv {
+            if p.is_file() {
+                return Ok(p);
+            }
+        }
     }
     let venv = plugin_root.join(".venv").join("bin").join("python");
     if venv.is_file() {
@@ -255,7 +266,10 @@ fn resolve_python(
     ))
 }
 
-fn build_pythonpath(plugin_root: &Path, sdk: Option<&Path>) -> Result<String, PluginHostError> {
+pub(crate) fn build_pythonpath(
+    plugin_root: &Path,
+    sdk: Option<&Path>,
+) -> Result<String, PluginHostError> {
     let mut parts = vec![plugin_root.to_string_lossy().into_owned()];
     if let Some(s) = sdk {
         parts.push(s.to_string_lossy().into_owned());
@@ -358,7 +372,7 @@ fn tail_str(bytes: &[u8], max: usize) -> String {
     }
 }
 
-fn terminate_child(child: &mut Child) -> Result<(), PluginHostError> {
+pub(crate) fn terminate_child(child: &mut Child) -> Result<(), PluginHostError> {
     let _ = child.kill();
     let grace = Duration::from_millis(500);
     let start = Instant::now();

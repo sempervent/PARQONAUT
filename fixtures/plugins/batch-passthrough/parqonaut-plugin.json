@@ -1,0 +1,11 @@
+{
+  "protocol_version": 1,
+  "name": "batch-passthrough",
+  "version": "0.1.0",
+  "entrypoint": "batch_passthrough:transform",
+  "capabilities": {
+    "batch_transform": {
+      "tags": ["test"]
+    }
+  }
+}

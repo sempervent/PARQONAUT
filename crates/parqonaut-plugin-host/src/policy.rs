@@ -14,6 +14,29 @@ pub struct PluginResourcePolicy {
     pub default_timeout_ms: u64,
 }
 
+#[derive(Debug, Clone)]
+pub struct BatchResourcePolicy {
+    pub max_stderr_bytes: usize,
+    pub max_output_rows_per_input_batch: u64,
+    pub max_output_expansion_factor: f64,
+    pub default_timeout_ms: u64,
+    pub max_inflight_batches: usize,
+    pub max_config_bytes: usize,
+}
+
+impl Default for BatchResourcePolicy {
+    fn default() -> Self {
+        Self {
+            max_stderr_bytes: 256 * 1024,
+            max_output_rows_per_input_batch: 1_000_000,
+            max_output_expansion_factor: 4.0,
+            default_timeout_ms: 300_000,
+            max_inflight_batches: 4,
+            max_config_bytes: 64 * 1024,
+        }
+    }
+}
+
 impl Default for PluginResourcePolicy {
     fn default() -> Self {
         Self {

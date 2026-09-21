@@ -19,6 +19,9 @@ hex = { workspace = true }
 walkdir = { workspace = true }
 which = "7.0"
 uuid = { workspace = true }
+arrow = { workspace = true }
+tempfile = "3"
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
 tempfile = "3"
