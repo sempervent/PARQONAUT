@@ -68,11 +68,8 @@ if [[ -n "$before" ]]; then
   exit 1
 fi
 
-aws s3 cp "$LOCAL/src/a.csv" "${S3_SRC}/a.csv" --endpoint-url "$PARQONAUT_S3_ENDPOINT"
-aws s3 cp "$LOCAL/src/b.csv" "${S3_SRC}/b.csv" --endpoint-url "$PARQONAUT_S3_ENDPOINT"
-
-echo "=== stream convert (schema widen) → S3 ==="
-"$PRQNT" convert "${S3_SRC}/" \
+echo "=== stream convert (schema widen) local CSV → S3 Parquet ==="
+"$PRQNT" convert "$LOCAL/src/"*.csv \
   -o "$S3_UNIFIED" --out-format parquet --schema-conflicts widen
 
 echo "=== fused transform (rewrite → partition) on S3 ==="
