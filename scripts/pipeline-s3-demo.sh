@@ -105,6 +105,6 @@ if [[ "${partitions:-0}" -lt 2 ]]; then
 fi
 
 echo "=== scan partitioned output ==="
-"$PRQNT" scan "${S3_OUT}/" | grep -q region
+"$PRQNT" scan "${S3_OUT}/" --json | grep -q region
 
 echo "pipeline-s3-demo: PASS (${partitions} partition files under ${S3_OUT})"
