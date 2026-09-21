@@ -4,7 +4,7 @@ mod common;
 
 use std::sync::Arc;
 
-use arrow::array::{BinaryArray, Int64Array, StringArray};
+use arrow::array::{BinaryArray, Int64Array, RecordBatchReader, StringArray};
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use arrow::record_batch::RecordBatch;
 use futures::StreamExt;
@@ -139,4 +139,58 @@ async fn conditional_create_destination_conflict() {
     );
     let head = backend.head(&loc).await.expect("seed still present");
     assert_eq!(head.size, 4);
+}
+
+/// Real Parquet (~5.3 MiB) crossing the default 5 MiB multipart boundary.
+#[tokio::test(flavor = "multi_thread")]
+async fn write_parquet_fixture_crosses_default_multipart_boundary() {
+    let Some(endpoint) = common::require_s3_endpoint() else {
+        return;
+    };
+    std::env::remove_var("PARQONAUT_S3_PART_SIZE_BYTES");
+    let backend = Arc::new(S3StorageBackend::new(S3Config::minio(endpoint)).await);
+    let bucket = std::env::var("PARQONAUT_S3_BUCKET").unwrap_or_else(|_| "parqonaut-test".into());
+    let key = format!("write-roundtrip/partition-fixture-{}.parquet", uuid::Uuid::new_v4());
+    let loc = ObjectLocation::S3 { bucket, key };
+
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/transform/partition-basic/input.parquet");
+    let local = std::fs::read(&fixture).expect("fixture bytes");
+    let file = std::fs::File::open(&fixture).expect("open fixture");
+    let reader = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file)
+        .expect("parquet reader")
+        .build()
+        .expect("build reader");
+    let schema = reader.schema();
+    let mut batches = Vec::new();
+    let mut expected_rows = 0u64;
+    for batch in reader {
+        let batch = batch.expect("batch");
+        expected_rows += batch.num_rows() as u64;
+        batches.push(batch);
+    }
+    let stream: parqonaut_columnar::BatchStream =
+        Box::pin(futures::stream::iter(batches.into_iter().map(Ok)));
+
+    write_parquet_batch_stream(
+        Arc::clone(&backend),
+        loc.clone(),
+        schema,
+        stream,
+        &NoOpProgressObserver,
+    )
+    .await
+    .expect("stream write");
+
+    let head = backend.head(&loc).await.expect("head");
+    assert!(head.size > 5 * 1024 * 1024);
+    assert!(head.size >= local.len() as u64 / 2);
+
+    let source = StorageParquetBatchSource::new(Arc::clone(&backend), loc);
+    let mut read = Box::new(source).into_stream().expect("read stream");
+    let mut rows = 0u64;
+    while let Some(b) = read.next().await {
+        rows += b.expect("batch").num_rows() as u64;
+    }
+    assert_eq!(rows, expected_rows);
 }
