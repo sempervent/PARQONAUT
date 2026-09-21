@@ -22,7 +22,8 @@ async fn stream_and_verify(
     payload: &[u8],
     chunk: usize,
 ) {
-    let key = format!("multipart-boundary/{}-{}-{}.bin", payload.len(), chunk, uuid::Uuid::new_v4());
+    let key =
+        format!("multipart-boundary/{}-{}-{}.bin", payload.len(), chunk, uuid::Uuid::new_v4());
     let loc = ObjectLocation::S3 { bucket: bucket.into(), key };
     let expected_hash = hex::encode(Sha256::digest(payload));
 
