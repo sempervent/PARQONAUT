@@ -73,7 +73,7 @@ aws s3 cp "$LOCAL/src/b.csv" "${S3_SRC}/b.csv" --endpoint-url "$PARQONAUT_S3_END
 
 echo "=== stream convert (schema widen) → S3 ==="
 "$PRQNT" convert "${S3_SRC}/" \
-  -o "$S3_UNIFIED" --out-format parquet --schema-conflicts widen --quiet
+  -o "$S3_UNIFIED" --out-format parquet --schema-conflicts widen
 
 echo "=== fused transform (rewrite → partition) on S3 ==="
 cat >"$LOCAL/spec.yaml" <<YAML
