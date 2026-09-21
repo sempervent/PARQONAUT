@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod batch_arrow;
 mod batch_bridge;
 mod batch_context;
 mod batch_execute;
@@ -17,7 +18,8 @@ mod path_safety;
 mod policy;
 mod scan_execute;
 
-pub use batch_bridge::BatchPluginBridge;
+pub use batch_arrow::validate_schema_supported;
+pub use batch_bridge::{BatchBridgeMetrics, BatchPluginBridge};
 pub use batch_execute::BatchPluginSession;
 pub use catalog::{CatalogEntry, PluginCatalog, PluginCompatibility, HOST_PARQONAUT_VERSION};
 pub use env::plugin_child_env;

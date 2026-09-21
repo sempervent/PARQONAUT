@@ -46,6 +46,7 @@ impl FusedTransformChain {
                         &runtime,
                         &pinned.digest,
                         policy.max_inflight_batches,
+                        None,
                     )
                     .map_err(map_plugin_err)?;
                     exec_ops.push(ExecOp::Plugin(bridges.len()));
@@ -72,9 +73,10 @@ impl FusedTransformChain {
     }
 
     pub fn finish(&mut self) -> Result<()> {
-        while let Some(bridge) = self.bridges.pop() {
+        for bridge in &mut self.bridges {
             bridge.finish().map_err(map_plugin_err)?;
         }
+        self.bridges.clear();
         Ok(())
     }
 

@@ -50,6 +50,7 @@ fn plan_to_dry_run_report(plan: &ExecutablePlan) -> Result<TransformReport> {
         plan: Some(
             serde_json::to_value(plan).map_err(|e| ParqknifeError::SpecError(e.to_string()))?,
         ),
+        plugin_executions: vec![],
     })
 }
 
@@ -134,6 +135,7 @@ pub fn execute_plan(plan: &ExecutablePlan) -> Result<TransformReport> {
         warnings,
         failures: vec![],
         plan: None,
+        plugin_executions: vec![],
     })
 }
 

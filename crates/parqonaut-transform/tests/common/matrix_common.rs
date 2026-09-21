@@ -19,7 +19,9 @@ pub fn require_s3_endpoint() -> bool {
 }
 
 pub fn test_bucket() -> String {
-    std::env::var("PARQONAUT_S3_BUCKET").unwrap_or_else(|_| "parqonaut-test".into())
+    std::env::var("FOGBANK_BUCKET")
+        .or_else(|_| std::env::var("PARQONAUT_S3_BUCKET"))
+        .unwrap_or_else(|_| "parqonaut-test".into())
 }
 
 pub async fn s3_io() -> (ColumnarPipelineIo, Arc<parqonaut_storage::S3StorageBackend>) {
@@ -189,7 +191,7 @@ impl Leg {
     #[allow(clippy::too_many_arguments)]
     pub async fn materialize(
         &self,
-        work: &tempfile::TempDir,
+        work: &std::path::Path,
         s3: &Arc<parqonaut_storage::S3StorageBackend>,
         bucket: &str,
         cap: &str,
@@ -200,7 +202,7 @@ impl Leg {
         let id = uuid::Uuid::new_v4();
         let input = match self {
             Leg::LocalLocal | Leg::LocalS3 => {
-                let p = work.path().join(format!("{cap}-{id}-{in_name}"));
+                let p = work.join(format!("{cap}-{id}-{in_name}"));
                 std::fs::write(&p, bytes).expect("local input");
                 p.to_string_lossy().into_owned()
             }
@@ -210,8 +212,18 @@ impl Leg {
                 format!("s3://{bucket}/{key}")
             }
         };
-        let output = self.output_uri(work, bucket, cap, out_name);
+        let output = self.output_uri_at(work, bucket, cap, out_name);
         LegPaths { input, output }
+    }
+
+    fn output_uri_at(&self, work: &std::path::Path, bucket: &str, cap: &str, file: &str) -> String {
+        let id = uuid::Uuid::new_v4();
+        match self {
+            Leg::LocalLocal | Leg::S3Local => {
+                work.join(format!("{cap}-{id}-{file}")).to_string_lossy().into_owned()
+            }
+            Leg::LocalS3 | Leg::S3S3 => format!("s3://{bucket}/matrix/{cap}/{id}/{file}"),
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use parqonaut_transform::{compile_plan, execute_plan, parse_spec};
+use parqonaut_transform::{compile_plan, execute_plan, parse_spec, Operation, Spec, Step};
 use tempfile::tempdir;
 
 fn repo_root() -> PathBuf {
@@ -15,23 +15,14 @@ fn normalize_strings_plugin_local_transform() {
     );
     std::env::set_var(
         "PARQONAUT_PLUGIN_SDK_PATH",
-        repo_root()
-            .join("python/parqonaut_plugins/src")
-            .to_string_lossy()
-            .to_string(),
+        repo_root().join("python/parqonaut_plugins/src").to_string_lossy().to_string(),
     );
 
     let spec_path = repo_root().join("fixtures/transform/specs/plugin-normalize-strings.yaml");
     let spec = parse_spec(&spec_path).expect("parse spec");
     let out_dir = tempdir().expect("tempdir");
     let mut spec = spec;
-    spec.output = Some(
-        out_dir
-            .path()
-            .join("out.parquet")
-            .to_string_lossy()
-            .into_owned(),
-    );
+    spec.output = Some(out_dir.path().join("out.parquet").to_string_lossy().into_owned());
     spec.input = Some(
         repo_root()
             .join("fixtures/transform/partition-basic/input.parquet")
@@ -63,13 +54,11 @@ fn scan_only_plugin_rejected_at_compile() {
     );
     std::env::set_var(
         "PARQONAUT_PLUGIN_SDK_PATH",
-        repo_root()
-            .join("python/parqonaut_plugins/src")
-            .to_string_lossy()
-            .to_string(),
+        repo_root().join("python/parqonaut_plugins/src").to_string_lossy().to_string(),
     );
-    let mut spec = parse_spec(&repo_root().join("fixtures/transform/specs/plugin-normalize-strings.yaml"))
-        .expect("parse");
+    let mut spec =
+        parse_spec(&repo_root().join("fixtures/transform/specs/plugin-normalize-strings.yaml"))
+            .expect("parse");
     spec.input = Some(
         repo_root()
             .join("fixtures/transform/partition-basic/input.parquet")
@@ -89,6 +78,35 @@ fn scan_only_plugin_rejected_at_compile() {
 }
 
 #[test]
+fn oversized_plugin_config_rejected_at_compile() {
+    std::env::set_var(
+        "PARQONAUT_PLUGIN_ROOTS",
+        repo_root().join("fixtures/plugins").to_string_lossy().to_string(),
+    );
+    let big = "x".repeat(70 * 1024);
+    let spec = Spec {
+        schema_version: 1,
+        input: Some(
+            repo_root()
+                .join("fixtures/transform/partition-basic/input.parquet")
+                .to_string_lossy()
+                .into(),
+        ),
+        output: Some("/tmp/unused-out.parquet".into()),
+        steps: vec![Step {
+            operation: Operation::Plugin {
+                plugin: "normalize-strings".into(),
+                config: serde_json::json!({"columns": [big]}),
+            },
+            options: Default::default(),
+        }],
+        options: Default::default(),
+    };
+    let err = compile_plan(&spec).unwrap_err();
+    assert!(err.to_string().contains("config exceeds"));
+}
+
+#[test]
 fn stale_plugin_rejected_at_execution() {
     std::env::set_var(
         "PARQONAUT_PLUGIN_ROOTS",
@@ -96,22 +114,13 @@ fn stale_plugin_rejected_at_execution() {
     );
     std::env::set_var(
         "PARQONAUT_PLUGIN_SDK_PATH",
-        repo_root()
-            .join("python/parqonaut_plugins/src")
-            .to_string_lossy()
-            .to_string(),
+        repo_root().join("python/parqonaut_plugins/src").to_string_lossy().to_string(),
     );
 
     let spec_path = repo_root().join("fixtures/transform/specs/plugin-normalize-strings.yaml");
     let mut spec = parse_spec(&spec_path).expect("parse");
     let out_dir = tempdir().expect("tempdir");
-    spec.output = Some(
-        out_dir
-            .path()
-            .join("out.parquet")
-            .to_string_lossy()
-            .into_owned(),
-    );
+    spec.output = Some(out_dir.path().join("out.parquet").to_string_lossy().into_owned());
     spec.input = Some(
         repo_root()
             .join("fixtures/transform/partition-basic/input.parquet")

@@ -50,4 +50,8 @@ pub enum PluginHostError {
     PluginOutputExpansionExceeded(String),
     #[error("stale plugin: expected digest {expected}, current {actual}")]
     StalePlugin { expected: String, actual: String },
+    #[error("plugin unsupported Arrow type: {0}")]
+    PluginUnsupportedArrowType(String),
+    #[error("plugin execution cancelled")]
+    Cancelled,
 }

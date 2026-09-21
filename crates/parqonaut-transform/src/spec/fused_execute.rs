@@ -45,8 +45,10 @@ pub fn execute_fused_plan(
 }
 
 pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
-    let routing =
-        fused.inputs.iter().any(|i| location_is_remote(i)) || location_is_remote(&fused.output);
+    let has_plugin = fused.ops.iter().any(|op| matches!(op, FusedOperation::Plugin(_)));
+    let routing = has_plugin
+        || fused.inputs.iter().any(|i| location_is_remote(i))
+        || location_is_remote(&fused.output);
     if routing {
         crate::columnar_io::ensure_s3_for_remote(
             fused.inputs.first().map(String::as_str).unwrap_or(""),
@@ -56,7 +58,6 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
         return execute_fused_segment_routed(&io, fused);
     }
 
-    let has_plugin = fused.ops.iter().any(|op| matches!(op, FusedOperation::Plugin(_)));
     let chain = if has_plugin {
         Some(FusedTransformChain::from_segment(fused, &fused.execution_id)?)
     } else {

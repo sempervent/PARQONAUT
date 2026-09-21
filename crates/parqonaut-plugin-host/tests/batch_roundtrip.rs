@@ -23,7 +23,7 @@ fn rust_python_batch_ipc_roundtrip() {
     let runtime =
         PluginRuntimeConfig { sdk_src_root: Some(sdk_path()), ..PluginRuntimeConfig::default() };
     let mut session =
-        BatchPluginSession::start(entry, serde_json::json!({}), "test-exec", &runtime, None)
+        BatchPluginSession::start(entry, serde_json::json!({}), "test-exec", &runtime, None, None)
             .expect("start batch session");
 
     let schema = Arc::new(Schema::new(vec![
@@ -56,6 +56,7 @@ fn stale_digest_rejected_before_spawn() {
         "test-exec",
         &runtime,
         Some("deadbeef"),
+        None,
     );
     assert!(matches!(result, Err(PluginHostError::StalePlugin { .. })));
 }

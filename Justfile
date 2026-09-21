@@ -55,8 +55,18 @@ plugin-test:
     export PARQONAUT_PLUGIN_SDK_PATH="${PARQONAUT_PLUGIN_SDK_PATH:-$PWD/python/parqonaut_plugins/src}"
     cargo test -p parqonaut-plugin-protocol
     cargo test -p parqonaut-plugin-host
-    cargo test -p parqonaut-transform --test plugin_transform
+    cargo test -p parqonaut-transform --test plugin_transform --test plugin_zero_intermediate
     cargo test -p parqonaut-cli --test plugin_integration
+    if [[ -z "${PARQONAUT_S3_ENDPOINT:-}" ]]; then
+        just s3-up
+    fi
+    # shellcheck source=/dev/null
+    source scripts/s3-test/env.sh
+    export PARQONAUT_S3_ENDPOINT="${PARQONAUT_S3_ENDPOINT:-${FOGBANK_ENDPOINT:-http://127.0.0.1:9000}}"
+    export PARQONAUT_S3_BUCKET="${PARQONAUT_S3_BUCKET:-${FOGBANK_BUCKET:-fogbank}}"
+    aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://${PARQONAUT_S3_BUCKET}" >/dev/null 2>&1 || true
+    aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://${FOGBANK_BUCKET}" >/dev/null 2>&1 || true
+    cargo test -p parqonaut-transform --features s3 --test plugin_storage_matrix
     cd python/parqonaut_plugins
     uv sync --frozen
     uv run python -m pytest

@@ -18,7 +18,8 @@ use crate::env::plugin_child_env;
 use crate::error::PluginHostError;
 use crate::policy::BatchResourcePolicy;
 use crate::scan_execute::{
-    build_pythonpath, resolve_python, terminate_child, PluginRuntimeConfig, RUNNER_MODULE,
+    build_pythonpath, resolve_python, terminate_child, CancelToken, PluginRuntimeConfig,
+    RUNNER_MODULE,
 };
 
 /// Active batch plugin child (one process per pipeline stage).
@@ -27,6 +28,7 @@ pub struct BatchPluginSession {
     stdin: Box<dyn Write + Send>,
     stdout: Arc<Mutex<Box<dyn Read + Send>>>,
     policy: BatchResourcePolicy,
+    cancel: Option<CancelToken>,
     _temp: TempDir,
 }
 
@@ -39,7 +41,11 @@ impl BatchPluginSession {
         execution_id: &str,
         runtime: &PluginRuntimeConfig,
         expected_digest: Option<&str>,
+        cancel: Option<CancelToken>,
     ) -> Result<Self, PluginHostError> {
+        if cancel.as_ref().is_some_and(CancelToken::is_cancelled) {
+            return Err(PluginHostError::Cancelled);
+        }
         if let Some(expected) = expected_digest {
             if expected != entry.digest {
                 return Err(PluginHostError::StalePlugin {
@@ -70,7 +76,8 @@ impl BatchPluginSession {
 
         let python = resolve_python(&entry.root, runtime)?;
         let pythonpath = build_pythonpath(&entry.root, runtime.sdk_src_root.as_deref())?;
-        let env = plugin_child_env(&pythonpath);
+        let mut env = plugin_child_env(&pythonpath);
+        env.insert("PARQONAUT_BATCH_CONTEXT_PATH".into(), ctx_path.to_string_lossy().into_owned());
 
         let mut child = Command::new(&python)
             .arg("-m")
@@ -99,16 +106,52 @@ impl BatchPluginSession {
             stdin: Box::new(stdin),
             stdout: Arc::new(Mutex::new(Box::new(stdout))),
             policy: batch_policy,
+            cancel,
             _temp: temp,
         })
     }
 
+    pub fn abort(&mut self) -> Result<(), PluginHostError> {
+        drop(std::mem::replace(&mut self.stdin, Box::new(std::io::sink())));
+        let _ = terminate_child(&mut self.child);
+        Ok(())
+    }
+
+    pub fn context_dir_gone(&self) -> bool {
+        !self._temp.path().exists()
+    }
+
     pub fn transform(&mut self, batch: RecordBatch) -> Result<RecordBatch, PluginHostError> {
+        if self.cancel.as_ref().is_some_and(CancelToken::is_cancelled) {
+            return Err(PluginHostError::Cancelled);
+        }
         write_batch_frame(&mut self.stdin, &batch)?;
-        let mut guard = self.stdout.lock().expect("stdout lock");
-        let out = read_batch_frame(guard.as_mut())?.ok_or_else(|| {
-            PluginHostError::ProtocolViolation("plugin closed stdout before response batch".into())
-        })?;
+        let timeout = Duration::from_millis(self.policy.default_timeout_ms);
+        let stdout = Arc::clone(&self.stdout);
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let mut guard = stdout.lock().expect("stdout lock");
+            let _ = tx.send(read_batch_frame(guard.as_mut()));
+        });
+        let out = match rx.recv_timeout(timeout) {
+            Ok(Ok(Some(b))) => b,
+            Ok(Ok(None)) => {
+                return Err(PluginHostError::ProtocolViolation(
+                    "plugin closed stdout before response batch".into(),
+                ));
+            }
+            Ok(Err(e)) => return Err(e),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = terminate_child(&mut self.child);
+                return Err(PluginHostError::ProtocolViolation(
+                    "plugin stdout reader failed".into(),
+                ));
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                let _ = terminate_child(&mut self.child);
+                return Err(PluginHostError::Timeout { timeout_ms: timeout.as_millis() as u64 });
+            }
+        };
         require_schema_equal(batch.schema().as_ref(), out.schema().as_ref())?;
         enforce_row_policy(
             &batch,

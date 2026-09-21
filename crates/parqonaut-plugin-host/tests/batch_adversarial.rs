@@ -23,7 +23,7 @@ fn batch_schema_mismatch_rejected() {
     let runtime =
         PluginRuntimeConfig { sdk_src_root: Some(sdk_path()), ..PluginRuntimeConfig::default() };
     let mut session =
-        BatchPluginSession::start(entry, serde_json::json!({}), "test-exec", &runtime, None)
+        BatchPluginSession::start(entry, serde_json::json!({}), "test-exec", &runtime, None, None)
             .unwrap();
     let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int32, false)]));
     let batch = RecordBatch::try_new(schema, vec![Arc::new(Int32Array::from(vec![1]))]).unwrap();

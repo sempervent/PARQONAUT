@@ -5,7 +5,7 @@ use std::path::Path;
 use arrow::record_batch::RecordBatch;
 use futures::StreamExt;
 use parqonaut_columnar::{BatchSink, BatchSource, BatchStream, ColumnarError};
-use parqonaut_storage::columnar::{StorageParquetBatchSink, StorageParquetBatchSource};
+use parqonaut_storage::columnar::{write_parquet_batch_stream, StorageParquetBatchSource};
 use parqonaut_storage::location::{DatasetLocation, ObjectLocation};
 use parqonaut_workflow::NoOpProgressObserver;
 
@@ -174,8 +174,15 @@ async fn flush_part(
     let sink_backend = io.backend_for(&out_loc);
     let owned: Vec<RecordBatch> = batches.to_vec();
     let stream: BatchStream = Box::pin(futures::stream::iter(owned.into_iter().map(Ok)));
-    let mut sink = StorageParquetBatchSink::new(sink_backend, out_loc.clone());
-    sink.write_stream(schema, stream, &NoOpProgressObserver).map_err(map_columnar)?;
+    write_parquet_batch_stream(
+        sink_backend,
+        out_loc.clone(),
+        schema,
+        stream,
+        &NoOpProgressObserver,
+    )
+    .await
+    .map_err(map_columnar)?;
     Ok(out_loc.display_uri())
 }
 
@@ -265,8 +272,9 @@ async fn flush_to_object(
     let owned: Vec<RecordBatch> = batches.to_vec();
     let stream: BatchStream = Box::pin(futures::stream::iter(owned.into_iter().map(Ok)));
     let sink_backend = io.backend_for(dest);
-    let mut sink = StorageParquetBatchSink::new(sink_backend, dest.clone());
-    sink.write_stream(schema, stream, &NoOpProgressObserver).map_err(map_columnar)?;
+    write_parquet_batch_stream(sink_backend, dest.clone(), schema, stream, &NoOpProgressObserver)
+        .await
+        .map_err(map_columnar)?;
     Ok(())
 }
 
@@ -398,8 +406,15 @@ async fn fused_rewrite_to_storage(
     let sink_backend = io.backend_for(&out_loc);
     let schema = schema_from_inputs(io, inputs).await?;
     let stream = fused_input_stream(io, inputs, pipeline, chain);
-    let mut sink = StorageParquetBatchSink::new(sink_backend, out_loc);
-    sink.write_stream(schema, Box::pin(stream), &NoOpProgressObserver).map_err(map_columnar)?;
+    write_parquet_batch_stream(
+        sink_backend,
+        out_loc,
+        schema,
+        Box::pin(stream),
+        &NoOpProgressObserver,
+    )
+    .await
+    .map_err(map_columnar)?;
     Ok(())
 }
 
@@ -429,6 +444,7 @@ fn fused_input_stream(
         current: None,
         pipeline,
         chain,
+        pending_transform: None,
     })
 }
 
@@ -439,6 +455,7 @@ struct FusedInputStream {
     current: Option<BatchStream>,
     pipeline: Option<Pipeline>,
     chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
+    pending_transform: Option<tokio::task::JoinHandle<std::result::Result<RecordBatch, String>>>,
 }
 
 impl futures::Stream for FusedInputStream {
@@ -449,6 +466,26 @@ impl futures::Stream for FusedInputStream {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         loop {
+            if let Some(handle) = self.pending_transform.as_mut() {
+                match std::future::Future::poll(std::pin::Pin::new(handle), cx) {
+                    std::task::Poll::Ready(Ok(Ok(batch))) => {
+                        self.pending_transform = None;
+                        return std::task::Poll::Ready(Some(Ok(batch)));
+                    }
+                    std::task::Poll::Ready(Ok(Err(e))) => {
+                        self.pending_transform = None;
+                        return std::task::Poll::Ready(Some(Err(ColumnarError::Other(e))));
+                    }
+                    std::task::Poll::Ready(Err(e)) => {
+                        self.pending_transform = None;
+                        return std::task::Poll::Ready(Some(Err(ColumnarError::Other(format!(
+                            "plugin transform join: {e}"
+                        )))));
+                    }
+                    std::task::Poll::Pending => return std::task::Poll::Pending,
+                }
+            }
+
             if self.current.is_none() {
                 if self.input_idx >= self.inputs.len() {
                     return std::task::Poll::Ready(None);
@@ -476,23 +513,17 @@ impl futures::Stream for FusedInputStream {
             };
             match std::pin::Pin::new(current).poll_next(cx) {
                 std::task::Poll::Ready(Some(Ok(batch))) => {
-                    let batch = if let Some(chain) = &self.chain {
-                        match chain.lock() {
-                            Ok(mut guard) => match guard.apply(batch) {
-                                Ok(b) => b,
-                                Err(e) => {
-                                    return std::task::Poll::Ready(Some(Err(
-                                        ColumnarError::Other(e.to_string()),
-                                    )));
-                                }
-                            },
-                            Err(e) => {
-                                return std::task::Poll::Ready(Some(Err(ColumnarError::Other(
-                                    e.to_string(),
-                                ))));
-                            }
-                        }
-                    } else if let Some(p) = &self.pipeline {
+                    if let Some(chain) = &self.chain {
+                        let chain = chain.clone();
+                        self.pending_transform = Some(tokio::task::spawn_blocking(move || {
+                            chain
+                                .lock()
+                                .map_err(|e| e.to_string())
+                                .and_then(|mut guard| guard.apply(batch).map_err(|e| e.to_string()))
+                        }));
+                        continue;
+                    }
+                    let batch = if let Some(p) = &self.pipeline {
                         match p.execute(batch) {
                             Ok(b) => b,
                             Err(e) => {

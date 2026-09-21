@@ -26,9 +26,9 @@ pub fn enforce_row_policy(
         )));
     }
     if in_rows == 0 {
-        if out_rows > max_rows {
+        if out_rows != 0 {
             return Err(PluginHostError::PluginOutputExpansionExceeded(
-                "zero-row input with excessive output".into(),
+                "zero-row input must produce zero-row output (batch-transform v1)".into(),
             ));
         }
         return Ok(());
