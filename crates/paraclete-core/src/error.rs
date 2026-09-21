@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf;
-use paraclete_plugin_protocol::PluginExecutorError;
+use parqonaut_plugin_protocol::PluginExecutorError;
 use thiserror::Error;
 
 /// Library errors for the engine boundary crate.

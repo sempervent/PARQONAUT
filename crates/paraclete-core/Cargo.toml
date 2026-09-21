@@ -9,7 +9,7 @@ description = "Engine boundary traits and scan orchestration skeleton for Paracl
 [dependencies]
 bytes = "1.9"
 paraclete-types.workspace = true
-paraclete-plugin-protocol.workspace = true
+parqonaut-plugin-protocol.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 camino.workspace = true

@@ -3,8 +3,8 @@ use paraclete_core::{
     CoreError, DatasetInspector, ExtensionFormatDetector, PluginExecutor, RuleEngine,
     ScanOrchestrator, TargetResolver,
 };
-use paraclete_plugin_protocol::{PluginExecutorError, PluginRequest, PluginResponse};
 use paraclete_types::{Dataset, Finding, ScanTarget};
+use parqonaut_plugin_protocol::{PluginExecutorError, PluginRequest, PluginResponse};
 
 struct LocalPathResolver;
 

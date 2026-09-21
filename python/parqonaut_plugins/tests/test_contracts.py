@@ -7,11 +7,11 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from paraclete_plugins.contracts import (
+from parqonaut_plugins.contracts import (
     DataFormat,
     FindingSeverity,
     PluginExecutionPhase,
-    PluginFinding,
+    PluginFindingContribution,
     PluginManifest,
     PluginResult,
     PluginScanContext,
@@ -26,21 +26,26 @@ def _fixture(name: str) -> Path:
 def test_sample_manifest_loads() -> None:
     raw = json.loads(_fixture("sample_manifest.json").read_text())
     m = PluginManifest.model_validate(raw)
-    assert m.name == "example_rules"
-    assert DataFormat.PARQUET in m.capabilities.supported_formats
-    assert PluginExecutionPhase.POST_RULES in m.capabilities.supported_phases
+    assert m.name == "example-rules"
+    assert m.protocol_version == 1
+    assert m.capabilities.scan is not None
+    assert DataFormat.PARQUET in m.capabilities.scan.supported_formats
+    assert PluginExecutionPhase.POST_RULES in m.capabilities.scan.supported_phases
 
 
 def test_manifest_rejects_blank_name() -> None:
     with pytest.raises(ValidationError):
         PluginManifest.model_validate(
             {
+                "protocol_version": 1,
                 "name": "  ",
                 "version": "1",
                 "entrypoint": "x:y",
                 "capabilities": {
-                    "supported_formats": ["parquet"],
-                    "supported_phases": ["pre_scan"],
+                    "scan": {
+                        "supported_formats": ["parquet"],
+                        "supported_phases": ["pre_scan"],
+                    }
                 },
             }
         )
@@ -49,7 +54,7 @@ def test_manifest_rejects_blank_name() -> None:
 def test_plugin_result_roundtrip() -> None:
     result = PluginResult(
         findings=[
-            PluginFinding(
+            PluginFindingContribution(
                 code="CUSTOM_CODE",
                 severity=FindingSeverity.LOW,
                 summary="hello",

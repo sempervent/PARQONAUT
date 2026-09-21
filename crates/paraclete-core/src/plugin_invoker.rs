@@ -1,3 +1,3 @@
-//! Re-export of the plugin execution trait from `paraclete-plugin-protocol`.
+//! Re-export of the plugin execution trait from `parqonaut-plugin-protocol`.
 
-pub use paraclete_plugin_protocol::PluginExecutor;
+pub use parqonaut_plugin_protocol::PluginExecutor;

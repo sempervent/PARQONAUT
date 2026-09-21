@@ -5,7 +5,7 @@ v0.9 converges **in-process** columnar execution. Plugin loading is planned for 
 | Surface | Crate | Notes |
 |---------|-------|-------|
 | `BatchTransform` (batch in → batch out) | `parqonaut-columnar` / transform engine | Natural hook for user-defined row transforms in fused pipelines |
-| Scan / finding providers | `paraclete-core`, plugins protocol | Already versioned via `paraclete-plugin-protocol` |
+| Scan / finding providers | `paraclete-core`, `parqonaut-plugin-host` | Versioned via `parqonaut-plugin-protocol` (v1) |
 | Schema policy extension | `parqonaut-columnar::schema`, repair `SchemaPolicy` | Widen/stringify and repair safety must stay aligned |
 | Post-scan analyzers | `paraclete-report` | Read-only over scan artifacts |
 

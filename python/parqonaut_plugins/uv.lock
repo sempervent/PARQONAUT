@@ -39,8 +39,8 @@ wheels = [
 ]
 
 [[package]]
-name = "paraclete-plugins"
-version = "0.1.0"
+name = "parqonaut-plugins"
+version = "0.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },

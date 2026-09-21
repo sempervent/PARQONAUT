@@ -1,4 +1,4 @@
-use paraclete_plugin_protocol::PluginManifest;
+use parqonaut_plugin_protocol::PluginManifest;
 
 #[test]
 fn plugin_manifest_schema_serializes() {
