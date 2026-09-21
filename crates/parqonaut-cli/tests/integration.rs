@@ -19,7 +19,7 @@ fn prqnt_version_and_help() {
         .arg("--version")
         .assert()
         .success()
-        .stdout(predicates::str::contains("0.9.1"));
+        .stdout(predicates::str::contains("0.9.2"));
     Command::cargo_bin("prqnt")
         .unwrap()
         .arg("--help")

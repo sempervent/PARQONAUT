@@ -2,6 +2,16 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.9.2] - 2026-09-21
+
+S3 multipart correctness at the default 5 MiB part boundary.
+
+### Fixed
+
+- **`MultipartAsyncWrite`**: do not re-buffer bytes when `poll_write` returns `Poll::Pending` during part flush; split full parts at the configured threshold and verify byte accounting on shutdown.
+
+[0.9.2]: https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.2
+
 ## [0.9.1] - 2026-09-20
 
 Remote pipeline completeness: bounded streaming S3 publication and full local/S3 routing for convert, transform, and fused specs.
