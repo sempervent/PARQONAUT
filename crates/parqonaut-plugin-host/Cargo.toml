@@ -8,7 +8,20 @@ description = "PARQONAUT plugin discovery, subprocess execution, and resource po
 
 [dependencies]
 parqonaut-plugin-protocol = { path = "../parqonaut-plugin-protocol" }
+paraclete-types = { path = "../paraclete-types" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+semver = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+walkdir = { workspace = true }
+which = "7.0"
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+serde_json = { workspace = true }
+camino = { workspace = true }
+paraclete-types = { path = "../paraclete-types" }

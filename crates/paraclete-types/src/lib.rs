@@ -16,6 +16,7 @@ mod fingerprint;
 mod format;
 mod job;
 mod job_recovery;
+mod plugin;
 mod report;
 mod run;
 mod scan;
@@ -40,6 +41,7 @@ pub use fingerprint::sort_json_value;
 pub use format::{DataFormat, FormatSupportTier};
 pub use job::{JobErrorCode, JobId, JobKind, JobResultRef, JobStatus};
 pub use job_recovery::JobRecoveryPolicy;
+pub use plugin::{PluginExecutionRecord, ScanPluginMetadata};
 pub use report::{DatasetSummary, FormatSummary, ReportMetadata, ScanReport, ScanSummary};
 pub use run::{
     apply_redaction_policy, diff_reports, FindingDelta, RedactionPolicy, RetentionPolicy, RunDiff,

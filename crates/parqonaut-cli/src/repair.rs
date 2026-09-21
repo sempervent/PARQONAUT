@@ -309,5 +309,6 @@ pub(crate) fn map_application_error(e: ApplicationError) -> Box<dyn std::error::
         ApplicationError::BatchFailed(msg) => msg.into(),
         ApplicationError::Conflict(msg) => msg.into(),
         ApplicationError::Internal(msg) => msg.into(),
+        ApplicationError::PluginHost(msg) => msg.into(),
     }
 }

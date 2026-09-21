@@ -16,6 +16,9 @@ paraclete-types = { path = "../paraclete-types" }
 parqonaut-repair = { path = "../parqonaut-repair" }
 parqonaut-storage = { path = "../parqonaut-storage" }
 parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
+parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
+parqonaut-plugin-protocol = { workspace = true }
+dirs = "6"
 camino.workspace = true
 serde.workspace = true
 serde_json.workspace = true

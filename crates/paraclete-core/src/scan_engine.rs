@@ -18,6 +18,7 @@ use crate::scan_findings::{
     multiple_datasets_finding, parquet_read_failed_finding, scan_truncated_finding,
     unpartitioned_collection_finding,
 };
+use crate::scan_plugins::ScanPluginHost;
 use crate::scan_rules::evaluate_scan_rules;
 use crate::schema_findings::{
     grouping_ambiguous_from_notes, inspection_partial_finding,
@@ -25,6 +26,8 @@ use crate::schema_findings::{
 };
 use crate::shallow_inspect::{inspect_csv_shallow, inspect_json_like_shallow};
 use crate::CoreError;
+use paraclete_types::{PluginExecutionRecord, ScanPluginMetadata};
+use parqonaut_plugin_protocol::{PluginExecutionPhase, PluginScanContext};
 
 /// Single entrypoint for the local scan pipeline.
 #[derive(Debug, Default, Clone, Copy)]
@@ -38,14 +41,40 @@ impl ScanEngine {
 
     /// Executes a scan and returns a validated [`ScanReport`].
     pub fn run(request: &ScanRequest) -> Result<ScanReport, CoreError> {
+        Self::run_with_plugins(request, None)
+    }
+
+    /// Local scan with optional analyzer plugins (explicit selection only).
+    pub fn run_with_plugins(
+        request: &ScanRequest,
+        plugins: Option<&dyn ScanPluginHost>,
+    ) -> Result<ScanReport, CoreError> {
         let plan = resolve_local_scan_plan(&request.target, &request.options)?;
         let mut assets_sorted: Vec<ResolvedAsset> = plan.assets.clone();
         assets_sorted.sort_by(|a, b| a.path.cmp(&b.path));
+
+        let mut plugin_executions: Vec<PluginExecutionRecord> = Vec::new();
+        let mut pre_scan_findings: Vec<paraclete_types::Finding> = Vec::new();
+        if let Some(host) = plugins {
+            if !request.options.requested_plugins.is_empty() {
+                let ctx = plugin_context(
+                    request,
+                    assets_sorted.iter().map(|a| a.path.to_string()).collect(),
+                    BTreeMap::new(),
+                    Vec::new(),
+                );
+                let (extra, runs) =
+                    host.run_phase(PluginExecutionPhase::PreScan, ctx, &BTreeSet::new())?;
+                plugin_executions.extend(runs);
+                pre_scan_findings.extend(extra);
+            }
+        }
 
         let scan_truncated = plan.truncated;
         let mut parquet_inspections: BTreeMap<Utf8PathBuf, _> = BTreeMap::new();
         let mut parquet_failures: Vec<(Utf8PathBuf, CoreError)> = Vec::new();
         let mut extra_findings: Vec<paraclete_types::Finding> = Vec::new();
+        extra_findings.extend(pre_scan_findings);
 
         let mut asset_records: Vec<AssetRecord> = Vec::new();
         let mut skipped_paths: Vec<Utf8PathBuf> = Vec::new();
@@ -191,9 +220,53 @@ impl ScanEngine {
             }
         }
 
+        if let Some(host) = plugins {
+            if !request.options.requested_plugins.is_empty() {
+                let mut inventory_summary = BTreeMap::new();
+                inventory_summary.insert("dataset_count".into(), serde_json::json!(datasets.len()));
+                inventory_summary
+                    .insert("discovered_assets".into(), serde_json::json!(assets_sorted.len()));
+                let ctx = plugin_context(
+                    request,
+                    assets_sorted.iter().map(|a| a.path.to_string()).collect(),
+                    inventory_summary,
+                    finding_summaries(&extra_findings),
+                );
+                let (extra, runs) = host.run_phase(
+                    PluginExecutionPhase::PostInventory,
+                    ctx,
+                    &evidence_id_set(&extra_findings),
+                )?;
+                plugin_executions.extend(runs);
+                extra_findings.extend(extra);
+            }
+        }
+
         let inspection_list: Vec<_> = parquet_inspections.values().cloned().collect();
         let mut findings = evaluate_scan_rules(&plan, &assets_sorted, &inspection_list, &datasets);
-        findings.extend(extra_findings);
+        findings.extend(extra_findings.clone());
+
+        if let Some(host) = plugins {
+            if !request.options.requested_plugins.is_empty() {
+                let mut inventory_summary = BTreeMap::new();
+                inventory_summary.insert("dataset_count".into(), serde_json::json!(datasets.len()));
+                inventory_summary
+                    .insert("discovered_assets".into(), serde_json::json!(assets_sorted.len()));
+                let ctx = plugin_context(
+                    request,
+                    assets_sorted.iter().map(|a| a.path.to_string()).collect(),
+                    inventory_summary,
+                    finding_summaries(&findings),
+                );
+                let (extra, runs) = host.run_phase(
+                    PluginExecutionPhase::PostRules,
+                    ctx,
+                    &evidence_id_set(&findings),
+                )?;
+                plugin_executions.extend(runs);
+                findings.extend(extra);
+            }
+        }
         findings.sort_by(|a, b| a.code.as_str().cmp(b.code.as_str()));
 
         let format_summaries = summarize_formats(&assets_sorted);
@@ -229,6 +302,19 @@ impl ScanEngine {
             asset_records.iter().filter(|r| r.dataset_id.is_some()).count() as u64;
 
         let partial_inspection = failed > 0 || scan_truncated;
+        let plugin_metadata = if request.options.requested_plugins.is_empty() {
+            None
+        } else {
+            let resolved = plugins
+                .map(|h| h.resolved_plugin_order().to_vec())
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| request.options.requested_plugins.clone());
+            Some(ScanPluginMetadata {
+                requested: request.options.requested_plugins.clone(),
+                resolved_order: resolved,
+                executions: plugin_executions,
+            })
+        };
         let report = ScanReport {
             request: request.clone(),
             metadata: ReportMetadata {
@@ -256,10 +342,43 @@ impl ScanEngine {
             dataset_summaries,
             format_summaries,
             findings,
+            plugin_metadata,
         };
         validate_report(&report).map_err(|e| CoreError::ReportValidation(e.to_string()))?;
         Ok(report)
     }
+}
+
+fn plugin_context(
+    request: &ScanRequest,
+    discovered_files: Vec<String>,
+    inventory_summary: BTreeMap<String, serde_json::Value>,
+    builtin_finding_summaries: Vec<serde_json::Value>,
+) -> PluginScanContext {
+    PluginScanContext {
+        request: request.clone(),
+        discovered_files,
+        inventory_summary,
+        builtin_finding_summaries,
+        hints: BTreeMap::new(),
+    }
+}
+
+fn finding_summaries(findings: &[paraclete_types::Finding]) -> Vec<serde_json::Value> {
+    findings
+        .iter()
+        .map(|f| {
+            serde_json::json!({
+                "code": f.code.as_str(),
+                "severity": format!("{:?}", f.severity).to_ascii_lowercase(),
+                "summary": f.summary,
+            })
+        })
+        .collect()
+}
+
+fn evidence_id_set(findings: &[paraclete_types::Finding]) -> BTreeSet<String> {
+    findings.iter().flat_map(|f| f.evidence.iter().map(|e| e.id.to_string())).collect()
 }
 
 /// Back-compat alias for legacy call sites.

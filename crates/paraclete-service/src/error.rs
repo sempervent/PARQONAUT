@@ -199,6 +199,7 @@ impl From<ApplicationError> for AppError {
                 AppError::ScanFailed(m)
             }
             ApplicationError::Internal(m) => AppError::Internal(m),
+            ApplicationError::PluginHost(m) => AppError::InvalidRequest(m),
         }
     }
 }

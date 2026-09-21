@@ -14,8 +14,12 @@ fn deterministic_report() -> ScanReport {
     let target = ScanTarget::LocalDirectory { path: camino::Utf8PathBuf::from("fixtures/csv") };
     let mut request = ScanRequest::new(target, ScanProfile::Quick);
     request.scan_id = scan_id;
-    request.options =
-        ScanOptions { mode: ScanMode::Full, max_files: 100_000, format_hints: Vec::new() };
+    request.options = ScanOptions {
+        mode: ScanMode::Full,
+        max_files: 100_000,
+        format_hints: Vec::new(),
+        requested_plugins: Vec::new(),
+    };
     ScanReport {
         request: request.clone(),
         metadata: ReportMetadata {
@@ -43,6 +47,7 @@ fn deterministic_report() -> ScanReport {
         dataset_summaries: Vec::new(),
         format_summaries: Vec::new(),
         findings: Vec::new(),
+        plugin_metadata: None,
     }
 }
 

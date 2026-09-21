@@ -312,6 +312,7 @@ async fn scan_remote_dataset<B: StorageBackend>(
         dataset_summaries,
         format_summaries,
         findings,
+        plugin_metadata: None,
     };
     validate_report(&report).map_err(|e| RepairError::ScanFailed(e.to_string()))?;
     Ok(report)

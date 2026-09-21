@@ -1245,6 +1245,52 @@
         ],
         "type": "object"
       },
+      "PluginExecutionRecord": {
+        "description": "One plugin invocation during a scan phase.",
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "duration_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "findings_contributed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "digest",
+          "phase",
+          "duration_ms",
+          "status",
+          "findings_contributed"
+        ],
+        "type": "object"
+      },
       "ProbeDepth": {
         "enum": [
           "full_within_cap",
@@ -1764,8 +1810,44 @@
           },
           "mode": {
             "$ref": "#/components/schemas/ScanMode"
+          },
+          "requested_plugins": {
+            "description": "Explicitly requested analyzer plugins (empty = run none).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
+        "type": "object"
+      },
+      "ScanPluginMetadata": {
+        "description": "Ordered plugin selection and per-invocation outcomes.",
+        "properties": {
+          "executions": {
+            "items": {
+              "$ref": "#/components/schemas/PluginExecutionRecord"
+            },
+            "type": "array"
+          },
+          "requested": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resolved_order": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "requested",
+          "resolved_order",
+          "executions"
+        ],
         "type": "object"
       },
       "ScanProfile": {
@@ -1814,6 +1896,16 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ReportMetadata"
+          },
+          "plugin_metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScanPluginMetadata"
+              }
+            ]
           },
           "request": {
             "$ref": "#/components/schemas/ScanRequest"
@@ -2351,7 +2443,7 @@
       "name": "MIT"
     },
     "title": "PARQONAUT API",
-    "version": "0.9.1"
+    "version": "0.10.0"
   },
   "openapi": "3.1.0",
   "paths": {

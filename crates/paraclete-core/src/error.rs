@@ -21,4 +21,6 @@ pub enum CoreError {
     Inspect(String),
     #[error("report validation failed: {0}")]
     ReportValidation(String),
+    #[error("plugin host error: {0}")]
+    PluginHost(String),
 }

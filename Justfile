@@ -48,6 +48,28 @@ naming-check:
 columnar-check:
     bash scripts/columnar-check.sh
 
+plugin-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PARQONAUT_PLUGIN_ROOTS="${PARQONAUT_PLUGIN_ROOTS:-$PWD/fixtures/plugins}"
+    export PARQONAUT_PLUGIN_SDK_PATH="${PARQONAUT_PLUGIN_SDK_PATH:-$PWD/python/parqonaut_plugins/src}"
+    cargo test -p parqonaut-plugin-protocol
+    cargo test -p parqonaut-plugin-host
+    cargo test -p parqonaut-cli --test plugin_integration
+    cd python/parqonaut_plugins
+    uv sync --frozen
+    uv run python -m pytest
+
+plugin-demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PARQONAUT_PLUGIN_ROOTS="$PWD/fixtures/plugins"
+    export PARQONAUT_PLUGIN_SDK_PATH="$PWD/python/parqonaut_plugins/src"
+    cargo run -p parqonaut-cli --bin prqnt -- plugin list
+    cargo run -p parqonaut-cli --bin prqnt -- plugin inspect example-rules
+    cargo run -p parqonaut-cli --bin prqnt -- plugin validate fixtures/plugins/example-rules
+    cargo run -p parqonaut-cli --bin prqnt -- scan fixtures/csv --plugin example-rules
+
 ci: fmt-check lint test naming-check columnar-check
 
 api-demo:

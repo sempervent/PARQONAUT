@@ -18,6 +18,7 @@ mod plugin_invoker;
 mod rule_engine;
 mod scan_engine;
 mod scan_findings;
+mod scan_plugins;
 mod scan_rules;
 mod schema_findings;
 mod shallow_inspect;
@@ -41,6 +42,7 @@ pub use scan_engine::{LocalScanEngine, ScanEngine};
 pub use scan_findings::{
     multiple_datasets_finding, parquet_read_failed_finding, unpartitioned_collection_finding,
 };
+pub use scan_plugins::ScanPluginHost;
 pub use scan_rules::evaluate_scan_rules;
 pub use schema_findings::grouping_ambiguous_from_notes;
 pub use target_resolution::TargetResolver;

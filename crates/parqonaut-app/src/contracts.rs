@@ -17,6 +17,8 @@ pub struct ScanRequest {
     pub schema_version: u32,
     pub location: DatasetLocation,
     pub profile: ScanProfile,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugins: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -153,7 +155,7 @@ pub struct BatchVerifyResult {
 
 impl ScanRequest {
     pub fn new(location: DatasetLocation, profile: ScanProfile) -> Self {
-        Self { schema_version: APP_REQUEST_SCHEMA_VERSION, location, profile }
+        Self { schema_version: APP_REQUEST_SCHEMA_VERSION, location, profile, plugins: Vec::new() }
     }
 }
 

@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::{
     contract_schema_version, report_format_version, AssetRecord, ContractSchemaVersion, DataFormat,
-    Dataset, Finding, ReportFormatVersion, ScanRequest,
+    Dataset, Finding, ReportFormatVersion, ScanPluginMetadata, ScanRequest,
 };
 
 /// Aggregate statistics for a completed scan.
@@ -77,6 +77,8 @@ pub struct ScanReport {
     pub format_summaries: Vec<FormatSummary>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub findings: Vec<Finding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_metadata: Option<ScanPluginMetadata>,
 }
 
 impl ScanReport {
@@ -113,6 +115,7 @@ impl ScanReport {
             dataset_summaries: Vec::new(),
             format_summaries: Vec::new(),
             findings: Vec::new(),
+            plugin_metadata: None,
         }
     }
 }

@@ -28,6 +28,8 @@ pub enum ApplicationError {
     StaleSource(String),
     #[error("internal error: {0}")]
     Internal(String),
+    #[error("plugin error: {0}")]
+    PluginHost(String),
 }
 
 impl From<CoreError> for ApplicationError {

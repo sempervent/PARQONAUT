@@ -1,0 +1,12 @@
+{
+  "protocol_version": 1,
+  "name": "leak-env",
+  "version": "0.1.0",
+  "entrypoint": "leak_env:analyze",
+  "capabilities": {
+    "scan": {
+      "supported_formats": ["parquet"],
+      "supported_phases": ["post_rules"]
+    }
+  }
+}

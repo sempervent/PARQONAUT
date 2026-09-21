@@ -50,6 +50,9 @@ pub struct ScanOptions {
     /// Optional hint to restrict detection to a subset of formats.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub format_hints: Vec<DataFormat>,
+    /// Explicitly requested analyzer plugins (empty = run none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requested_plugins: Vec<String>,
 }
 
 fn default_max_files() -> u64 {
@@ -58,7 +61,12 @@ fn default_max_files() -> u64 {
 
 impl Default for ScanOptions {
     fn default() -> Self {
-        Self { mode: ScanMode::Full, max_files: default_max_files(), format_hints: Vec::new() }
+        Self {
+            mode: ScanMode::Full,
+            max_files: default_max_files(),
+            format_hints: Vec::new(),
+            requested_plugins: Vec::new(),
+        }
     }
 }
 

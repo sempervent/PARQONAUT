@@ -6,6 +6,7 @@ pub mod batch;
 pub mod contracts;
 pub mod error;
 pub mod location;
+pub mod plugins;
 pub mod policy;
 pub mod repair;
 pub mod scan;
@@ -45,7 +46,8 @@ impl ParqonautApp {
     }
 
     pub async fn scan(&self, req: ScanRequest) -> Result<ScanResult, ApplicationError> {
-        let app_req = AppScanRequest { location: req.location, profile: req.profile };
+        let app_req =
+            AppScanRequest { location: req.location, profile: req.profile, plugins: req.plugins };
         let report = scan::run_scan(&app_req, &self.policy).await?;
         Ok(ScanResult { report })
     }
