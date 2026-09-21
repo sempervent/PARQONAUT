@@ -81,3 +81,35 @@ fn secret_canaries_not_visible_to_plugin() {
     assert!(!blob.contains("CANARY_GITHUB"));
     assert!(!blob.contains("CANARY_DB"));
 }
+
+#[test]
+fn bad_json_stdout_maps_to_protocol_violation() {
+    let catalog = PluginCatalog::discover_from_roots(&[fixture_plugins_root()]).unwrap();
+    let host = PluginHost::new(catalog, runtime());
+    let resolved = host.resolve_plugins(&["bad-json".into()]).unwrap();
+    let req = ScanRequest::new(
+        ScanTarget::LocalDirectory { path: camino::Utf8PathBuf::from(".") },
+        ScanProfile::Quick,
+    );
+    let ctx = PluginScanContext {
+        request: req,
+        discovered_files: vec![],
+        inventory_summary: Default::default(),
+        builtin_finding_summaries: vec![],
+        hints: Default::default(),
+    };
+    let err = host
+        .run_phase(
+            &resolved,
+            PluginExecutionPhase::PostRules,
+            ctx,
+            &Default::default(),
+            &CancelToken::new(),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        parqonaut_plugin_host::PluginHostError::ProtocolViolation(_)
+            | parqonaut_plugin_host::PluginHostError::ProcessFailed { .. }
+    ));
+}
