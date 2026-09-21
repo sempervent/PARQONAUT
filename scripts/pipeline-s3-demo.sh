@@ -73,7 +73,7 @@ aws s3 cp "$LOCAL/src/b.csv" "${S3_SRC}/b.csv" --endpoint-url "$PARQONAUT_S3_END
 
 echo "=== stream convert (schema widen) → S3 ==="
 "$PRQNT" convert "${S3_SRC}/" \
-  -o "$S3_UNIFIED" --out-format parquet --schema-conflicts widen --no-progress
+  -o "$S3_UNIFIED" --out-format parquet --schema-conflicts widen --quiet
 
 echo "=== fused transform (rewrite → partition) on S3 ==="
 cat >"$LOCAL/spec.yaml" <<YAML
@@ -108,6 +108,6 @@ if [[ "${partitions:-0}" -lt 2 ]]; then
 fi
 
 echo "=== scan partitioned output ==="
-"$PRQNT" scan "${S3_OUT}/" --no-progress | grep -q region
+"$PRQNT" scan "${S3_OUT}/" --quiet | grep -q region
 
 echo "pipeline-s3-demo: PASS (${partitions} partition files under ${S3_OUT})"
