@@ -4,6 +4,7 @@ mod fused_execute;
 mod parse;
 mod plan;
 mod plugin;
+mod plugin_run;
 mod types;
 
 pub use execute::*;
@@ -13,4 +14,5 @@ pub use plan::{
     FusedOperation, FusedPlanSegment, ResolvedStep, StorageKind,
 };
 pub use plugin::PinnedBatchPlugin;
+pub use plugin_run::TransformRunContext;
 pub use types::*;

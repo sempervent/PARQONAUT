@@ -17,6 +17,7 @@ use crate::engine::{
 use crate::error::{ParqknifeError, Result};
 use crate::remote::{merge_parquet_storage, rewrite_parquet_storage, run_io_runtime};
 use crate::spec::fused_chain::FusedTransformChain;
+use crate::spec::TransformRunContext;
 use crate::{FusedOperation, FusedPlanSegment};
 
 pub fn split_parquet_routed(
@@ -315,25 +316,29 @@ fn map_columnar(e: ColumnarError) -> ParqknifeError {
 pub fn execute_fused_segment_routed(
     io: &ColumnarPipelineIo,
     fused: &FusedPlanSegment,
+    run: &TransformRunContext,
 ) -> Result<(u64, u64)> {
     let primary_in = fused.inputs.first().map(String::as_str).unwrap_or("");
     ensure_s3_for_remote(primary_in, &fused.output)?;
     let io = io.clone();
     let fused = fused.clone();
+    let run = run.clone();
     run_io_runtime(move |handle| {
-        handle.block_on(async move { execute_fused_segment_routed_async(&io, &fused).await })
+        handle.block_on(async move { execute_fused_segment_routed_async(&io, &fused, &run).await })
     })
 }
 
 async fn execute_fused_segment_routed_async(
     io: &ColumnarPipelineIo,
     fused: &FusedPlanSegment,
+    run: &TransformRunContext,
 ) -> Result<(u64, u64)> {
     let has_plugin = fused.ops.iter().any(|op| matches!(op, FusedOperation::Plugin(_)));
     let chain = if has_plugin {
         Some(std::sync::Arc::new(std::sync::Mutex::new(FusedTransformChain::from_segment(
             fused,
             &fused.execution_id,
+            run.clone(),
         )?)))
     } else {
         None

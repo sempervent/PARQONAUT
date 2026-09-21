@@ -14,6 +14,7 @@ use crate::engine::Pipeline;
 use crate::error::{ParqknifeError, Result};
 use crate::spec::fused_chain::FusedTransformChain;
 use crate::spec::plan::{CompiledSegment, ExecutablePlan, FusedOperation, FusedPlanSegment};
+use crate::spec::plugin_run::TransformRunContext;
 use crate::storage_routing::execute_fused_segment_routed;
 use arrow::record_batch::RecordBatch;
 
@@ -23,10 +24,11 @@ pub fn execute_fused_plan(
 ) -> Result<(u64, u64)> {
     let mut files_read = 0u64;
     let mut files_written = 0u64;
+    let run = TransformRunContext::noop();
     for segment in &plan.segments {
         match segment {
             CompiledSegment::Fused(fused) => {
-                let (w, r) = execute_fused_segment(fused)?;
+                let (w, r) = execute_fused_segment(fused, &run)?;
                 files_read += r;
                 files_written += w;
                 if fused.is_intermediate {
@@ -44,7 +46,10 @@ pub fn execute_fused_plan(
     Ok((files_read, files_written))
 }
 
-pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
+pub fn execute_fused_segment(
+    fused: &FusedPlanSegment,
+    run: &TransformRunContext,
+) -> Result<(u64, u64)> {
     let has_plugin = fused.ops.iter().any(|op| matches!(op, FusedOperation::Plugin(_)));
     let routing = has_plugin
         || fused.inputs.iter().any(|i| location_is_remote(i))
@@ -55,11 +60,11 @@ pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
             &fused.output,
         )?;
         let io = columnar_io_from_env()?;
-        return execute_fused_segment_routed(&io, fused);
+        return execute_fused_segment_routed(&io, fused, run);
     }
 
     let chain = if has_plugin {
-        Some(FusedTransformChain::from_segment(fused, &fused.execution_id)?)
+        Some(FusedTransformChain::from_segment(fused, &fused.execution_id, run.clone())?)
     } else {
         None
     };

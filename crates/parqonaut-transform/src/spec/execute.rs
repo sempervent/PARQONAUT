@@ -6,6 +6,7 @@ use crate::error::{ParqknifeError, Result};
 use crate::io::resolve_inputs;
 use crate::spec::fused_execute::execute_fused_segment;
 use crate::spec::plan::{compile_plan, CompiledSegment, ExecutablePlan, ResolvedStep};
+use crate::spec::plugin_run::TransformRunContext;
 use crate::spec::types::{Compression, Operation, Spec};
 use parqonaut_columnar::IntermediateIoCounters;
 use parqonaut_workflow::{TransformReport, TRANSFORM_SPEC_SCHEMA_VERSION};
@@ -60,17 +61,23 @@ pub fn execute_spec(spec: &Spec) -> Result<TransformReport> {
 }
 
 pub fn execute_plan(plan: &ExecutablePlan) -> Result<TransformReport> {
+    execute_plan_with_run(plan, &TransformRunContext::noop())
+}
+
+pub fn execute_plan_with_run(
+    plan: &ExecutablePlan,
+    run: &TransformRunContext,
+) -> Result<TransformReport> {
     let started = Instant::now();
     let mut completed = 0u64;
     let warnings: Vec<String> = Vec::new();
     let mut files_read = 0u64;
     let mut files_written = 0u64;
     let mut intermediate_io = IntermediateIoCounters::default();
-
     for segment in &plan.segments {
         match segment {
             CompiledSegment::Fused(fused) => {
-                let (written, read) = execute_fused_segment(fused)?;
+                let (written, read) = execute_fused_segment(fused, &run)?;
                 files_read += read;
                 files_written += written;
                 if fused.is_intermediate {
@@ -135,7 +142,7 @@ pub fn execute_plan(plan: &ExecutablePlan) -> Result<TransformReport> {
         warnings,
         failures: vec![],
         plan: None,
-        plugin_executions: vec![],
+        plugin_executions: run.take_plugin_executions(),
     })
 }
 

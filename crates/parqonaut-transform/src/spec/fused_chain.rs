@@ -8,6 +8,7 @@ use crate::engine::Pipeline;
 use crate::error::{ParqknifeError, Result};
 use crate::spec::plan::{FusedOperation, FusedPlanSegment};
 use crate::spec::plugin::{map_plugin_err, plugin_runtime_config, verify_pinned_plugin};
+use crate::spec::plugin_run::TransformRunContext;
 
 #[derive(Debug, Clone, Copy)]
 enum ExecOp {
@@ -19,14 +20,21 @@ pub struct FusedTransformChain {
     exec_ops: Vec<ExecOp>,
     pipelines: Vec<Pipeline>,
     bridges: Vec<BatchPluginBridge>,
+    plugin_stage_ids: Vec<usize>,
+    run: TransformRunContext,
 }
 
 impl FusedTransformChain {
-    pub fn from_segment(fused: &FusedPlanSegment, execution_id: &str) -> Result<Self> {
+    pub fn from_segment(
+        fused: &FusedPlanSegment,
+        execution_id: &str,
+        run: TransformRunContext,
+    ) -> Result<Self> {
         let runtime = plugin_runtime_config();
         let policy = runtime.batch_policy.clone();
         let mut pipelines = Vec::new();
         let mut bridges = Vec::new();
+        let mut plugin_stage_ids = Vec::new();
         let mut exec_ops = Vec::new();
         let mut i = 0;
         while i < fused.ops.len() {
@@ -39,6 +47,7 @@ impl FusedTransformChain {
                 }
                 FusedOperation::Plugin(pinned) => {
                     let entry = verify_pinned_plugin(pinned)?;
+                    let stage = run.register_plugin(pinned.clone());
                     let bridge = BatchPluginBridge::start(
                         &entry,
                         pinned.config.clone(),
@@ -50,13 +59,14 @@ impl FusedTransformChain {
                     )
                     .map_err(map_plugin_err)?;
                     exec_ops.push(ExecOp::Plugin(bridges.len()));
+                    plugin_stage_ids.push(stage);
                     bridges.push(bridge);
                     i += 1;
                 }
                 FusedOperation::Partition { .. } | FusedOperation::Merge { .. } => break,
             }
         }
-        Ok(Self { exec_ops, pipelines, bridges })
+        Ok(Self { exec_ops, pipelines, bridges, plugin_stage_ids, run })
     }
 
     pub fn apply(&mut self, batch: RecordBatch) -> Result<RecordBatch> {
@@ -65,7 +75,19 @@ impl FusedTransformChain {
             match op {
                 ExecOp::Host(idx) => b = self.pipelines[*idx].execute(b)?,
                 ExecOp::Plugin(idx) => {
-                    b = self.bridges[*idx].transform(b).map_err(map_plugin_err)?;
+                    let in_rows = b.num_rows() as u64;
+                    b = match self.bridges[*idx].transform(b) {
+                        Ok(out) => out,
+                        Err(e) => {
+                            self.run.fail_plugin(self.plugin_stage_ids[*idx], "plugin_error");
+                            return Err(map_plugin_err(e));
+                        }
+                    };
+                    self.run.on_plugin_batch(
+                        self.plugin_stage_ids[*idx],
+                        in_rows,
+                        b.num_rows() as u64,
+                    );
                 }
             }
         }
@@ -73,11 +95,18 @@ impl FusedTransformChain {
     }
 
     pub fn finish(&mut self) -> Result<()> {
-        for bridge in &mut self.bridges {
-            bridge.finish().map_err(map_plugin_err)?;
+        for (idx, bridge) in self.bridges.iter_mut().enumerate() {
+            if bridge.finish().map_err(map_plugin_err).is_ok() {
+                self.run.complete_plugin(self.plugin_stage_ids[idx]);
+            }
         }
         self.bridges.clear();
+        self.plugin_stage_ids.clear();
         Ok(())
+    }
+
+    pub fn run_context(&self) -> &TransformRunContext {
+        &self.run
     }
 
     pub fn has_plugin(&self) -> bool {
