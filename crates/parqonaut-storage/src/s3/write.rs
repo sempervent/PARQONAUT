@@ -35,6 +35,10 @@ struct MultipartState {
     buffer: Vec<u8>,
     completed: bool,
     metrics: Arc<StorageMetricsCollector>,
+    /// Bytes accepted from AsyncWrite (each logical write counted once).
+    bytes_accepted: u64,
+    /// Sum of bytes sent in UploadPart / PutObject bodies.
+    bytes_uploaded: u64,
 }
 
 impl MultipartState {
@@ -101,6 +105,7 @@ impl MultipartState {
             .map_err(|e| map_sdk_error(&self.location(), e))?;
 
         self.metrics.record_multipart_part(len as u64);
+        self.bytes_uploaded += len as u64;
         self.parts.push(
             CompletedPart::builder()
                 .part_number(part_number)
@@ -111,14 +116,16 @@ impl MultipartState {
     }
 
     async fn flush_buffer(&mut self, force: bool) -> Result<(), StorageError> {
-        if self.buffer.is_empty() {
-            return Ok(());
+        let part_size = part_size_bytes();
+        while self.buffer.len() >= part_size {
+            let chunk: Vec<u8> = self.buffer.drain(..part_size).collect();
+            self.upload_part(Bytes::from(chunk)).await?;
         }
-        if !force && self.buffer.len() < part_size_bytes() {
-            return Ok(());
+        if force && !self.buffer.is_empty() {
+            let data = Bytes::from(std::mem::take(&mut self.buffer));
+            self.upload_part(data).await?;
         }
-        let data = Bytes::from(std::mem::take(&mut self.buffer));
-        self.upload_part(data).await
+        Ok(())
     }
 
     async fn complete(&mut self) -> Result<(), StorageError> {
@@ -126,6 +133,7 @@ impl MultipartState {
         if self.parts.is_empty() && !self.buffer.is_empty() && self.buffer.len() < part_size {
             let data = Bytes::from(std::mem::take(&mut self.buffer));
             let location = self.location();
+            let len = data.len();
             self.client
                 .put_object()
                 .bucket(&self.bucket)
@@ -134,8 +142,9 @@ impl MultipartState {
                 .send()
                 .await
                 .map_err(|e| map_sdk_error(&location, e))?;
+            self.bytes_uploaded += len as u64;
             self.completed = true;
-            self.metrics.record_put(0);
+            self.metrics.record_put(len as u64);
             return Ok(());
         }
 
@@ -143,8 +152,19 @@ impl MultipartState {
         let upload_id = self.upload_id.as_ref().ok_or_else(|| StorageError::Other {
             message: "multipart complete without upload_id".into(),
         })?;
-        let upload =
-            CompletedMultipartUpload::builder().set_parts(Some(self.parts.clone())).build();
+        let parts = self.parts.clone();
+        for (i, part) in parts.iter().enumerate() {
+            let expected = (i + 1) as i32;
+            let num = part.part_number().unwrap_or(0);
+            if num != expected {
+                return Err(StorageError::Other {
+                    message: format!(
+                        "multipart part numbering gap: expected {expected}, got {num}"
+                    ),
+                });
+            }
+        }
+        let upload = CompletedMultipartUpload::builder().set_parts(Some(parts)).build();
         if let Err(e) = self
             .client
             .complete_multipart_upload()
@@ -175,6 +195,9 @@ type PendingUpload = Pin<Box<dyn Future<Output = Result<(), StorageError>> + Sen
 pub(crate) struct MultipartAsyncWrite {
     state: Arc<Mutex<MultipartState>>,
     pending: Option<PendingUpload>,
+    /// When `poll_write` returns Pending after buffering `n` bytes, retry must not re-append.
+    staged_write_len: Option<usize>,
+    shutdown_started: bool,
 }
 
 impl MultipartAsyncWrite {
@@ -195,8 +218,12 @@ impl MultipartAsyncWrite {
                 buffer: Vec::new(),
                 completed: false,
                 metrics,
+                bytes_accepted: 0,
+                bytes_uploaded: 0,
             })),
             pending: None,
+            staged_write_len: None,
+            shutdown_started: false,
         })
     }
 
@@ -228,12 +255,21 @@ impl AsyncWrite for MultipartAsyncWrite {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
+        if self.shutdown_started {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "write after shutdown",
+            )));
+        }
         if let Poll::Ready(result) = Self::poll_pending(&mut self.pending, cx) {
             result?;
         }
         if self.pending.is_some() {
             cx.waker().wake_by_ref();
             return Poll::Pending;
+        }
+        if let Some(n) = self.staged_write_len.take() {
+            return Poll::Ready(Ok(n));
         }
 
         let should_flush = {
@@ -245,17 +281,16 @@ impl AsyncWrite for MultipartAsyncWrite {
                 }
             };
             guard.buffer.extend_from_slice(buf);
+            guard.bytes_accepted += buf.len() as u64;
             guard.buffer.len() >= part_size_bytes()
         };
         if should_flush {
+            self.staged_write_len = Some(buf.len());
             let state = self.state.clone();
             self.pending = Some(Box::pin(async move {
                 let mut guard = state.lock().await;
                 guard.flush_buffer(false).await
             }));
-        }
-
-        if self.pending.is_some() {
             cx.waker().wake_by_ref();
             return Poll::Pending;
         }
@@ -270,11 +305,28 @@ impl AsyncWrite for MultipartAsyncWrite {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
-        if self.pending.is_none() {
+        if let Poll::Ready(result) = Self::poll_pending(&mut self.pending, cx) {
+            result?;
+        }
+        if self.pending.is_some() {
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+        if !self.shutdown_started {
+            self.shutdown_started = true;
             let state = self.state.clone();
             self.pending = Some(Box::pin(async move {
                 let mut guard = state.lock().await;
-                guard.complete().await
+                guard.complete().await?;
+                if guard.bytes_accepted != guard.bytes_uploaded {
+                    return Err(StorageError::Other {
+                        message: format!(
+                            "multipart byte accounting mismatch: accepted {} uploaded {}",
+                            guard.bytes_accepted, guard.bytes_uploaded
+                        ),
+                    });
+                }
+                Ok(())
             }));
         }
         Self::poll_pending(&mut self.pending, cx)
