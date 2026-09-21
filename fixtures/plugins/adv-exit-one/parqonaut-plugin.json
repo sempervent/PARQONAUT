@@ -1,0 +1,12 @@
+{
+  "protocol_version": 1,
+  "name": "adv-exit-one",
+  "version": "0.1.0",
+  "entrypoint": "adv_exit_one:analyze",
+  "capabilities": {
+    "scan": {
+      "supported_formats": ["parquet"],
+      "supported_phases": ["post_rules"]
+    }
+  }
+}

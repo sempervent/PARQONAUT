@@ -1,0 +1,12 @@
+{
+  "protocol_version": 1,
+  "name": "adv-missing-module",
+  "version": "0.1.0",
+  "entrypoint": "no_such_module_xyz:run",
+  "capabilities": {
+    "scan": {
+      "supported_formats": ["parquet"],
+      "supported_phases": ["post_rules"]
+    }
+  }
+}

@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -132,33 +132,69 @@ impl ScanPluginExecutor {
         let stderr = child.stderr.take().expect("stderr");
 
         let policy = self.runtime.policy.clone();
-        let stdout_handle = thread::spawn(move || read_bounded(stdout, policy.max_response_bytes));
-        let stderr_handle = thread::spawn(move || read_bounded(stderr, policy.max_stderr_bytes));
+        let max_stdout = policy.max_response_bytes;
+        let max_stderr = policy.max_stderr_bytes;
+        let stdout_out: Arc<Mutex<Option<Result<Vec<u8>, PluginHostError>>>> =
+            Arc::new(Mutex::new(None));
+        let stderr_out: Arc<Mutex<Option<Result<Vec<u8>, PluginHostError>>>> =
+            Arc::new(Mutex::new(None));
+        let stdout_slot = Arc::clone(&stdout_out);
+        let stderr_slot = Arc::clone(&stderr_out);
+        let stdout_handle = thread::spawn(move || {
+            *stdout_slot.lock().expect("lock") = Some(read_bounded(stdout, max_stdout));
+        });
+        let stderr_handle = thread::spawn(move || {
+            *stderr_slot.lock().expect("lock") =
+                Some(read_stderr_capped(stderr, max_stderr).map_err(PluginHostError::Io));
+        });
 
         let start = Instant::now();
         loop {
             if cancel.is_cancelled() {
                 let _ = terminate_child(&mut child);
+                let _ = stdout_handle.join();
+                let _ = stderr_handle.join();
                 return Err(PluginHostError::ProtocolViolation("cancelled".into()));
             }
+            if matches!(stdout_out.lock().expect("lock").as_ref(), Some(Err(_))) {
+                let err = stdout_out.lock().expect("lock").take().unwrap().unwrap_err();
+                let _ = terminate_child(&mut child);
+                let _ = stdout_handle.join();
+                let _ = stderr_handle.join();
+                return Err(err);
+            }
             if let Some(status) = child.try_wait().map_err(PluginHostError::Io)? {
-                let stdout_bytes = stdout_handle.join().expect("stdout thread").map_err(|e| {
-                    let _ = terminate_child(&mut child);
-                    e
-                })?;
-                let stderr_bytes = stderr_handle.join().expect("stderr thread").map_err(|e| {
-                    let _ = terminate_child(&mut child);
-                    e
-                })?;
+                let _ = stdout_handle.join();
+                let _ = stderr_handle.join();
+                let stdout_bytes = stdout_out.lock().expect("lock").take().unwrap_or(Err(
+                    PluginHostError::ProtocolViolation("stdout reader missing".into()),
+                ))?;
+                let stderr_bytes = match stderr_out.lock().expect("lock").take() {
+                    Some(Ok(v)) => v,
+                    Some(Err(e)) => return Err(e),
+                    None => Vec::new(),
+                };
                 let stderr_tail = tail_str(&stderr_bytes, 8 * 1024);
                 if !status.success() {
-                    return Err(PluginHostError::ProcessFailed {
-                        code: status.code(),
-                        detail: stderr_tail,
-                    });
+                    let detail = format!(
+                        "plugin={} version={} digest={}: {stderr_tail}",
+                        entry.manifest.name, entry.manifest.version, entry.digest
+                    );
+                    if stderr_tail.contains("No module named")
+                        || stderr_tail.contains("entrypoint not callable")
+                        || stderr_tail.contains("entrypoint must be module:callable")
+                    {
+                        return Err(PluginHostError::EntrypointInvalid {
+                            name: entry.manifest.name.clone(),
+                            detail: stderr_tail,
+                        });
+                    }
+                    return Err(PluginHostError::ProcessFailed { code: status.code(), detail });
                 }
                 let (response, _trailing) = parse_stdout_json(&stdout_bytes)?;
-                response.validate()?;
+                if let Err(e) = response.validate() {
+                    return Err(map_protocol_validate_err(e));
+                }
                 if response.plugin != entry.manifest.name {
                     return Err(PluginHostError::InvalidResponse(format!(
                         "response plugin name mismatch: {}",
@@ -170,10 +206,25 @@ impl ScanPluginExecutor {
             }
             if start.elapsed() >= timeout {
                 let _ = terminate_child(&mut child);
+                let _ = stdout_handle.join();
+                let _ = stderr_handle.join();
+                let _ = child.wait();
                 return Err(PluginHostError::Timeout { timeout_ms: timeout.as_millis() as u64 });
             }
-            thread::sleep(Duration::from_millis(50));
+            thread::sleep(Duration::from_millis(20));
         }
+    }
+}
+
+fn map_protocol_validate_err(e: parqonaut_plugin_protocol::PluginProtocolError) -> PluginHostError {
+    match e {
+        parqonaut_plugin_protocol::PluginProtocolError::ProtocolVersionMismatch {
+            expected,
+            found,
+        } => PluginHostError::ProtocolVersionMismatch {
+            detail: format!("expected protocol {expected}, found {found}"),
+        },
+        other => PluginHostError::Protocol(other),
     }
 }
 
@@ -210,6 +261,28 @@ fn build_pythonpath(plugin_root: &Path, sdk: Option<&Path>) -> Result<String, Pl
         parts.push(s.to_string_lossy().into_owned());
     }
     Ok(parts.join(":"))
+}
+
+/// Reads stderr up to `max` bytes, then drains the remainder so the child cannot block on a full pipe.
+fn read_stderr_capped<R: Read>(mut reader: R, max: usize) -> std::io::Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+        if buf.len() < max {
+            let to_read = (max - buf.len()).min(chunk.len());
+            let n = reader.read(&mut chunk[..to_read])?;
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+        } else {
+            let n = reader.read(&mut chunk)?;
+            if n == 0 {
+                break;
+            }
+        }
+    }
+    Ok(buf)
 }
 
 fn read_bounded<R: Read>(mut reader: R, max: usize) -> Result<Vec<u8>, PluginHostError> {

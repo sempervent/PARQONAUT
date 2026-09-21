@@ -57,6 +57,34 @@ fn scan_without_plugin_does_not_run_example_rules() {
 }
 
 #[test]
+fn two_plugins_preserve_cli_order_in_metadata() {
+    let out = base_cmd()
+        .args([
+            "--json",
+            "scan",
+            scan_fixture().to_str().unwrap(),
+            "--plugin",
+            "plugin-b",
+            "--plugin",
+            "plugin-a",
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8_lossy(&out.get_output().stdout);
+    let report: serde_json::Value = serde_json::from_str(&stdout).expect("scan json");
+    let meta = report.get("plugin_metadata").expect("plugin_metadata");
+    let resolved = meta.get("resolved_order").and_then(|v| v.as_array()).expect("resolved_order");
+    let names: Vec<String> = resolved.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    assert_eq!(names, vec!["plugin-b".to_string(), "plugin-a".to_string()]);
+    let executions = meta.get("executions").and_then(|v| v.as_array()).expect("executions");
+    let exec_names: Vec<String> = executions
+        .iter()
+        .filter_map(|e| e.get("name").and_then(|n| n.as_str()).map(String::from))
+        .collect();
+    assert_eq!(exec_names, vec!["plugin-b".to_string(), "plugin-a".to_string()]);
+}
+
+#[test]
 fn scan_with_explicit_plugin() {
     base_cmd()
         .args(["scan", scan_fixture().to_str().unwrap(), "--plugin", "example-rules"])
