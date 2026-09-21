@@ -10,7 +10,7 @@ fn base_cli(
 ) -> Cli {
     Cli {
         inputs,
-        out: Some(out),
+        out: Some(out.to_string_lossy().into_owned()),
         out_format: Some(parqonaut_stream::cli::OutputFormat::Parquet),
         delimiter: None,
         quote: None,

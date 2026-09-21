@@ -17,7 +17,13 @@ use crate::stream::ObjectWriteStream;
 use super::error::{map_multipart_create_error, map_sdk_error};
 
 /// Minimum part size for intermediate multipart segments (S3 requires >= 5 MiB except last).
-const PART_SIZE: usize = 5 * 1024 * 1024;
+fn part_size_bytes() -> usize {
+    std::env::var("PARQONAUT_S3_PART_SIZE_BYTES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|&n| n >= 64 * 1024)
+        .unwrap_or(5 * 1024 * 1024)
+}
 
 struct MultipartState {
     client: Client,
@@ -28,7 +34,6 @@ struct MultipartState {
     next_part_number: i32,
     buffer: Vec<u8>,
     completed: bool,
-    aborted: bool,
     metrics: Arc<StorageMetricsCollector>,
 }
 
@@ -61,13 +66,12 @@ impl MultipartState {
     }
 
     async fn abort(&mut self) {
-        if self.completed || self.aborted {
+        if self.completed {
             return;
         }
         let Some(upload_id) = self.upload_id.take() else {
             return;
         };
-        self.aborted = true;
         let _ = self
             .client
             .abort_multipart_upload()
@@ -110,7 +114,7 @@ impl MultipartState {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        if !force && self.buffer.len() < PART_SIZE {
+        if !force && self.buffer.len() < part_size_bytes() {
             return Ok(());
         }
         let data = Bytes::from(std::mem::take(&mut self.buffer));
@@ -118,7 +122,8 @@ impl MultipartState {
     }
 
     async fn complete(&mut self) -> Result<(), StorageError> {
-        if self.parts.is_empty() && !self.buffer.is_empty() && self.buffer.len() < PART_SIZE {
+        let part_size = part_size_bytes();
+        if self.parts.is_empty() && !self.buffer.is_empty() && self.buffer.len() < part_size {
             let data = Bytes::from(std::mem::take(&mut self.buffer));
             let location = self.location();
             self.client
@@ -140,7 +145,8 @@ impl MultipartState {
         })?;
         let upload =
             CompletedMultipartUpload::builder().set_parts(Some(self.parts.clone())).build();
-        self.client
+        if let Err(e) = self
+            .client
             .complete_multipart_upload()
             .bucket(&self.bucket)
             .key(&self.key)
@@ -148,7 +154,11 @@ impl MultipartState {
             .multipart_upload(upload)
             .send()
             .await
-            .map_err(|e| map_sdk_error(&self.location(), e))?;
+            .map_err(|e| map_sdk_error(&self.location(), e))
+        {
+            self.abort().await;
+            return Err(e);
+        }
         self.completed = true;
         self.metrics.record_put(0);
         Ok(())
@@ -184,7 +194,6 @@ impl MultipartAsyncWrite {
                 next_part_number: 1,
                 buffer: Vec::new(),
                 completed: false,
-                aborted: false,
                 metrics,
             })),
             pending: None,
@@ -236,7 +245,7 @@ impl AsyncWrite for MultipartAsyncWrite {
                 }
             };
             guard.buffer.extend_from_slice(buf);
-            guard.buffer.len() >= PART_SIZE
+            guard.buffer.len() >= part_size_bytes()
         };
         if should_flush {
             let state = self.state.clone();
@@ -261,9 +270,6 @@ impl AsyncWrite for MultipartAsyncWrite {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
-        if let Poll::Ready(result) = Self::poll_pending(&mut self.pending, cx) {
-            return Poll::Ready(result);
-        }
         if self.pending.is_none() {
             let state = self.state.clone();
             self.pending = Some(Box::pin(async move {
@@ -271,22 +277,15 @@ impl AsyncWrite for MultipartAsyncWrite {
                 guard.complete().await
             }));
         }
-        match Self::poll_pending(&mut self.pending, cx) {
-            Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
-            other => other,
-        }
+        Self::poll_pending(&mut self.pending, cx)
     }
 }
 
 impl Drop for MultipartAsyncWrite {
     fn drop(&mut self) {
-        let state = self.state.clone();
-        if tokio::runtime::Handle::try_current().is_ok() {
-            tokio::spawn(async move {
-                let mut guard = state.lock().await;
-                guard.abort().await;
-            });
-        }
+        // Do not spawn async abort here: it races with successful shutdown/complete and
+        // can remove a just-committed object on S3-compatible backends. Incomplete
+        // uploads are aborted on explicit error paths via `abort_if_incomplete`.
     }
 }
 

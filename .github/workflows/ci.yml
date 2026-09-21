@@ -130,5 +130,11 @@ jobs:
           bash scripts/s3-test/fixtures.sh
       - name: Object storage integration tests
         run: |
-          cargo test -p parqonaut-storage --features "s3,fogbank-fixtures,test-util" -- --nocapture
-          cargo test -p parqonaut-transform --features s3 --test remote_matrix_s3 -- --nocapture
+          cargo test -p parqonaut-stream --features storage --test remote_convert_s3 -- --nocapture --test-threads=1
+          cargo test -p parqonaut-transform --features s3 --test remote_matrix_s3 --test remote_pipeline_matrix -- --nocapture --test-threads=1
+          cargo test -p parqonaut-storage --features "columnar,s3" --test write_s3_roundtrip --test s3_raw_write -- --nocapture --test-threads=1
+          cargo test -p parqonaut-storage --features "s3,fogbank-fixtures,test-util" --lib -- --nocapture
+          cargo test -p parqonaut-storage --features "s3,fogbank-fixtures,test-util" \
+            --test chaos_backend --test contract_local --test contract_memory \
+            --test fogbank_integration --test s3_integration -- --nocapture
+          bash scripts/pipeline-s3-demo.sh

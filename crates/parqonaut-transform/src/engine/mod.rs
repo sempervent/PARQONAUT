@@ -2,7 +2,7 @@ mod cast;
 mod compat;
 mod filter;
 mod merge;
-mod partition;
+pub(crate) mod partition;
 mod pipeline;
 mod rename;
 mod schema;

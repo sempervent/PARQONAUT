@@ -5,7 +5,7 @@ use tempfile::tempdir;
 fn base_cli(inputs: Vec<String>, out: Option<std::path::PathBuf>) -> Cli {
     Cli {
         inputs,
-        out,
+        out: out.map(|p| p.to_string_lossy().into_owned()),
         out_format: None,
         delimiter: None,
         quote: None,

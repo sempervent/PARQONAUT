@@ -40,3 +40,7 @@ tempfile = "3.10"
 bytes = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 uuid = { version = "1.10", features = ["v4"] }
+parqonaut-stream = { path = "../parqonaut-stream", features = ["storage"] }
+futures = "0.3"
+arrow = { workspace = true }
+parquet = { workspace = true }

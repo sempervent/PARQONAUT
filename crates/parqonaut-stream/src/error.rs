@@ -20,6 +20,9 @@ pub enum MawError {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
+    #[error("unsupported capability: {0}")]
+    UnsupportedCapability(String),
+
     #[error("Configuration error: {0}")]
     Config(String),
 

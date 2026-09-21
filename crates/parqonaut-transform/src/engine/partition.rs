@@ -162,7 +162,10 @@ fn partition_dir(base: &Path, columns: &[String], key: &str) -> PathBuf {
     path
 }
 
-fn partition_keys(batch: &RecordBatch, cols: &[String]) -> Result<Vec<(String, RecordBatch)>> {
+pub(crate) fn partition_keys(
+    batch: &RecordBatch,
+    cols: &[String],
+) -> Result<Vec<(String, RecordBatch)>> {
     let n = batch.num_rows();
     if n == 0 {
         return Ok(Vec::new());

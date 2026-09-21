@@ -1,10 +1,10 @@
-use parqonaut_stream::{run as run_stream, Cli as StreamCli};
 use std::path::PathBuf;
 
+use parqonaut_stream::{run as run_stream, Cli as StreamCli};
 #[allow(clippy::too_many_arguments)]
 pub async fn run_convert(
     inputs: Vec<String>,
-    out: PathBuf,
+    out: String,
     out_format: Option<parqonaut_stream::cli::OutputFormat>,
     compression: parqonaut_stream::cli::Compression,
     zstd_level: u32,
@@ -17,7 +17,7 @@ pub async fn run_convert(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let cli = StreamCli {
         inputs,
-        out: Some(out),
+        out: Some(out.clone()),
         out_format,
         delimiter: None,
         quote: None,

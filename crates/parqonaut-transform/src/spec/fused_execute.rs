@@ -6,11 +6,13 @@ use parqonaut_columnar::pipeline::IntermediateIoCounters;
 use parqonaut_columnar::{BatchSink, BatchSource};
 use parqonaut_workflow::NoOpProgressObserver;
 
+use crate::columnar_io::{columnar_io_from_env, location_is_remote};
 use crate::engine::partition_record_batches;
 use crate::engine::pipeline_from_rewrite_ops;
 use crate::engine::Pipeline;
 use crate::error::{ParqknifeError, Result};
 use crate::spec::plan::{CompiledSegment, ExecutablePlan, FusedOperation, FusedPlanSegment};
+use crate::storage_routing::execute_fused_segment_routed;
 use arrow::record_batch::RecordBatch;
 
 pub fn execute_fused_plan(
@@ -22,11 +24,6 @@ pub fn execute_fused_plan(
     for segment in &plan.segments {
         match segment {
             CompiledSegment::Fused(fused) => {
-                if fused.storage != crate::spec::plan::StorageKind::Local {
-                    return Err(ParqknifeError::SpecError(
-                        "fused in-memory execution supports local paths only (remote via storage adapters)".into(),
-                    ));
-                }
                 let (w, r) = execute_fused_segment(fused)?;
                 files_read += r;
                 files_written += w;
@@ -46,6 +43,17 @@ pub fn execute_fused_plan(
 }
 
 pub fn execute_fused_segment(fused: &FusedPlanSegment) -> Result<(u64, u64)> {
+    let routing =
+        fused.inputs.iter().any(|i| location_is_remote(i)) || location_is_remote(&fused.output);
+    if routing {
+        crate::columnar_io::ensure_s3_for_remote(
+            fused.inputs.first().map(String::as_str).unwrap_or(""),
+            &fused.output,
+        )?;
+        let io = columnar_io_from_env()?;
+        return execute_fused_segment_routed(&io, fused);
+    }
+
     let pipeline = fused
         .ops
         .iter()

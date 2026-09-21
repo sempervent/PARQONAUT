@@ -35,8 +35,15 @@ rayon = "1.8"
 crc64fast = "1.1.0"
 parqonaut-workflow = { path = "../parqonaut-workflow" }
 parqonaut-columnar = { path = "../parqonaut-columnar" }
+futures = "0.3"
+bytes = "1"
+parqonaut-storage = { path = "../parqonaut-storage", optional = true, features = ["columnar"] }
 sha2 = { workspace = true }
 hex = { workspace = true }
+
+[features]
+default = []
+storage = ["dep:parqonaut-storage", "parqonaut-storage/s3"]
 
 [dev-dependencies]
 tempfile = "3.0"
@@ -44,3 +51,7 @@ assert_cmd = "2.0"
 predicates = "3.0"
 insta = "1.0"
 proptest = "1.0"
+uuid = { version = "1.10", features = ["v4"] }
+bytes = "1"
+futures = "0.3"
+parqonaut-storage = { path = "../parqonaut-storage", features = ["columnar", "s3"] }
