@@ -21,10 +21,25 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: Plugin Python runtime
+        working-directory: python/parqonaut_plugins
+        run: |
+          uv sync --frozen
+          echo "PARQONAUT_PLUGIN_PYTHON=$(uv run which python)" >> "${GITHUB_ENV}"
+          echo "PARQONAUT_PLUGIN_ROOTS=${{ github.workspace }}/fixtures/plugins" >> "${GITHUB_ENV}"
+          echo "PARQONAUT_PLUGIN_SDK_PATH=${{ github.workspace }}/python/parqonaut_plugins/src" >> "${GITHUB_ENV}"
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: |
+          if command -v cargo-clippy >/dev/null 2>&1; then
+            cargo-clippy --workspace --all-targets --all-features -- -D warnings
+          else
+            cargo clippy --workspace --all-targets --all-features -- -D warnings
+          fi
       - name: naming check
         run: scripts/check-active-naming.sh
       - name: test
@@ -43,26 +58,26 @@ jobs:
         run: |
           set -euo pipefail
           cargo build -p parqonaut-cli --bin prqnt
-          cargo test -p paraclete-service --tests
-          cargo test -p paraclete-store --test auth_tokens
+          cargo test -p parqonaut-service --tests
+          cargo test -p parqonaut-store --test auth_tokens
           bash scripts/api-test/smoke.sh --start
 
   postgres-integration:
     name: Postgres integration
     runs-on: ubuntu-latest
     env:
-      PARACLETE_TEST_PG_URL: postgres://postgres:postgres@localhost:5432/paraclete_test
+      PARQONAUT_TEST_PG_URL: postgres://postgres:postgres@localhost:5432/parqonaut_test
     services:
       postgres:
         image: postgres:16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: paraclete_test
+          POSTGRES_DB: parqonaut_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d paraclete_test"
+          --health-cmd "pg_isready -U postgres -d parqonaut_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -72,10 +87,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Store and job tests (Postgres)
         run: |
-          cargo test -p paraclete-store --test postgres_store_integration -- --ignored --test-threads=1
+          cargo test -p parqonaut-store --test postgres_store_integration -- --ignored --test-threads=1
       - name: HTTP API smoke (Postgres)
         run: |
-          cargo test -p paraclete-service --test http_api_postgres -- --ignored
+          cargo test -p parqonaut-service --test http_api_postgres -- --ignored
 
   s3-integration:
     name: S3 integration (RustFS)
@@ -138,3 +153,8 @@ jobs:
             --test chaos_backend --test contract_local --test contract_memory \
             --test fogbank_integration --test s3_integration -- --nocapture
           bash scripts/pipeline-s3-demo.sh
+          export PARQONAUT_PLUGIN_ROOTS="${{ github.workspace }}/fixtures/plugins"
+          export PARQONAUT_PLUGIN_SDK_PATH="${{ github.workspace }}/python/parqonaut_plugins/src"
+          export PARQONAUT_PLUGIN_PYTHON=python3
+          cargo test -p parqonaut-transform --features s3 --test plugin_storage_matrix --test plugin_s3_cancellation -- --nocapture --test-threads=1
+          bash scripts/plugin-s3-demo.sh

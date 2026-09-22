@@ -3,7 +3,7 @@ use crate::engine::{
     merge_parquet_files, parse_filter, split_parquet_file, FilterTransform, Pipeline,
     ProjectionTransform,
 };
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::io::resolve_inputs;
 use crate::output::{compression_from_str, ParquetWriter};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
@@ -14,7 +14,7 @@ use tracing::{info, warn};
 pub async fn run_inspect(cmd: &Commands, input: Option<&str>) -> Result<()> {
     if let Commands::Inspect { stats } = cmd {
         let input_path = input.ok_or_else(|| {
-            ParqknifeError::InvalidInput("Input path required for inspect".to_string())
+            TransformError::InvalidInput("Input path required for inspect".to_string())
         })?;
 
         let inputs = resolve_inputs(input_path)?;
@@ -86,10 +86,10 @@ pub async fn run_rewrite(cmd: &Commands, input: Option<&str>, output: Option<&st
     } = cmd
     {
         let input_path = input.ok_or_else(|| {
-            ParqknifeError::InvalidInput("Input path required for rewrite".to_string())
+            TransformError::InvalidInput("Input path required for rewrite".to_string())
         })?;
         let output_path = output.ok_or_else(|| {
-            ParqknifeError::InvalidInput("Output path required for rewrite".to_string())
+            TransformError::InvalidInput("Output path required for rewrite".to_string())
         })?;
 
         let inputs = resolve_inputs(input_path)?;
@@ -169,10 +169,10 @@ pub async fn run_partition(
 ) -> Result<()> {
     if let Commands::Partition { partition_by } = cmd {
         let input_path = input.ok_or_else(|| {
-            ParqknifeError::InvalidInput("Input path required for partition".to_string())
+            TransformError::InvalidInput("Input path required for partition".to_string())
         })?;
         let output_path = output.ok_or_else(|| {
-            ParqknifeError::InvalidInput("Output directory required for partition".to_string())
+            TransformError::InvalidInput("Output directory required for partition".to_string())
         })?;
         let cols: Vec<String> = partition_by
             .split(',')
@@ -181,7 +181,7 @@ pub async fn run_partition(
             .collect();
         let inputs = resolve_inputs(input_path)?;
         if inputs.len() != 1 {
-            return Err(ParqknifeError::InvalidInput(
+            return Err(TransformError::InvalidInput(
                 "partition requires exactly one input Parquet file".into(),
             ));
         }
@@ -200,10 +200,10 @@ pub async fn run_partition(
 pub async fn run_merge(cmd: &Commands, input: Option<&str>, output: Option<&str>) -> Result<()> {
     if let Commands::Merge { row_group_size_mb } = cmd {
         let input_path = input.ok_or_else(|| {
-            ParqknifeError::InvalidInput("Input path required for merge".to_string())
+            TransformError::InvalidInput("Input path required for merge".to_string())
         })?;
         let output_path = output.ok_or_else(|| {
-            ParqknifeError::InvalidInput("Output path required for merge".to_string())
+            TransformError::InvalidInput("Output path required for merge".to_string())
         })?;
         let inputs = resolve_inputs(input_path)?;
         let out = std::path::Path::new(output_path);
@@ -234,14 +234,14 @@ pub async fn run_merge(cmd: &Commands, input: Option<&str>, output: Option<&str>
 pub async fn run_split(cmd: &Commands, input: Option<&str>, output: Option<&str>) -> Result<()> {
     if let Commands::Split { target_size_mb, target_row_groups: _ } = cmd {
         let input_path = input.ok_or_else(|| {
-            ParqknifeError::InvalidInput("Input path required for split".to_string())
+            TransformError::InvalidInput("Input path required for split".to_string())
         })?;
         let output_path = output.ok_or_else(|| {
-            ParqknifeError::InvalidInput("Output directory required for split".to_string())
+            TransformError::InvalidInput("Output directory required for split".to_string())
         })?;
         let inputs = resolve_inputs(input_path)?;
         if inputs.len() != 1 {
-            return Err(ParqknifeError::InvalidInput(
+            return Err(TransformError::InvalidInput(
                 "split requires exactly one input Parquet file".into(),
             ));
         }

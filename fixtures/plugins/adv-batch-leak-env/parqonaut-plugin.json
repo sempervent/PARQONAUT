@@ -1,0 +1,9 @@
+{
+  "protocol_version": 1,
+  "name": "adv-batch-leak-env",
+  "version": "0.1.0",
+  "entrypoint": "adv_batch_leak_env:transform",
+  "capabilities": {
+    "batch_transform": { "tags": ["adversarial"] }
+  }
+}

@@ -22,7 +22,7 @@ fn benchmark_csv_processing(c: &mut Criterion) {
     
     c.bench_function("csv_processing", |b| {
         b.iter(|| {
-            // This would run the actual maw command
+            // This would run the actual stream convert command
             // For now, just measure file I/O
             let _data = fs::read_to_string(&input_file).unwrap();
             fs::write(&output_file, &test_data).unwrap();

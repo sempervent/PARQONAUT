@@ -1,0 +1,26 @@
+[package]
+name = "parqonaut-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "SQLite and Postgres persistence for PARQONAUT scan runs, reports, jobs, and auth tokens."
+
+[dependencies]
+parqonaut-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+camino.workspace = true
+sha2.workspace = true
+hex.workspace = true
+rand.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+utoipa = { workspace = true, features = ["chrono", "uuid"] }
+
+[dev-dependencies]
+tempfile = "3"
+parqonaut-core = { path = "../parqonaut-core" }

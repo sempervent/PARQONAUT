@@ -164,6 +164,12 @@ async fn write_stream_async<B: StorageBackend + ?Sized>(
         object_stream.finish().await.map_err(map_storage_err)
     });
 
+    let sink_batch_delay_ms = std::env::var("PARQONAUT_TEST_SINK_BATCH_DELAY_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .filter(|&ms| ms > 0)
+        .map(std::time::Duration::from_millis);
+
     let mut rows_written = 0u64;
     while let Some(item) = stream.next().await {
         let batch: RecordBatch = item?;
@@ -173,6 +179,9 @@ async fn write_stream_async<B: StorageBackend + ?Sized>(
         emit_batch_written(progress, rows);
         tokio::task::block_in_place(|| batch_tx.send(batch))
             .map_err(|_| ColumnarError::Other("parquet encoder task stopped".into()))?;
+        if let Some(delay) = sink_batch_delay_ms {
+            tokio::time::sleep(delay).await;
+        }
     }
     drop(batch_tx);
 

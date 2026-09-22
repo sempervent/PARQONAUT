@@ -11,7 +11,7 @@
 //! after plan generation, repair execution fails until the plan is regenerated.
 
 use camino::Utf8Path;
-use paraclete_types::ScanReport;
+use parqonaut_types::ScanReport;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 

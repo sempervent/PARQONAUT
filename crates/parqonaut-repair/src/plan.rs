@@ -1,6 +1,6 @@
 use camino::Utf8Path;
 use chrono::{DateTime, Utc};
-use paraclete_types::{Finding, ScanReport};
+use parqonaut_types::{Finding, ScanReport};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

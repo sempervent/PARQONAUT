@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate scan Parquet fixtures (requires pyarrow in the paraclete_plugins dev env)."""
+"""Generate scan Parquet fixtures (requires pyarrow in the parqonaut_plugins dev env)."""
 
 from __future__ import annotations
 

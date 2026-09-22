@@ -4,9 +4,9 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
-use paraclete_service::{build_router_with_workers, serve, ParacleteService};
-use paraclete_store::StoreBackend;
-use parqonaut_app::StoragePolicy;
+use parqonaut_app::{ServerPluginPolicy, ServerPluginState, StoragePolicy};
+use parqonaut_service::{build_router_with_workers, serve, ParqonautService};
+use parqonaut_store::StoreBackend;
 use tracing::info;
 
 #[derive(Debug, clap::Parser)]
@@ -37,6 +37,18 @@ struct ServerFileConfig {
     server: ServerSection,
     #[serde(default)]
     storage: StorageSection,
+    #[serde(default)]
+    plugins: PluginsSection,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+struct PluginsSection {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    roots: Vec<Utf8PathBuf>,
+    #[serde(default)]
+    allowed: Vec<String>,
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -57,7 +69,7 @@ struct StorageSection {
 
 pub async fn run(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
     if args.print_openapi {
-        let doc = paraclete_service::openapi_spec();
+        let doc = parqonaut_service::openapi_spec();
         println!("{}", serde_json::to_string_pretty(&doc)?);
         return Ok(());
     }
@@ -81,7 +93,10 @@ pub async fn run(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let service = ParacleteService::with_storage_policy(store, policy);
+    let plugin_policy = plugin_policy_from_config(&file_cfg);
+    let server_plugins = ServerPluginState::bootstrap(plugin_policy)
+        .map_err(|e| format!("server plugin configuration: {e}"))?;
+    let service = ParqonautService::with_storage_policy_and_plugins(store, policy, server_plugins);
     let router = build_router_with_workers(service, args.workers);
     serve(router, listen).await?;
     Ok(())
@@ -95,6 +110,20 @@ fn load_config(
     };
     let text = std::fs::read_to_string(path)?;
     Ok(toml::from_str(&text)?)
+}
+
+fn plugin_policy_from_config(cfg: &ServerFileConfig) -> ServerPluginPolicy {
+    let mut policy = ServerPluginPolicy::from_env();
+    if cfg.plugins.enabled {
+        policy.enabled = true;
+    }
+    if !cfg.plugins.roots.is_empty() {
+        policy.roots = cfg.plugins.roots.iter().map(|p| p.as_std_path().to_path_buf()).collect();
+    }
+    if !cfg.plugins.allowed.is_empty() {
+        policy.allowed = cfg.plugins.allowed.iter().cloned().collect();
+    }
+    policy
 }
 
 fn storage_policy_from_config(cfg: &ServerFileConfig) -> StoragePolicy {

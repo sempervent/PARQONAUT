@@ -96,7 +96,7 @@ async fn list_with_pagination_prefix() {
 
     let bucket = test_bucket();
     let prefix = unique_key("list");
-    let dataset = DatasetLocation::parse(&format!("s3://{bucket}/")).unwrap();
+    let dataset = DatasetLocation::parse(&format!("s3://{bucket}/{prefix}/")).unwrap();
 
     let keys =
         [format!("{prefix}/a.bin"), format!("{prefix}/b.bin"), format!("{prefix}/nested/c.bin")];

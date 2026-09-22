@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ParqknifeError {
+pub enum TransformError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
@@ -33,4 +33,4 @@ pub enum ParqknifeError {
     Unsupported(String),
 }
 
-pub type Result<T> = std::result::Result<T, ParqknifeError>;
+pub type Result<T> = std::result::Result<T, TransformError>;

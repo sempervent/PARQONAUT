@@ -19,6 +19,10 @@ pub enum ProgressEventKind {
     Completed,
     ExecutionFailed,
     Failed,
+    PluginStarted,
+    PluginProgress,
+    PluginCompleted,
+    PluginFailed,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -28,6 +32,14 @@ pub struct ProgressMetrics {
     pub rows: u64,
     pub bytes: u64,
     pub elapsed_ms: u64,
+    #[serde(default)]
+    pub plugin_input_batches: u64,
+    #[serde(default)]
+    pub plugin_output_batches: u64,
+    #[serde(default)]
+    pub plugin_input_rows: u64,
+    #[serde(default)]
+    pub plugin_output_rows: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

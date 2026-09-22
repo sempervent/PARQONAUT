@@ -47,7 +47,7 @@ pub use location_ops::{
     diagnose_location, evaluate_check_for_location, generate_plan_for_location,
 };
 pub use manifest::{ExecutionManifest, MANIFEST_VERSION};
-pub use paraclete_types::ScanReport;
+pub use parqonaut_types::ScanReport;
 pub use plan::{
     generate_plan, RepairOperation, RepairPlan, PARQONAUT_VERSION, PLAN_SCHEMA_VERSION,
 };

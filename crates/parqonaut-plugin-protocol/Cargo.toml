@@ -1,0 +1,18 @@
+[package]
+name = "parqonaut-plugin-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Versioned PARQONAUT plugin contracts (manifest, scan JSON, batch Arrow IPC framing)"
+
+[dependencies]
+parqonaut-types = { path = "../parqonaut-types" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+semver = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

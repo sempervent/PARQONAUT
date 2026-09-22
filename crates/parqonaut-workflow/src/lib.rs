@@ -14,6 +14,6 @@ pub use progress::{ProgressEvent, ProgressEventKind, ProgressMetrics, ProgressOb
 pub use schema_policy::SchemaConflictPolicy;
 pub use stream_checkpoint::{StreamCheckpoint, StreamExecutionIdentity};
 pub use transform_plan::{
-    TransformOperation, TransformPlan, TransformReport, TransformSpecVersion,
-    TRANSFORM_SPEC_SCHEMA_VERSION,
+    PluginTransformRecord, TransformOperation, TransformPlan, TransformReport,
+    TransformSpecVersion, TRANSFORM_SPEC_SCHEMA_VERSION,
 };

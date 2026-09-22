@@ -7,7 +7,7 @@ use arrow::datatypes::{Field, Schema};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::output::{compression_from_str, ParquetWriter};
 
 /// Rewrite Parquet, renaming `from` column to `to` without changing values.
@@ -21,7 +21,7 @@ pub fn rewrite_parquet_with_rename(
     rebuild_stats: bool,
 ) -> Result<()> {
     if from == to {
-        return Err(ParqknifeError::InvalidInput("rename from and to must differ".into()));
+        return Err(TransformError::InvalidInput("rename from and to must differ".into()));
     }
     let file = File::open(input)?;
     let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
@@ -30,9 +30,9 @@ pub fn rewrite_parquet_with_rename(
         .fields()
         .iter()
         .position(|f| f.name() == from)
-        .ok_or_else(|| ParqknifeError::InvalidInput(format!("column not found: {from}")))?;
+        .ok_or_else(|| TransformError::InvalidInput(format!("column not found: {from}")))?;
     if schema.fields().iter().any(|f| f.name() == to) {
-        return Err(ParqknifeError::InvalidInput(format!("target column already exists: {to}")));
+        return Err(TransformError::InvalidInput(format!("target column already exists: {to}")));
     }
 
     let mut new_fields: Vec<Arc<Field>> = schema.fields().iter().cloned().collect();
@@ -56,7 +56,7 @@ pub fn rewrite_parquet_with_rename(
     for batch_result in builder.build()? {
         let batch = batch_result?;
         let out_batch = RecordBatch::try_new(out_schema.clone(), batch.columns().to_vec())
-            .map_err(|e| ParqknifeError::InvalidInput(format!("rename batch failed: {e}")))?;
+            .map_err(|e| TransformError::InvalidInput(format!("rename batch failed: {e}")))?;
         writer.write_batch(out_batch)?;
     }
     writer.close()?;

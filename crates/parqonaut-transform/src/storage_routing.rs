@@ -5,7 +5,7 @@ use std::path::Path;
 use arrow::record_batch::RecordBatch;
 use futures::StreamExt;
 use parqonaut_columnar::{BatchSink, BatchSource, BatchStream, ColumnarError};
-use parqonaut_storage::columnar::{StorageParquetBatchSink, StorageParquetBatchSource};
+use parqonaut_storage::columnar::{write_parquet_batch_stream, StorageParquetBatchSource};
 use parqonaut_storage::location::{DatasetLocation, ObjectLocation};
 use parqonaut_workflow::NoOpProgressObserver;
 
@@ -14,8 +14,10 @@ use crate::engine::{
     encode_partition_value, merge_parquet_files, partition_parquet_file, partition_record_batches,
     pipeline_from_rewrite_ops, split_parquet_file, Pipeline,
 };
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::remote::{merge_parquet_storage, rewrite_parquet_storage, run_io_runtime};
+use crate::spec::fused_chain::FusedTransformChain;
+use crate::spec::TransformRunContext;
 use crate::{FusedOperation, FusedPlanSegment};
 
 pub fn split_parquet_routed(
@@ -173,8 +175,15 @@ async fn flush_part(
     let sink_backend = io.backend_for(&out_loc);
     let owned: Vec<RecordBatch> = batches.to_vec();
     let stream: BatchStream = Box::pin(futures::stream::iter(owned.into_iter().map(Ok)));
-    let mut sink = StorageParquetBatchSink::new(sink_backend, out_loc.clone());
-    sink.write_stream(schema, stream, &NoOpProgressObserver).map_err(map_columnar)?;
+    write_parquet_batch_stream(
+        sink_backend,
+        out_loc.clone(),
+        schema,
+        stream,
+        &NoOpProgressObserver,
+    )
+    .await
+    .map_err(map_columnar)?;
     Ok(out_loc.display_uri())
 }
 
@@ -264,8 +273,9 @@ async fn flush_to_object(
     let owned: Vec<RecordBatch> = batches.to_vec();
     let stream: BatchStream = Box::pin(futures::stream::iter(owned.into_iter().map(Ok)));
     let sink_backend = io.backend_for(dest);
-    let mut sink = StorageParquetBatchSink::new(sink_backend, dest.clone());
-    sink.write_stream(schema, stream, &NoOpProgressObserver).map_err(map_columnar)?;
+    write_parquet_batch_stream(sink_backend, dest.clone(), schema, stream, &NoOpProgressObserver)
+        .await
+        .map_err(map_columnar)?;
     Ok(())
 }
 
@@ -279,7 +289,7 @@ fn object_under_prefix(prefix: &str, relative: &str) -> Result<ObjectLocation> {
                     continue;
                 }
                 if comp == ".." {
-                    return Err(ParqknifeError::InvalidInput(
+                    return Err(TransformError::InvalidInput(
                         "partition path must not contain '..'".into(),
                     ));
                 }
@@ -294,33 +304,46 @@ fn object_under_prefix(prefix: &str, relative: &str) -> Result<ObjectLocation> {
     }
 }
 
-fn map_storage(e: parqonaut_storage::error::StorageError) -> ParqknifeError {
-    ParqknifeError::InvalidInput(e.to_string())
+fn map_storage(e: parqonaut_storage::error::StorageError) -> TransformError {
+    TransformError::InvalidInput(e.to_string())
 }
 
-fn map_columnar(e: ColumnarError) -> ParqknifeError {
-    ParqknifeError::InvalidInput(e.to_string())
+fn map_columnar(e: ColumnarError) -> TransformError {
+    TransformError::InvalidInput(e.to_string())
 }
 
 /// Fused rewrite/partition segment with independent source/sink backends.
 pub fn execute_fused_segment_routed(
     io: &ColumnarPipelineIo,
     fused: &FusedPlanSegment,
+    run: &TransformRunContext,
 ) -> Result<(u64, u64)> {
     let primary_in = fused.inputs.first().map(String::as_str).unwrap_or("");
     ensure_s3_for_remote(primary_in, &fused.output)?;
     let io = io.clone();
     let fused = fused.clone();
+    let run = run.clone();
     run_io_runtime(move |handle| {
-        handle.block_on(async move { execute_fused_segment_routed_async(&io, &fused).await })
+        handle.block_on(async move { execute_fused_segment_routed_async(&io, &fused, &run).await })
     })
 }
 
 async fn execute_fused_segment_routed_async(
     io: &ColumnarPipelineIo,
     fused: &FusedPlanSegment,
+    run: &TransformRunContext,
 ) -> Result<(u64, u64)> {
-    let pipeline = fused_pipeline_from_ops(fused)?;
+    let has_plugin = fused.ops.iter().any(|op| matches!(op, FusedOperation::Plugin(_)));
+    let chain = if has_plugin {
+        Some(std::sync::Arc::new(std::sync::Mutex::new(FusedTransformChain::from_segment(
+            fused,
+            &fused.execution_id,
+            run.clone(),
+        )?)))
+    } else {
+        None
+    };
+    let pipeline = if has_plugin { None } else { fused_pipeline_from_ops(fused)? };
     let mut partition_by: Option<Vec<String>> = None;
     for op in &fused.ops {
         if let FusedOperation::Partition { partition_by: cols } = op {
@@ -330,18 +353,32 @@ async fn execute_fused_segment_routed_async(
 
     let files_read = fused.inputs.len() as u64;
     if let Some(cols) = partition_by {
-        let outs =
-            fused_partition_to_storage(io, &fused.inputs, &fused.output, &cols, 64, pipeline)
-                .await?;
+        let outs = fused_partition_to_storage(
+            io,
+            &fused.inputs,
+            &fused.output,
+            &cols,
+            64,
+            pipeline,
+            chain.clone(),
+            run,
+        )
+        .await?;
         return Ok((outs.len() as u64, files_read));
     }
 
     if fused.output.ends_with(".parquet") {
-        fused_rewrite_to_storage(io, &fused.inputs, &fused.output, pipeline).await?;
+        fused_rewrite_to_storage(io, &fused.inputs, &fused.output, pipeline, chain.clone(), run)
+            .await?;
+        if let Some(chain) = chain {
+            if let Ok(mut guard) = chain.lock() {
+                guard.finish()?;
+            }
+        }
         return Ok((1, files_read));
     }
 
-    Err(ParqknifeError::SpecError(format!(
+    Err(TransformError::SpecError(format!(
         "unsupported fused routed output layout: {}",
         fused.output
     )))
@@ -370,13 +407,22 @@ async fn fused_rewrite_to_storage(
     inputs: &[String],
     output: &str,
     pipeline: Option<Pipeline>,
+    chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
+    run: &TransformRunContext,
 ) -> Result<()> {
     let out_loc = ObjectLocation::parse(output).map_err(map_storage)?;
     let sink_backend = io.backend_for(&out_loc);
     let schema = schema_from_inputs(io, inputs).await?;
-    let stream = fused_input_stream(io, inputs, pipeline);
-    let mut sink = StorageParquetBatchSink::new(sink_backend, out_loc);
-    sink.write_stream(schema, Box::pin(stream), &NoOpProgressObserver).map_err(map_columnar)?;
+    let stream = fused_input_stream(io, inputs, pipeline, chain, run);
+    write_parquet_batch_stream(
+        sink_backend,
+        out_loc,
+        schema,
+        Box::pin(stream),
+        &NoOpProgressObserver,
+    )
+    .await
+    .map_err(map_columnar)?;
     Ok(())
 }
 
@@ -386,7 +432,7 @@ async fn schema_from_inputs(
 ) -> Result<arrow::datatypes::SchemaRef> {
     let first = inputs
         .first()
-        .ok_or_else(|| ParqknifeError::SpecError("fused segment has no inputs".into()))?;
+        .ok_or_else(|| TransformError::SpecError("fused segment has no inputs".into()))?;
     let loc = ObjectLocation::parse(first).map_err(map_storage)?;
     let backend = io.backend_for(&loc);
     let source = StorageParquetBatchSource::new(backend, loc);
@@ -397,6 +443,8 @@ fn fused_input_stream(
     io: &ColumnarPipelineIo,
     inputs: &[String],
     pipeline: Option<Pipeline>,
+    chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
+    run: &TransformRunContext,
 ) -> BatchStream {
     Box::pin(FusedInputStream {
         io: io.clone(),
@@ -404,6 +452,9 @@ fn fused_input_stream(
         input_idx: 0,
         current: None,
         pipeline,
+        chain,
+        pending_transform: None,
+        run: run.clone(),
     })
 }
 
@@ -413,6 +464,9 @@ struct FusedInputStream {
     input_idx: usize,
     current: Option<BatchStream>,
     pipeline: Option<Pipeline>,
+    chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
+    pending_transform: Option<tokio::task::JoinHandle<std::result::Result<RecordBatch, String>>>,
+    run: TransformRunContext,
 }
 
 impl futures::Stream for FusedInputStream {
@@ -423,6 +477,42 @@ impl futures::Stream for FusedInputStream {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         loop {
+            if self
+                .run
+                .cancel_token()
+                .as_ref()
+                .is_some_and(parqonaut_plugin_host::CancelToken::is_cancelled)
+            {
+                if let Some(chain) = &self.chain {
+                    if let Ok(guard) = chain.lock() {
+                        guard.cancel_plugins();
+                    }
+                }
+                return std::task::Poll::Ready(Some(Err(ColumnarError::Other(
+                    "transform cancelled".into(),
+                ))));
+            }
+
+            if let Some(handle) = self.pending_transform.as_mut() {
+                match std::future::Future::poll(std::pin::Pin::new(handle), cx) {
+                    std::task::Poll::Ready(Ok(Ok(batch))) => {
+                        self.pending_transform = None;
+                        return std::task::Poll::Ready(Some(Ok(batch)));
+                    }
+                    std::task::Poll::Ready(Ok(Err(e))) => {
+                        self.pending_transform = None;
+                        return std::task::Poll::Ready(Some(Err(ColumnarError::Other(e))));
+                    }
+                    std::task::Poll::Ready(Err(e)) => {
+                        self.pending_transform = None;
+                        return std::task::Poll::Ready(Some(Err(ColumnarError::Other(format!(
+                            "plugin transform join: {e}"
+                        )))));
+                    }
+                    std::task::Poll::Pending => return std::task::Poll::Pending,
+                }
+            }
+
             if self.current.is_none() {
                 if self.input_idx >= self.inputs.len() {
                     return std::task::Poll::Ready(None);
@@ -450,6 +540,16 @@ impl futures::Stream for FusedInputStream {
             };
             match std::pin::Pin::new(current).poll_next(cx) {
                 std::task::Poll::Ready(Some(Ok(batch))) => {
+                    if let Some(chain) = &self.chain {
+                        let chain = chain.clone();
+                        self.pending_transform = Some(tokio::task::spawn_blocking(move || {
+                            chain
+                                .lock()
+                                .map_err(|e| e.to_string())
+                                .and_then(|mut guard| guard.apply(batch).map_err(|e| e.to_string()))
+                        }));
+                        continue;
+                    }
                     let batch = if let Some(p) = &self.pipeline {
                         match p.execute(batch) {
                             Ok(b) => b,
@@ -476,6 +576,7 @@ impl futures::Stream for FusedInputStream {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fused_partition_to_storage(
     io: &ColumnarPipelineIo,
     inputs: &[String],
@@ -483,13 +584,16 @@ async fn fused_partition_to_storage(
     partition_by: &[String],
     max_open: usize,
     pipeline: Option<Pipeline>,
+    chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
+    run: &TransformRunContext,
 ) -> Result<Vec<String>> {
     use std::collections::{HashMap, VecDeque};
 
     use crate::engine::partition::partition_keys;
 
     let schema = schema_from_inputs(io, inputs).await?;
-    let mut stream = fused_input_stream(io, inputs, pipeline);
+    let mut stream = fused_input_stream(io, inputs, pipeline, chain.clone(), run);
+    let chain_for_finish = chain.clone();
 
     let mut buffers: HashMap<String, Vec<RecordBatch>> = HashMap::new();
     let mut part_counters: HashMap<String, usize> = HashMap::new();
@@ -529,6 +633,11 @@ async fn fused_partition_to_storage(
         let obj = object_under_prefix(output_prefix, &rel)?;
         flush_to_object(io, &obj, schema.clone(), &batches).await?;
         outputs.push(obj.display_uri());
+    }
+    if let Some(chain) = chain_for_finish {
+        if let Ok(mut guard) = chain.lock() {
+            guard.finish()?;
+        }
     }
     Ok(outputs)
 }

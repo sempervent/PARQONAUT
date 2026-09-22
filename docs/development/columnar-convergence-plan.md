@@ -6,7 +6,7 @@
 
 | Crate | Dependencies | Public types | Migration difficulty |
 |-------|--------------|--------------|----------------------|
-| `paraclete-core` | parquet 53 | Scan findings, local readers | Medium — scan path stable |
+| `parqonaut-core` | parquet 53 | Scan findings, local readers | Medium — scan path stable |
 | `parqonaut-transform` | arrow 54, parquet 54 | RecordBatch (arrow 54) in engine | Medium — primary transform target |
 | `parqonaut-stream` | arrow2, parquet2 | Chunk, UnifiedSchema (arrow2) | **High** — full rewrite of pipeline |
 | `parqonaut-storage` | bytes, S3 | Backend-agnostic | Low |

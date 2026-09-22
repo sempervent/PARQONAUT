@@ -73,4 +73,21 @@ pub struct TransformReport {
     pub failures: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugin_executions: Vec<PluginTransformRecord>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct PluginTransformRecord {
+    pub name: String,
+    pub version: String,
+    pub digest: String,
+    pub protocol_version: u32,
+    pub duration_ms: u64,
+    pub input_rows: u64,
+    pub output_rows: u64,
+    pub input_batches: u64,
+    pub output_batches: u64,
+    pub status: String,
 }

@@ -1,5 +1,6 @@
 mod batch;
 mod location;
+mod plugin;
 mod repair;
 mod scan;
 mod serve;
@@ -31,6 +32,14 @@ enum Command {
         path: String,
         #[arg(short, long, default_value = "standard")]
         profile: String,
+        /// Scan analyzer plugin name (repeatable; explicit opt-in only)
+        #[arg(long = "plugin")]
+        plugins: Vec<String>,
+    },
+    /// Discover and validate installed analyzer plugins
+    Plugin {
+        #[command(subcommand)]
+        command: PluginCommand,
     },
     /// Inspect Parquet schema and row-group metadata
     Inspect {
@@ -191,6 +200,16 @@ enum Command {
 }
 
 #[derive(Subcommand, Debug)]
+enum PluginCommand {
+    /// List discovered plugins
+    List,
+    /// Show manifest, digest, and host compatibility
+    Inspect { name: String },
+    /// Validate a plugin root or manifest path (no execution)
+    Validate { path: PathBuf },
+}
+
+#[derive(Subcommand, Debug)]
 enum BatchCommand {
     /// Validate batch configuration without executing
     Check {
@@ -256,7 +275,14 @@ async fn main() {
 
 async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
-        Command::Scan { path, profile } => scan::run_scan(path, &profile, cli.json).await?,
+        Command::Scan { path, profile, plugins } => {
+            scan::run_scan(path, &profile, plugins, cli.json).await?
+        }
+        Command::Plugin { command } => match command {
+            PluginCommand::List => plugin::run_list(cli.json)?,
+            PluginCommand::Inspect { name } => plugin::run_inspect(&name, cli.json)?,
+            PluginCommand::Validate { path } => plugin::run_validate(path, cli.json)?,
+        },
         Command::Inspect { input, stats } => {
             transform::run_inspect(input, stats).await?;
         }

@@ -1,8 +1,8 @@
 //! Convert scan targets and URI strings into [`DatasetLocation`].
 
 use camino::Utf8PathBuf;
-use paraclete_types::ScanTarget;
 use parqonaut_storage::location::DatasetLocation;
+use parqonaut_types::ScanTarget;
 use url::Url;
 
 use crate::error::ApplicationError;

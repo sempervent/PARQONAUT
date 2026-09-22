@@ -1,0 +1,11 @@
+{
+  "protocol_version": 1,
+  "name": "filter-rows",
+  "version": "0.1.0",
+  "entrypoint": "filter_rows:transform",
+  "capabilities": {
+    "batch_transform": {
+      "tags": ["transform", "filter"]
+    }
+  }
+}

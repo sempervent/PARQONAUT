@@ -1,4 +1,4 @@
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::spec::types::Spec;
 use std::path::Path;
 
@@ -11,18 +11,18 @@ pub fn parse_spec<P: AsRef<Path>>(path: P) -> Result<Spec> {
 
     let spec: Spec = match ext {
         Some("yaml") | Some("yml") => serde_yaml::from_str(&content)
-            .map_err(|e| ParqknifeError::SpecError(format!("YAML parse error: {}", e)))?,
+            .map_err(|e| TransformError::SpecError(format!("YAML parse error: {}", e)))?,
         Some("json") => serde_json::from_str(&content)
-            .map_err(|e| ParqknifeError::SpecError(format!("JSON parse error: {}", e)))?,
+            .map_err(|e| TransformError::SpecError(format!("JSON parse error: {}", e)))?,
         _ => {
-            return Err(ParqknifeError::SpecError(
+            return Err(TransformError::SpecError(
                 "Spec file must have .yaml, .yml, or .json extension".to_string(),
             ))
         }
     };
 
     if spec.schema_version != TRANSFORM_SPEC_SCHEMA_VERSION {
-        return Err(ParqknifeError::SpecError(format!(
+        return Err(TransformError::SpecError(format!(
             "unsupported schema-version {} (expected {})",
             spec.schema_version, TRANSFORM_SPEC_SCHEMA_VERSION
         )));

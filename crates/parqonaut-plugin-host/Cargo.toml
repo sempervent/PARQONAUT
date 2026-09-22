@@ -1,0 +1,31 @@
+[package]
+name = "parqonaut-plugin-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "PARQONAUT plugin discovery, subprocess execution, and resource policy"
+
+[dependencies]
+parqonaut-plugin-protocol = { path = "../parqonaut-plugin-protocol" }
+parqonaut-types = { path = "../parqonaut-types" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+semver = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+walkdir = { workspace = true }
+which = "7.0"
+uuid = { workspace = true }
+arrow = { workspace = true }
+tempfile = "3"
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros"] }
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+serde_json = { workspace = true }
+camino = { workspace = true }
+parqonaut-types = { path = "../parqonaut-types" }

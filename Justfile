@@ -16,7 +16,7 @@ lint:
     #!/usr/bin/env bash
     set -euo pipefail
     if command -v cargo-clippy >/dev/null 2>&1; then
-      cargo-clippy clippy --workspace --all-targets --all-features -- -D warnings
+      cargo-clippy --workspace --all-targets --all-features -- -D warnings
     else
       cargo clippy --workspace --all-targets --all-features -- -D warnings
     fi
@@ -44,9 +44,51 @@ docs:
 
 naming-check:
     scripts/check-active-naming.sh
+    bash scripts/check-active-naming-selftest.sh
 
 columnar-check:
     bash scripts/columnar-check.sh
+
+plugin-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PARQONAUT_PLUGIN_ROOTS="${PARQONAUT_PLUGIN_ROOTS:-$PWD/fixtures/plugins}"
+    export PARQONAUT_PLUGIN_SDK_PATH="${PARQONAUT_PLUGIN_SDK_PATH:-$PWD/python/parqonaut_plugins/src}"
+    cargo test -p parqonaut-plugin-protocol
+    cargo test -p parqonaut-plugin-host
+    cargo test -p parqonaut-transform --test plugin_transform --test plugin_zero_intermediate --test plugin_progress --test plugin_runtime_gates
+    cargo test -p parqonaut-cli --test plugin_integration
+    if [[ -z "${PARQONAUT_S3_ENDPOINT:-}" ]]; then
+        just s3-up
+    fi
+    # shellcheck source=/dev/null
+    source scripts/s3-test/env.sh
+    export PARQONAUT_S3_ENDPOINT="${PARQONAUT_S3_ENDPOINT:-${FOGBANK_ENDPOINT:-http://127.0.0.1:9000}}"
+    export PARQONAUT_S3_BUCKET="${PARQONAUT_S3_BUCKET:-${FOGBANK_BUCKET:-fogbank}}"
+    aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://${PARQONAUT_S3_BUCKET}" >/dev/null 2>&1 || true
+    aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://${FOGBANK_BUCKET}" >/dev/null 2>&1 || true
+    cargo test -p parqonaut-transform --features s3 --test plugin_storage_matrix --test plugin_s3_cancellation
+    cd python/parqonaut_plugins
+    uv sync --frozen
+    uv run python -m pytest
+
+plugin-s3-demo:
+    bash scripts/plugin-s3-demo.sh
+
+plugin-server-demo:
+    bash scripts/plugin-server-demo.sh
+
+plugin-demo:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export PARQONAUT_PLUGIN_ROOTS="$PWD/fixtures/plugins"
+    export PARQONAUT_PLUGIN_SDK_PATH="$PWD/python/parqonaut_plugins/src"
+    cargo run -p parqonaut-cli --bin prqnt -- plugin list
+    cargo run -p parqonaut-cli --bin prqnt -- plugin inspect example-rules
+    cargo run -p parqonaut-cli --bin prqnt -- plugin validate fixtures/plugins/example-rules
+    cargo run -p parqonaut-cli --bin prqnt -- scan fixtures/csv --plugin example-rules
+    mkdir -p target
+    cargo run -p parqonaut-cli --bin prqnt -- transform --spec fixtures/transform/specs/plugin-normalize-strings.yaml
 
 ci: fmt-check lint test naming-check columnar-check
 
@@ -62,8 +104,8 @@ api-restart-demo:
 api-test:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo test -p paraclete-service --tests
-    cargo test -p paraclete-store --test auth_tokens
+    cargo test -p parqonaut-service --tests
+    cargo test -p parqonaut-store --test auth_tokens
     scripts/api-test/smoke.sh --start
 
 repair-fixtures:

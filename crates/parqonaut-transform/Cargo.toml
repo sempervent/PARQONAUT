@@ -3,8 +3,8 @@ name = "parqonaut-transform"
 version.workspace = true
 edition.workspace = true
 license = "MIT OR Apache-2.0"
-authors = ["parqknife contributors"]
-description = "Parquet transformation engine (parqknife lineage)"
+authors = ["Joshua Grant"]
+description = "Parquet transformation engine (PARQONAUT transform engine)"
 
 [dependencies]
 arrow = { workspace = true }
@@ -30,6 +30,8 @@ nom = "7.1"
 parqonaut-workflow = { path = "../parqonaut-workflow" }
 parqonaut-columnar = { path = "../parqonaut-columnar" }
 parqonaut-storage = { path = "../parqonaut-storage", features = ["columnar"] }
+parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
+parqonaut-plugin-protocol = { path = "../parqonaut-plugin-protocol" }
 
 [features]
 default = []
