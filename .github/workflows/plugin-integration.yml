@@ -24,6 +24,7 @@ jobs:
         working-directory: python/parqonaut_plugins
         run: |
           uv sync --frozen
+          echo "PARQONAUT_PLUGIN_PYTHON=$(uv run which python)" >> "${GITHUB_ENV}"
           uv run ruff check .
           uv run ruff format --check .
           uv run python -m pytest
@@ -31,7 +32,6 @@ jobs:
         env:
           PARQONAUT_PLUGIN_ROOTS: ${{ github.workspace }}/fixtures/plugins
           PARQONAUT_PLUGIN_SDK_PATH: ${{ github.workspace }}/python/parqonaut_plugins/src
-          PARQONAUT_PLUGIN_PYTHON: python3
         run: |
           just plugin-test
           cargo test -p parqonaut-service --test server_plugin_policy --test server_plugin_durable -- --test-threads=1
