@@ -15,6 +15,7 @@ parqonaut-types.workspace = true
 parqonaut-core = { path = "../parqonaut-core" }
 parqonaut-store = { path = "../parqonaut-store" }
 parqonaut-app = { path = "../parqonaut-app" }
+parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
 parqonaut-repair = { path = "../parqonaut-repair" }
 parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
 parqonaut-storage = { path = "../parqonaut-storage" }

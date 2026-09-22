@@ -27,6 +27,12 @@ pub enum ErrorCode {
     Unauthorized,
     Forbidden,
     LocationNotAllowed,
+    PluginExecutionDisabled,
+    PluginNotAllowed,
+    PluginNotFound,
+    PluginIncompatible,
+    PluginStale,
+    PluginCancelled,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
@@ -75,6 +81,18 @@ pub enum AppError {
     Forbidden(String),
     #[error("location not allowed: {0}")]
     LocationNotAllowed(String),
+    #[error("plugin execution disabled on server")]
+    PluginExecutionDisabled,
+    #[error("plugin not allowed: {0}")]
+    PluginNotAllowed(String),
+    #[error("plugin not found: {0}")]
+    PluginNotFound(String),
+    #[error("plugin incompatible: {0}")]
+    PluginIncompatible(String),
+    #[error("stale plugin {name}")]
+    PluginStale { name: String, expected: String, actual: String },
+    #[error("plugin execution cancelled")]
+    PluginCancelled,
 }
 
 impl AppError {
@@ -92,6 +110,12 @@ impl AppError {
             AppError::Unauthorized(_) => ErrorCode::Unauthorized,
             AppError::Forbidden(_) => ErrorCode::Forbidden,
             AppError::LocationNotAllowed(_) => ErrorCode::LocationNotAllowed,
+            AppError::PluginExecutionDisabled => ErrorCode::PluginExecutionDisabled,
+            AppError::PluginNotAllowed(_) => ErrorCode::PluginNotAllowed,
+            AppError::PluginNotFound(_) => ErrorCode::PluginNotFound,
+            AppError::PluginIncompatible(_) => ErrorCode::PluginIncompatible,
+            AppError::PluginStale { .. } => ErrorCode::PluginStale,
+            AppError::PluginCancelled => ErrorCode::PluginCancelled,
         }
     }
 
@@ -109,6 +133,24 @@ impl AppError {
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::LocationNotAllowed(_) => StatusCode::FORBIDDEN,
+            AppError::PluginExecutionDisabled
+            | AppError::PluginNotAllowed(_)
+            | AppError::PluginNotFound(_)
+            | AppError::PluginIncompatible(_)
+            | AppError::PluginStale { .. } => StatusCode::BAD_REQUEST,
+            AppError::PluginCancelled => StatusCode::CONFLICT,
+        }
+    }
+
+    pub fn plugin_details(&self) -> serde_json::Value {
+        match self {
+            AppError::PluginStale { name, expected, actual } => {
+                json!({ "name": name, "expected_digest": expected, "actual_digest": actual })
+            }
+            AppError::PluginNotAllowed(name) | AppError::PluginNotFound(name) => {
+                json!({ "name": name })
+            }
+            _ => serde_json::Value::Object(Default::default()),
         }
     }
 }
@@ -120,7 +162,7 @@ impl IntoResponse for AppError {
             error: ErrorEnvelope {
                 code: self.code(),
                 message: self.to_string(),
-                details: serde_json::Value::Object(Default::default()),
+                details: self.plugin_details(),
             },
         };
         (status, Json(body)).into_response()
@@ -200,6 +242,14 @@ impl From<ApplicationError> for AppError {
             }
             ApplicationError::Internal(m) => AppError::Internal(m),
             ApplicationError::PluginHost(m) => AppError::InvalidRequest(m),
+            ApplicationError::PluginExecutionDisabled => AppError::PluginExecutionDisabled,
+            ApplicationError::PluginNotAllowed(n) => AppError::PluginNotAllowed(n),
+            ApplicationError::PluginNotFound(n) => AppError::PluginNotFound(n),
+            ApplicationError::PluginIncompatible(n) => AppError::PluginIncompatible(n),
+            ApplicationError::PluginStale { name, expected, actual } => {
+                AppError::PluginStale { name, expected, actual }
+            }
+            ApplicationError::PluginCancelled => AppError::PluginCancelled,
         }
     }
 }

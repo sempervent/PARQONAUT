@@ -10,9 +10,11 @@ use parqonaut_types::{JobId, JobKind, JobRecoveryPolicy, RunId};
 use tracing::Instrument;
 use uuid::Uuid;
 
-use crate::api_types::StartScanRequest;
+use parqonaut_plugin_host::CancelToken;
+
 use crate::error::AppError;
 use crate::observability::audit;
+use crate::scan_job::parse_scan_job_payload;
 use crate::service::ParqonautService;
 
 pub(crate) fn spawn_scan_job_workers(
@@ -161,7 +163,7 @@ async fn run_claimed_job(
     }
 
     match kind {
-        JobKind::Scan => run_scan_job(service, jid, request_json).await,
+        JobKind::Scan => run_scan_job(service, jid, request_json, cancel).await,
         JobKind::Repair => run_repair_job(service, jid, request_json, cancel).await,
         JobKind::BatchRepair => run_batch_repair_job(service, jid, request_json, cancel).await,
         JobKind::BatchResume => run_batch_resume_job(service, jid, request_json, cancel).await,
@@ -172,10 +174,27 @@ async fn run_scan_job(
     service: &ParqonautService,
     jid: JobId,
     request_json: &str,
+    cancel: CancelFlag,
 ) -> Result<(), AppError> {
-    let req: StartScanRequest = serde_json::from_str(request_json)
+    if cancel.is_cancelled() {
+        return cancel_running_job(service, jid).await;
+    }
+    let payload = parse_scan_job_payload(request_json)
         .map_err(|e| AppError::InvalidRequest(format!("invalid scan job payload: {e}")))?;
-    let resp = service.execute_scan_and_persist(req).await?;
+    let token = CancelToken::new();
+    let token_watch = token.clone();
+    let cancel_watch = cancel.clone();
+    let bridge_task = tokio::spawn(async move {
+        while !cancel_watch.is_cancelled() {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        token_watch.cancel();
+    });
+    let resp = service.execute_scan_job_payload(payload, Some(token)).await?;
+    bridge_task.abort();
+    if cancel.is_cancelled() {
+        return cancel_running_job(service, jid).await;
+    }
     service.store().complete_scan_job_success(jid, RunId(resp.run_id)).await?;
     metrics::counter!("parqonaut_jobs_succeeded_total", "kind" => "scan").increment(1);
     audit::job_completed(jid.0, resp.run_id);
@@ -284,5 +303,11 @@ fn app_error_to_job_failure_label(e: &AppError) -> &'static str {
         AppError::Unauthorized(_) | AppError::Forbidden(_) | AppError::LocationNotAllowed(_) => {
             "internal_error"
         }
+        AppError::PluginExecutionDisabled => "plugin_execution_disabled",
+        AppError::PluginNotAllowed(_) => "plugin_not_allowed",
+        AppError::PluginNotFound(_) => "plugin_not_found",
+        AppError::PluginIncompatible(_) => "plugin_incompatible",
+        AppError::PluginStale { .. } => "plugin_stale",
+        AppError::PluginCancelled => "plugin_cancelled",
     }
 }

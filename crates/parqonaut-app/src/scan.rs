@@ -32,11 +32,26 @@ pub async fn run_scan(
     req: &AppScanRequest,
     policy: &StoragePolicy,
 ) -> Result<ScanReport, ApplicationError> {
+    run_scan_with_bridge(req, policy, None).await
+}
+
+pub async fn run_scan_with_bridge(
+    req: &AppScanRequest,
+    policy: &StoragePolicy,
+    bridge: Option<&ScanPluginBridge>,
+) -> Result<ScanReport, ApplicationError> {
     policy.validate_dataset(&req.location)?;
     match &req.location {
         DatasetLocation::Local(l) => {
             if !req.plugins.is_empty() {
-                let bridge = ScanPluginBridge::new(req.plugins.clone())?;
+                let bridge = match bridge {
+                    Some(b) => b,
+                    None => {
+                        return Err(ApplicationError::InvalidRequest(
+                            "internal: plugins requested without bridge".into(),
+                        ));
+                    }
+                };
                 let target = if l.path.is_file() {
                     ScanTarget::LocalFile { path: l.path.clone() }
                 } else {
@@ -44,7 +59,11 @@ pub async fn run_scan(
                 };
                 let mut scan_req = ScanRequest::new(target, req.profile);
                 scan_req.options.requested_plugins = req.plugins.clone();
-                Ok(ScanEngine::run_with_plugins(&scan_req, Some(&bridge))?)
+                Ok(ScanEngine::run_with_plugins(&scan_req, Some(bridge))?)
+            } else if bridge.is_some() {
+                Err(ApplicationError::InvalidRequest(
+                    "plugins requested but selection empty".into(),
+                ))
             } else {
                 let target = if l.path.is_file() {
                     ScanTarget::LocalFile { path: l.path.clone() }

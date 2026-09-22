@@ -29,7 +29,7 @@ pub struct CatalogEntry {
 }
 
 /// Deterministic plugin discovery from configured roots.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct PluginCatalog {
     entries: BTreeMap<String, CatalogEntry>,
 }

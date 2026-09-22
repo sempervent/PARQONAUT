@@ -20,5 +20,6 @@ pub use observability::metrics_handle;
 pub use openapi::openapi_spec;
 pub use service::ParqonautService;
 
+pub mod scan_job;
 pub mod server;
 pub use server::serve;

@@ -8,6 +8,7 @@ use parqonaut_plugin_host::{
     CancelToken, PluginCatalog, PluginHost, PluginRuntimeConfig, ResolvedPlugin,
 };
 use parqonaut_plugin_protocol::{PluginExecutionPhase, PluginScanContext};
+use parqonaut_types::ResolvedPluginSelection;
 use parqonaut_types::{Finding, PluginExecutionRecord};
 
 use crate::error::ApplicationError;
@@ -73,6 +74,30 @@ impl ScanPluginBridge {
             cancel: CancelToken::new(),
         })
     }
+
+    pub fn from_pinned_resolved(
+        catalog: PluginCatalog,
+        runtime: PluginRuntimeConfig,
+        resolved: Vec<ResolvedPlugin>,
+        requested: Vec<String>,
+        cancel: CancelToken,
+    ) -> Self {
+        let resolved_order: Vec<String> =
+            resolved.iter().map(|p| p.entry.manifest.name.clone()).collect();
+        let host = PluginHost::new(catalog, runtime);
+        Self { host, resolved, _requested: requested, resolved_order, cancel }
+    }
+
+    pub fn cancel_token(&self) -> &CancelToken {
+        &self.cancel
+    }
+}
+
+pub fn pinned_to_resolved(
+    state: &crate::server_plugins::ServerPluginState,
+    pinned: &[ResolvedPluginSelection],
+) -> Result<Vec<ResolvedPlugin>, ApplicationError> {
+    state.revalidate_pinned(pinned)
 }
 
 impl ScanPluginHost for ScanPluginBridge {

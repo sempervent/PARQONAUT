@@ -30,6 +30,18 @@ pub enum ApplicationError {
     Internal(String),
     #[error("plugin error: {0}")]
     PluginHost(String),
+    #[error("plugin execution disabled on server")]
+    PluginExecutionDisabled,
+    #[error("plugin not allowed: {0}")]
+    PluginNotAllowed(String),
+    #[error("plugin not found: {0}")]
+    PluginNotFound(String),
+    #[error("plugin incompatible: {0}")]
+    PluginIncompatible(String),
+    #[error("stale plugin {name}: expected digest {expected}, current {actual}")]
+    PluginStale { name: String, expected: String, actual: String },
+    #[error("plugin execution cancelled")]
+    PluginCancelled,
 }
 
 impl From<CoreError> for ApplicationError {

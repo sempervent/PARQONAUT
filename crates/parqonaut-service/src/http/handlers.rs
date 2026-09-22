@@ -11,8 +11,9 @@ use uuid::Uuid;
 use crate::api_types::{
     AuthTokenCreateRequest, AuthTokenCreateResponse, AuthTokenListResponse,
     AuthTokenRotateResponse, AuthTokenSummaryView, DiffQuery, HealthResponse, JobListQuery,
-    PageQuery, PagedAssetsResponse, PagedFindingsResponse, ScanJobSubmissionResponse,
-    StartScanRequest, TargetRunsQuery, WhoAmIResponse,
+    PageQuery, PagedAssetsResponse, PagedFindingsResponse, PluginCatalogEntryView,
+    PluginCatalogListResponse, ScanJobSubmissionResponse, StartScanRequest, TargetRunsQuery,
+    WhoAmIResponse,
 };
 use crate::application_http::{
     BatchCheckResponse, BatchConfigBody, BatchPlanResponse, BatchRepairJobBody, BatchResumeBody,
@@ -60,6 +61,19 @@ pub async fn whoami(Extension(principal): Extension<AuthPrincipal>) -> Json<WhoA
 }
 
 /// Async scan: queue job and return 202 (same handler as `POST /api/v1/jobs/scans`).
+pub async fn list_plugins(
+    State(state): State<AppState>,
+) -> Result<Json<PluginCatalogListResponse>, AppError> {
+    Ok(Json(state.service.list_plugin_catalog()))
+}
+
+pub async fn get_plugin(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Result<Json<PluginCatalogEntryView>, AppError> {
+    Ok(Json(state.service.get_plugin_catalog_entry(&name)?))
+}
+
 pub async fn post_async_scan(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<StartScanRequest>,

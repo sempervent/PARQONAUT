@@ -3,8 +3,11 @@
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
+use parqonaut_app::plugins::{pinned_to_resolved, ScanPluginBridge};
+use parqonaut_app::server_plugins::{public_capabilities_summary, ServerPluginState};
 use parqonaut_app::{location, JobResultReference, ParqonautApp, ScanRequest, StoragePolicy};
 use parqonaut_orchestrator::CancelFlag;
+use parqonaut_plugin_host::CancelToken;
 use parqonaut_store::{
     AuthTokenSummary, JobCancelOutcome, ScanJobRow, StoreBackend, StoredAssetRow, StoredFindingRow,
 };
@@ -16,8 +19,8 @@ use parqonaut_types::{
 use crate::api_types::{
     AuthTokenCreateRequest, AuthTokenCreateResponse, AuthTokenListResponse,
     AuthTokenRotateResponse, AuthTokenSummaryView, JobFailureBody, JobListQuery, PageQuery,
-    RunSummaryView, ScanJobListResponse, ScanJobSubmissionResponse, ScanJobView, StartScanRequest,
-    StartScanResponse,
+    PluginCatalogEntryView, PluginCatalogListResponse, RunSummaryView, ScanJobListResponse,
+    ScanJobSubmissionResponse, ScanJobView, StartScanRequest, StartScanResponse,
 };
 use crate::application_http::{
     self, BatchCheckResponse, BatchConfigBody, BatchPlanResponse, BatchRepairJobBody,
@@ -27,11 +30,13 @@ use crate::application_http::{
 };
 use crate::error::AppError;
 use crate::observability::audit;
+use crate::scan_job::ScanJobPayload;
 
 #[derive(Debug, Clone)]
 pub struct ParqonautService {
     store: StoreBackend,
     app: ParqonautApp,
+    server_plugins: ServerPluginState,
 }
 
 impl ParqonautService {
@@ -40,7 +45,59 @@ impl ParqonautService {
     }
 
     pub fn with_storage_policy(store: impl Into<StoreBackend>, policy: StoragePolicy) -> Self {
-        Self { store: store.into(), app: ParqonautApp::new(policy) }
+        Self {
+            store: store.into(),
+            app: ParqonautApp::new(policy),
+            server_plugins: ServerPluginState::disabled(),
+        }
+    }
+
+    pub fn with_storage_policy_and_plugins(
+        store: impl Into<StoreBackend>,
+        policy: StoragePolicy,
+        server_plugins: ServerPluginState,
+    ) -> Self {
+        Self { store: store.into(), app: ParqonautApp::new(policy), server_plugins }
+    }
+
+    pub fn server_plugins(&self) -> &ServerPluginState {
+        &self.server_plugins
+    }
+
+    pub fn list_plugin_catalog(&self) -> PluginCatalogListResponse {
+        let plugins = self
+            .server_plugins
+            .allowed_catalog_entries()
+            .into_iter()
+            .map(|e| PluginCatalogEntryView {
+                name: e.manifest.name.clone(),
+                version: e.manifest.version.clone(),
+                protocol_version: e.manifest.protocol_version,
+                digest: e.digest.clone(),
+                compatible: e.compatibility
+                    == parqonaut_plugin_host::PluginCompatibility::Compatible,
+                capabilities: public_capabilities_summary(e),
+            })
+            .collect();
+        PluginCatalogListResponse {
+            plugins,
+            plugins_enabled: self.server_plugins.plugins_enabled(),
+        }
+    }
+
+    pub fn get_plugin_catalog_entry(&self, name: &str) -> Result<PluginCatalogEntryView, AppError> {
+        let Some(entry) = self.server_plugins.get_allowed_entry(name) else {
+            return Err(AppError::PluginNotFound(name.to_string()));
+        };
+        Ok(PluginCatalogEntryView {
+            name: entry.manifest.name.clone(),
+            version: entry.manifest.version.clone(),
+            protocol_version: entry.manifest.protocol_version,
+            digest: entry.digest.clone(),
+            compatible: entry.compatibility
+                == parqonaut_plugin_host::PluginCompatibility::Compatible,
+            capabilities: public_capabilities_summary(entry),
+        })
     }
 
     pub fn store(&self) -> &StoreBackend {
@@ -56,13 +113,71 @@ impl ParqonautService {
         &self,
         req: StartScanRequest,
     ) -> Result<StartScanResponse, AppError> {
+        self.execute_scan_and_persist_with_cancel(req, None).await
+    }
+
+    pub async fn execute_scan_job_payload(
+        &self,
+        payload: ScanJobPayload,
+        cancel: Option<CancelToken>,
+    ) -> Result<StartScanResponse, AppError> {
+        let req = StartScanRequest {
+            target: payload.target,
+            profile: payload.profile,
+            options: payload.options,
+            scan_id: payload.scan_id,
+            redaction: payload.redaction,
+            plugins: payload.plugins.clone(),
+        };
+        self.execute_scan_and_persist_internal(req, payload.resolved_plugins, cancel).await
+    }
+
+    async fn execute_scan_and_persist_with_cancel(
+        &self,
+        req: StartScanRequest,
+        cancel: Option<CancelToken>,
+    ) -> Result<StartScanResponse, AppError> {
+        let resolved = self.server_plugins.resolve_for_enqueue(&req.plugins)?;
+        self.execute_scan_and_persist_internal(req, resolved, cancel).await
+    }
+
+    async fn execute_scan_and_persist_internal(
+        &self,
+        req: StartScanRequest,
+        resolved_plugins: Vec<parqonaut_types::ResolvedPluginSelection>,
+        cancel: Option<CancelToken>,
+    ) -> Result<StartScanResponse, AppError> {
         let location = location::dataset_location_from_scan_target(&req.target)?;
         self.app.policy().validate_dataset(&location)?;
-        let scan_req = ScanRequest::new(location, req.profile);
+        let scan_req = ScanRequest {
+            schema_version: parqonaut_app::APP_REQUEST_SCHEMA_VERSION,
+            location,
+            profile: req.profile,
+            plugins: req.plugins.clone(),
+        };
+
+        let bridge = if resolved_plugins.is_empty() {
+            None
+        } else {
+            let resolved = pinned_to_resolved(&self.server_plugins, &resolved_plugins)?;
+            let token = cancel.unwrap_or_default();
+            Some(ScanPluginBridge::from_pinned_resolved(
+                self.server_plugins.catalog().clone(),
+                self.server_plugins.runtime().clone(),
+                resolved,
+                req.plugins.clone(),
+                token,
+            ))
+        };
 
         let started = Utc::now();
         let engine_start = Instant::now();
-        let mut report = self.app.scan(scan_req).await.map_err(AppError::from)?.report;
+        let mut report = self
+            .app
+            .scan_with_bridge(scan_req, bridge.as_ref())
+            .await
+            .map_err(AppError::from)?
+            .report;
         if let Some(id) = req.scan_id {
             report.request.scan_id = id;
         }
@@ -112,9 +227,19 @@ impl ParqonautService {
     ) -> Result<ScanJobSubmissionResponse, AppError> {
         let loc = location::dataset_location_from_scan_target(&req.target)?;
         self.app.policy().validate_dataset(&loc)?;
+        let resolved = self.server_plugins.resolve_for_enqueue(&req.plugins)?;
+        let payload = ScanJobPayload::from_http(
+            req.target.clone(),
+            req.profile,
+            req.options,
+            req.scan_id,
+            req.redaction,
+            req.plugins,
+            resolved,
+        );
         let jid = JobId::new();
         let identity = TargetIdentity::from_scan_target(&req.target);
-        let request_json = serde_json::to_string(&req)?;
+        let request_json = serde_json::to_string(&payload)?;
         self.store.insert_scan_job_queued(jid, &identity, &request_json).await?;
         metrics::counter!("parqonaut_jobs_submitted_total").increment(1);
         audit::scan_submitted(jid.0, &identity.target_kind, &identity.normalized_key);

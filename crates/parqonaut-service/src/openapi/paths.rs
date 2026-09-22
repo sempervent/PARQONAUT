@@ -4,9 +4,9 @@
 use crate::api_types::{
     AuthTokenCreateRequest, AuthTokenCreateResponse, AuthTokenListResponse,
     AuthTokenRotateResponse, AuthTokenSummaryView, DiffQuery, HealthResponse, JobListQuery,
-    PageQuery, PagedAssetsResponse, PagedFindingsResponse, RunSummaryView, ScanJobListResponse,
-    ScanJobSubmissionResponse, ScanJobView, StartScanRequest, StartScanResponse, TargetRunsQuery,
-    WhoAmIResponse,
+    PageQuery, PagedAssetsResponse, PagedFindingsResponse, PluginCatalogEntryView,
+    PluginCatalogListResponse, RunSummaryView, ScanJobListResponse, ScanJobSubmissionResponse,
+    ScanJobView, StartScanRequest, StartScanResponse, TargetRunsQuery, WhoAmIResponse,
 };
 use crate::application_http::{
     BatchCheckResponse, BatchConfigBody, BatchPlanResponse, BatchRepairJobBody, BatchResumeBody,
@@ -59,6 +59,32 @@ pub fn get_openapi_json() {}
     security(("bearerAuth" = []))
 )]
 pub fn get_whoami() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/plugins",
+    tag = "plugins",
+    responses(
+        (status = 200, description = "Server allowlisted plugin catalog", body = PluginCatalogListResponse),
+        (status = 401, description = "Missing or invalid bearer token", body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn list_plugins() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/plugins/{name}",
+    tag = "plugins",
+    params(("name" = String, Path, description = "Plugin name")),
+    responses(
+        (status = 200, description = "Allowlisted plugin entry", body = PluginCatalogEntryView),
+        (status = 404, description = "Plugin not found or not allowlisted", body = ErrorBody),
+        (status = 401, description = "Missing or invalid bearer token", body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn get_plugin_by_name() {}
 
 #[utoipa::path(
     post,

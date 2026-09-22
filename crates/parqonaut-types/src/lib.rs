@@ -41,7 +41,7 @@ pub use fingerprint::sort_json_value;
 pub use format::{DataFormat, FormatSupportTier};
 pub use job::{JobErrorCode, JobId, JobKind, JobResultRef, JobStatus};
 pub use job_recovery::JobRecoveryPolicy;
-pub use plugin::{PluginExecutionRecord, ScanPluginMetadata};
+pub use plugin::{PluginExecutionRecord, ResolvedPluginSelection, ScanPluginMetadata};
 pub use report::{DatasetSummary, FormatSummary, ReportMetadata, ScanReport, ScanSummary};
 pub use run::{
     apply_redaction_policy, diff_reports, FindingDelta, RedactionPolicy, RetentionPolicy, RunDiff,

@@ -39,6 +39,26 @@ pub struct StartScanRequest {
     pub scan_id: Option<Uuid>,
     /// When omitted, [`parqonaut_types::RedactionPolicy::transport_safe_persist`] is applied before persistence.
     pub redaction: Option<RedactionPolicy>,
+    /// Scan analyzer plugin names (explicit opt-in; server allowlist applies).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugins: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct PluginCatalogEntryView {
+    pub name: String,
+    pub version: String,
+    pub protocol_version: u32,
+    pub digest: String,
+    pub compatible: bool,
+    #[serde(default)]
+    pub capabilities: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct PluginCatalogListResponse {
+    pub plugins: Vec<PluginCatalogEntryView>,
+    pub plugins_enabled: bool,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]

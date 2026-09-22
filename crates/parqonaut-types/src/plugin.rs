@@ -16,6 +16,15 @@ pub struct PluginExecutionRecord {
     pub error: Option<String>,
 }
 
+/// Digest-pinned plugin identity stored on durable scan jobs (no filesystem paths).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ResolvedPluginSelection {
+    pub name: String,
+    pub version: String,
+    pub protocol_version: u32,
+    pub digest: String,
+}
+
 /// Ordered plugin selection and per-invocation outcomes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ScanPluginMetadata {

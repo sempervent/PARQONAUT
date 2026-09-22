@@ -585,7 +585,13 @@
           "internal_error",
           "unauthorized",
           "forbidden",
-          "location_not_allowed"
+          "location_not_allowed",
+          "plugin_execution_disabled",
+          "plugin_not_allowed",
+          "plugin_not_found",
+          "plugin_incompatible",
+          "plugin_stale",
+          "plugin_cancelled"
         ],
         "type": "string"
       },
@@ -1242,6 +1248,54 @@
         },
         "required": [
           "plan"
+        ],
+        "type": "object"
+      },
+      "PluginCatalogEntryView": {
+        "properties": {
+          "capabilities": {},
+          "compatible": {
+            "type": "boolean"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol_version": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "protocol_version",
+          "digest",
+          "compatible"
+        ],
+        "type": "object"
+      },
+      "PluginCatalogListResponse": {
+        "properties": {
+          "plugins": {
+            "items": {
+              "$ref": "#/components/schemas/PluginCatalogEntryView"
+            },
+            "type": "array"
+          },
+          "plugins_enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "plugins",
+          "plugins_enabled"
         ],
         "type": "object"
       },
@@ -2162,6 +2216,13 @@
         "properties": {
           "options": {
             "$ref": "#/components/schemas/ScanOptions"
+          },
+          "plugins": {
+            "description": "Scan analyzer plugin names (explicit opt-in; server allowlist applies).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "profile": {
             "$ref": "#/components/schemas/ScanProfile"
@@ -3616,6 +3677,97 @@
         ]
       }
     },
+    "/api/v1/plugins": {
+      "get": {
+        "operationId": "list_plugins",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginCatalogListResponse"
+                }
+              }
+            },
+            "description": "Server allowlisted plugin catalog"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/v1/plugins/{name}": {
+      "get": {
+        "operationId": "get_plugin_by_name",
+        "parameters": [
+          {
+            "description": "Plugin name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginCatalogEntryView"
+                }
+              }
+            },
+            "description": "Allowlisted plugin entry"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Plugin not found or not allowlisted"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
     "/api/v1/repairs": {
       "post": {
         "operationId": "post_repairs",
@@ -4459,6 +4611,10 @@
     {
       "description": "Metrics and API contract",
       "name": "meta"
+    },
+    {
+      "description": "Server allowlisted plugin catalog",
+      "name": "plugins"
     },
     {
       "description": "Diagnose, plan, check, repair, verify",

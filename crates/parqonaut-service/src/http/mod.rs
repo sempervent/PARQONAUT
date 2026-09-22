@@ -46,6 +46,8 @@ pub fn build_router_with_workers(service: ParqonautService, workers: usize) -> R
 
     let protected = Router::new()
         .route("/openapi.json", get(openapi_json))
+        .route("/plugins", get(handlers::list_plugins))
+        .route("/plugins/{name}", get(handlers::get_plugin))
         .route("/scans", post(handlers::post_async_scan))
         .route("/scans/sync", post(handlers::post_scan_sync))
         .route("/jobs/scans", post(handlers::post_async_scan))

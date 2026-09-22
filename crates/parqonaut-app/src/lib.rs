@@ -10,6 +10,7 @@ pub mod plugins;
 pub mod policy;
 pub mod repair;
 pub mod scan;
+pub mod server_plugins;
 pub mod transform;
 
 pub use contracts::{
@@ -21,8 +22,10 @@ pub use contracts::{
 };
 pub use error::ApplicationError;
 pub use policy::StoragePolicy;
+pub use server_plugins::{ServerPluginPolicy, ServerPluginState};
 
 use parqonaut_transform::TransformReport;
+use plugins::ScanPluginBridge;
 use scan::AppScanRequest;
 
 /// Shared application facade holding server location policy.
@@ -48,9 +51,17 @@ impl ParqonautApp {
     }
 
     pub async fn scan(&self, req: ScanRequest) -> Result<ScanResult, ApplicationError> {
+        self.scan_with_bridge(req, None).await
+    }
+
+    pub async fn scan_with_bridge(
+        &self,
+        req: ScanRequest,
+        bridge: Option<&ScanPluginBridge>,
+    ) -> Result<ScanResult, ApplicationError> {
         let app_req =
             AppScanRequest { location: req.location, profile: req.profile, plugins: req.plugins };
-        let report = scan::run_scan(&app_req, &self.policy).await?;
+        let report = scan::run_scan_with_bridge(&app_req, &self.policy, bridge).await?;
         Ok(ScanResult { report })
     }
 
