@@ -51,7 +51,12 @@ impl ParqonautApp {
     }
 
     pub async fn scan(&self, req: ScanRequest) -> Result<ScanResult, ApplicationError> {
-        self.scan_with_bridge(req, None).await
+        let bridge = if req.plugins.is_empty() {
+            None
+        } else {
+            Some(ScanPluginBridge::new(req.plugins.clone())?)
+        };
+        self.scan_with_bridge(req, bridge.as_ref()).await
     }
 
     pub async fn scan_with_bridge(

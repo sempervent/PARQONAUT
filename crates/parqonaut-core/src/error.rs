@@ -23,4 +23,6 @@ pub enum CoreError {
     ReportValidation(String),
     #[error("plugin host error: {0}")]
     PluginHost(String),
+    #[error("plugin execution cancelled")]
+    PluginCancelled,
 }

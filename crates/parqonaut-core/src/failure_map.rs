@@ -11,8 +11,9 @@ pub(crate) fn failure_kind(err: &CoreError) -> FailureKind {
         CoreError::Parquet(_) => FailureKind::FormatReadError,
         CoreError::Inspect(_) => FailureKind::ProbeDecodeError,
         CoreError::Unsupported(_) => FailureKind::UnsupportedFormat,
-        CoreError::ReportValidation(_) | CoreError::Plugin(_) | CoreError::PluginHost(_) => {
-            FailureKind::InternalEngineError
-        }
+        CoreError::ReportValidation(_)
+        | CoreError::Plugin(_)
+        | CoreError::PluginHost(_)
+        | CoreError::PluginCancelled => FailureKind::InternalEngineError,
     }
 }

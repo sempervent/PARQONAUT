@@ -49,6 +49,8 @@ impl From<CoreError> for ApplicationError {
         match e {
             CoreError::MissingPath(p) => Self::TargetNotFound(p.to_string()),
             CoreError::Unsupported(m) => Self::InvalidRequest(m.to_string()),
+            CoreError::PluginCancelled => Self::PluginCancelled,
+            CoreError::PluginHost(m) => Self::PluginHost(m),
             other => Self::Internal(other.to_string()),
         }
     }

@@ -310,5 +310,15 @@ pub(crate) fn map_application_error(e: ApplicationError) -> Box<dyn std::error::
         ApplicationError::Conflict(msg) => msg.into(),
         ApplicationError::Internal(msg) => msg.into(),
         ApplicationError::PluginHost(msg) => msg.into(),
+        ApplicationError::PluginExecutionDisabled => {
+            "plugin execution is disabled on this server".into()
+        }
+        ApplicationError::PluginNotAllowed(name) => format!("plugin not allowed: {name}").into(),
+        ApplicationError::PluginNotFound(name) => format!("plugin not found: {name}").into(),
+        ApplicationError::PluginIncompatible(name) => format!("plugin incompatible: {name}").into(),
+        ApplicationError::PluginStale { name, expected, actual } => {
+            format!("stale plugin {name}: expected digest {expected}, current {actual}").into()
+        }
+        ApplicationError::PluginCancelled => "plugin execution cancelled".into(),
     }
 }

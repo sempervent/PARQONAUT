@@ -1,4 +1,2 @@
 [alias]
-# Override user-level `clippy = "clippy -- -D warnings"` (recursive alias).
-clippy = "clippy"
 xtask = "run -p xtask --"

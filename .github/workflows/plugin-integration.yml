@@ -19,6 +19,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
+      - uses: extractions/setup-just@v2
       - name: Python plugin SDK
         working-directory: python/parqonaut_plugins
         run: |
@@ -33,4 +34,4 @@ jobs:
           PARQONAUT_PLUGIN_PYTHON: python
         run: |
           just plugin-test
-          cargo test -p parqonaut-service --test server_plugin_policy
+          cargo test -p parqonaut-service --test server_plugin_policy --test server_plugin_durable -- --test-threads=1

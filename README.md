@@ -123,11 +123,10 @@ just batch-resume-demo  # Batch: interrupt and resume
 ## Not yet implemented
 
 - Web dashboard / TUI
-- Server-managed plugin catalog and scan-job plugin selection (CLI/runtime plugins ship in v0.10 development)
-- Extended partition/merge/split and spec-file transform surface
-- Stream pipeline: resumability, progress UI wiring, full schema unification
-- Arrow/Parquet dependency convergence across engines
-- In-memory cross-engine pipelines
+- Generic HTTP server transform jobs (batch plugins via `prqnt transform --spec` and `parqonaut-app` only)
+- Additional plugin capability classes beyond scan analyzers and batch Arrow IPC transforms
+- Extended partition/merge/split transform surface
+- 1.0 hardening and production deployment guides
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 

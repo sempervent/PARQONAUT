@@ -24,7 +24,12 @@ jobs:
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: |
+          if command -v cargo-clippy >/dev/null 2>&1; then
+            cargo-clippy --workspace --all-targets --all-features -- -D warnings
+          else
+            cargo clippy --workspace --all-targets --all-features -- -D warnings
+          fi
       - name: naming check
         run: scripts/check-active-naming.sh
       - name: test
@@ -138,3 +143,8 @@ jobs:
             --test chaos_backend --test contract_local --test contract_memory \
             --test fogbank_integration --test s3_integration -- --nocapture
           bash scripts/pipeline-s3-demo.sh
+          export PARQONAUT_PLUGIN_ROOTS="${{ github.workspace }}/fixtures/plugins"
+          export PARQONAUT_PLUGIN_SDK_PATH="${{ github.workspace }}/python/parqonaut_plugins/src"
+          export PARQONAUT_PLUGIN_PYTHON=python3
+          cargo test -p parqonaut-transform --features s3 --test plugin_storage_matrix --test plugin_s3_cancellation -- --nocapture --test-threads=1
+          bash scripts/plugin-s3-demo.sh

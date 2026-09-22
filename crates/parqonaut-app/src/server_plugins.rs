@@ -13,23 +13,12 @@ use parqonaut_types::ResolvedPluginSelection;
 use crate::error::ApplicationError;
 
 /// Server plugin execution gate and allowlist (disabled by default).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ServerPluginPolicy {
     pub enabled: bool,
     pub roots: Vec<PathBuf>,
     pub allowed: BTreeSet<String>,
     pub runtime: PluginRuntimeConfig,
-}
-
-impl Default for ServerPluginPolicy {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            roots: Vec::new(),
-            allowed: BTreeSet::new(),
-            runtime: PluginRuntimeConfig::default(),
-        }
-    }
 }
 
 impl ServerPluginPolicy {
@@ -164,12 +153,14 @@ impl ServerPluginState {
         if !self.policy.enabled {
             return Err(ApplicationError::PluginExecutionDisabled);
         }
+        let fresh = PluginCatalog::discover_from_roots(&self.policy.roots)
+            .map_err(|e| ApplicationError::PluginHost(e.to_string()))?;
         let mut out = Vec::with_capacity(pinned.len());
         for pin in pinned {
             if !self.policy.allowed.contains(&pin.name) {
                 return Err(ApplicationError::PluginNotAllowed(pin.name.clone()));
             }
-            let Some(entry) = self.catalog.get(&pin.name) else {
+            let Some(entry) = fresh.get(&pin.name) else {
                 return Err(ApplicationError::PluginNotFound(pin.name.clone()));
             };
             if entry.manifest.version != pin.version

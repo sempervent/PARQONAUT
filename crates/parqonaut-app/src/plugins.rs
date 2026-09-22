@@ -107,9 +107,14 @@ impl ScanPluginHost for ScanPluginBridge {
         context: PluginScanContext,
         known_evidence: &BTreeSet<String>,
     ) -> Result<(Vec<Finding>, Vec<PluginExecutionRecord>), parqonaut_core::CoreError> {
-        self.host
-            .run_phase(&self.resolved, phase, context, known_evidence, &self.cancel)
-            .map_err(|e| parqonaut_core::CoreError::PluginHost(e.to_string()))
+        self.host.run_phase(&self.resolved, phase, context, known_evidence, &self.cancel).map_err(
+            |e| match e {
+                parqonaut_plugin_host::PluginHostError::Cancelled => {
+                    parqonaut_core::CoreError::PluginCancelled
+                }
+                other => parqonaut_core::CoreError::PluginHost(other.to_string()),
+            },
+        )
     }
 
     fn resolved_plugin_order(&self) -> &[String] {

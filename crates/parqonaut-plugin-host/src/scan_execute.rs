@@ -158,7 +158,7 @@ impl ScanPluginExecutor {
                 let _ = terminate_child(&mut child);
                 let _ = stdout_handle.join();
                 let _ = stderr_handle.join();
-                return Err(PluginHostError::ProtocolViolation("cancelled".into()));
+                return Err(PluginHostError::Cancelled);
             }
             if matches!(stdout_out.lock().expect("lock").as_ref(), Some(Err(_))) {
                 let err = stdout_out.lock().expect("lock").take().unwrap().unwrap_err();

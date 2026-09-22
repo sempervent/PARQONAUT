@@ -190,11 +190,39 @@ async fn run_scan_job(
         }
         token_watch.cancel();
     });
-    let resp = service.execute_scan_job_payload(payload, Some(token)).await?;
+    let svc_poll = service.clone();
+    let cancel_poll = cancel.clone();
+    let token_poll = token.clone();
+    let poll_task = tokio::spawn(async move {
+        loop {
+            if cancel_poll.is_cancelled() {
+                break;
+            }
+            if svc_poll.store().job_cancel_requested(jid).await.unwrap_or(false) {
+                cancel_poll.cancel();
+                token_poll.cancel();
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    });
+    let service_exec = service.clone();
+    let resp = tokio::task::spawn_blocking(move || {
+        tokio::runtime::Handle::current()
+            .block_on(service_exec.execute_scan_job_payload(payload, Some(token)))
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("scan worker join: {e}")))?;
+    poll_task.abort();
     bridge_task.abort();
     if cancel.is_cancelled() {
         return cancel_running_job(service, jid).await;
     }
+    let resp = match resp {
+        Ok(r) => r,
+        Err(AppError::PluginCancelled) => return cancel_running_job(service, jid).await,
+        Err(e) => return Err(e),
+    };
     service.store().complete_scan_job_success(jid, RunId(resp.run_id)).await?;
     metrics::counter!("parqonaut_jobs_succeeded_total", "kind" => "scan").increment(1);
     audit::job_completed(jid.0, resp.run_id);

@@ -197,3 +197,24 @@ fn non_callable_entrypoint() {
         PluginHostError::EntrypointInvalid { .. } | PluginHostError::ProcessFailed { .. }
     ));
 }
+
+#[test]
+fn slow_scan_cancellable_via_token() {
+    std::env::set_var("PARQONAUT_TEST_SLOW_SCAN_SEC", "8");
+    let catalog = PluginCatalog::discover_from_roots(&[fixture_plugins_root()]).unwrap();
+    let entry = catalog.get("adv-sleep").unwrap();
+    let executor = ScanPluginExecutor::new(PluginRuntimeConfig {
+        sdk_src_root: Some(sdk_path()),
+        ..PluginRuntimeConfig::default()
+    });
+    let cancel = CancelToken::new();
+    let cancel_worker = cancel.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        cancel_worker.cancel();
+    });
+    let err = executor
+        .execute_scan(entry, PluginExecutionPhase::PostRules, ctx(), &cancel, None)
+        .unwrap_err();
+    assert!(matches!(err, PluginHostError::Cancelled));
+}

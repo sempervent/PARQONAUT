@@ -16,7 +16,7 @@ lint:
     #!/usr/bin/env bash
     set -euo pipefail
     if command -v cargo-clippy >/dev/null 2>&1; then
-      cargo-clippy clippy --workspace --all-targets --all-features -- -D warnings
+      cargo-clippy --workspace --all-targets --all-features -- -D warnings
     else
       cargo clippy --workspace --all-targets --all-features -- -D warnings
     fi
@@ -74,6 +74,9 @@ plugin-test:
 
 plugin-s3-demo:
     bash scripts/plugin-s3-demo.sh
+
+plugin-server-demo:
+    bash scripts/plugin-server-demo.sh
 
 plugin-demo:
     #!/usr/bin/env bash

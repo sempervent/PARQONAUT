@@ -41,7 +41,7 @@ pub fn plugin_child_env(extra_pythonpath: &str) -> BTreeMap<String, String> {
         }
     }
     for (k, v) in env::vars() {
-        if k.starts_with("PYTHON") && !out.contains_key(&k) {
+        if k.starts_with("PARQONAUT_TEST_") || (k.starts_with("PYTHON") && !out.contains_key(&k)) {
             out.insert(k, v);
         }
     }
