@@ -31,7 +31,7 @@ jobs:
         env:
           PARQONAUT_PLUGIN_ROOTS: ${{ github.workspace }}/fixtures/plugins
           PARQONAUT_PLUGIN_SDK_PATH: ${{ github.workspace }}/python/parqonaut_plugins/src
-          PARQONAUT_PLUGIN_PYTHON: python
+          PARQONAUT_PLUGIN_PYTHON: python3
         run: |
           just plugin-test
           cargo test -p parqonaut-service --test server_plugin_policy --test server_plugin_durable -- --test-threads=1
