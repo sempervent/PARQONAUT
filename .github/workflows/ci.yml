@@ -21,6 +21,16 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: Plugin Python runtime
+        working-directory: python/parqonaut_plugins
+        run: |
+          uv sync --frozen
+          echo "PARQONAUT_PLUGIN_PYTHON=$(uv run which python)" >> "${GITHUB_ENV}"
+          echo "PARQONAUT_PLUGIN_ROOTS=${{ github.workspace }}/fixtures/plugins" >> "${GITHUB_ENV}"
+          echo "PARQONAUT_PLUGIN_SDK_PATH=${{ github.workspace }}/python/parqonaut_plugins/src" >> "${GITHUB_ENV}"
       - name: fmt
         run: cargo fmt --all -- --check
       - name: clippy
