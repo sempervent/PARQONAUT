@@ -7,7 +7,6 @@ import importlib
 import json
 import sys
 from collections.abc import Callable
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +49,9 @@ def _load_scan_callable(entrypoint: str) -> Callable[[PluginScanContext], Plugin
     return func
 
 
-def _load_batch_callable(entrypoint: str) -> Callable[[pa.RecordBatch, dict[str, Any]], pa.RecordBatch]:
+def _load_batch_callable(
+    entrypoint: str,
+) -> Callable[[pa.RecordBatch, dict[str, Any]], pa.RecordBatch]:
     module_name, _, func_name = entrypoint.partition(":")
     if not module_name or not func_name:
         raise ValueError("entrypoint must be module:callable")
