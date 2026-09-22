@@ -55,7 +55,7 @@ impl FusedTransformChain {
                         &runtime,
                         &pinned.digest,
                         policy.max_inflight_batches,
-                        None,
+                        run.cancel_token(),
                     )
                     .map_err(map_plugin_err)?;
                     exec_ops.push(ExecOp::Plugin(bridges.len()));
@@ -96,6 +96,7 @@ impl FusedTransformChain {
 
     pub fn finish(&mut self) -> Result<()> {
         for (idx, bridge) in self.bridges.iter_mut().enumerate() {
+            self.run.record_bridge_metrics(bridge.metrics().snapshot());
             if bridge.finish().map_err(map_plugin_err).is_ok() {
                 self.run.complete_plugin(self.plugin_stage_ids[idx]);
             }
@@ -111,6 +112,18 @@ impl FusedTransformChain {
 
     pub fn has_plugin(&self) -> bool {
         !self.bridges.is_empty()
+    }
+
+    pub fn bridge_metrics_snapshot(
+        &self,
+    ) -> Vec<parqonaut_plugin_host::BatchBridgeMetricsSnapshot> {
+        self.bridges.iter().map(|b| b.metrics().snapshot()).collect()
+    }
+
+    pub fn cancel_plugins(&self) {
+        for bridge in &self.bridges {
+            bridge.cancel();
+        }
     }
 
     pub fn host_pipeline_only(ops: &[FusedOperation]) -> Result<Option<Pipeline>> {

@@ -361,13 +361,15 @@ async fn execute_fused_segment_routed_async(
             64,
             pipeline,
             chain.clone(),
+            run,
         )
         .await?;
         return Ok((outs.len() as u64, files_read));
     }
 
     if fused.output.ends_with(".parquet") {
-        fused_rewrite_to_storage(io, &fused.inputs, &fused.output, pipeline, chain.clone()).await?;
+        fused_rewrite_to_storage(io, &fused.inputs, &fused.output, pipeline, chain.clone(), run)
+            .await?;
         if let Some(chain) = chain {
             if let Ok(mut guard) = chain.lock() {
                 guard.finish()?;
@@ -406,11 +408,12 @@ async fn fused_rewrite_to_storage(
     output: &str,
     pipeline: Option<Pipeline>,
     chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
+    run: &TransformRunContext,
 ) -> Result<()> {
     let out_loc = ObjectLocation::parse(output).map_err(map_storage)?;
     let sink_backend = io.backend_for(&out_loc);
     let schema = schema_from_inputs(io, inputs).await?;
-    let stream = fused_input_stream(io, inputs, pipeline, chain);
+    let stream = fused_input_stream(io, inputs, pipeline, chain, run);
     write_parquet_batch_stream(
         sink_backend,
         out_loc,
@@ -441,6 +444,7 @@ fn fused_input_stream(
     inputs: &[String],
     pipeline: Option<Pipeline>,
     chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
+    run: &TransformRunContext,
 ) -> BatchStream {
     Box::pin(FusedInputStream {
         io: io.clone(),
@@ -450,6 +454,7 @@ fn fused_input_stream(
         pipeline,
         chain,
         pending_transform: None,
+        run: run.clone(),
     })
 }
 
@@ -461,6 +466,7 @@ struct FusedInputStream {
     pipeline: Option<Pipeline>,
     chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
     pending_transform: Option<tokio::task::JoinHandle<std::result::Result<RecordBatch, String>>>,
+    run: TransformRunContext,
 }
 
 impl futures::Stream for FusedInputStream {
@@ -471,6 +477,22 @@ impl futures::Stream for FusedInputStream {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         loop {
+            if self
+                .run
+                .cancel_token()
+                .as_ref()
+                .is_some_and(parqonaut_plugin_host::CancelToken::is_cancelled)
+            {
+                if let Some(chain) = &self.chain {
+                    if let Ok(guard) = chain.lock() {
+                        guard.cancel_plugins();
+                    }
+                }
+                return std::task::Poll::Ready(Some(Err(ColumnarError::Other(
+                    "transform cancelled".into(),
+                ))));
+            }
+
             if let Some(handle) = self.pending_transform.as_mut() {
                 match std::future::Future::poll(std::pin::Pin::new(handle), cx) {
                     std::task::Poll::Ready(Ok(Ok(batch))) => {
@@ -562,13 +584,14 @@ async fn fused_partition_to_storage(
     max_open: usize,
     pipeline: Option<Pipeline>,
     chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
+    run: &TransformRunContext,
 ) -> Result<Vec<String>> {
     use std::collections::{HashMap, VecDeque};
 
     use crate::engine::partition::partition_keys;
 
     let schema = schema_from_inputs(io, inputs).await?;
-    let mut stream = fused_input_stream(io, inputs, pipeline, chain.clone());
+    let mut stream = fused_input_stream(io, inputs, pipeline, chain.clone(), run);
     let chain_for_finish = chain.clone();
 
     let mut buffers: HashMap<String, Vec<RecordBatch>> = HashMap::new();

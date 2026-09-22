@@ -109,8 +109,8 @@ impl ScanPluginExecutor {
         let pythonpath = build_pythonpath(&entry.root, self.runtime.sdk_src_root.as_deref())?;
         let env = plugin_child_env(&pythonpath);
 
-        let mut child = Command::new(&python)
-            .arg("-m")
+        let mut cmd = Command::new(&python);
+        cmd.arg("-m")
             .arg(RUNNER_MODULE)
             .arg("scan")
             .current_dir(&entry.root)
@@ -118,9 +118,9 @@ impl ScanPluginExecutor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .env_clear()
-            .envs(env)
-            .spawn()
-            .map_err(|e| PluginHostError::SpawnFailed(e.to_string()))?;
+            .envs(env);
+        configure_plugin_child(&mut cmd);
+        let mut child = cmd.spawn().map_err(|e| PluginHostError::SpawnFailed(e.to_string()))?;
 
         let mut stdin = child.stdin.take().expect("stdin");
         stdin.write_all(&request_json).map_err(|e| {
@@ -372,8 +372,27 @@ fn tail_str(bytes: &[u8], max: usize) -> String {
     }
 }
 
+#[cfg(unix)]
+pub(crate) fn configure_plugin_child(cmd: &mut Command) {
+    use std::os::unix::process::CommandExt;
+    cmd.process_group(0);
+}
+
+#[cfg(not(unix))]
+pub(crate) fn configure_plugin_child(_cmd: &mut Command) {}
+
 pub(crate) fn terminate_child(child: &mut Child) -> Result<(), PluginHostError> {
-    let _ = child.kill();
+    #[cfg(unix)]
+    {
+        let pid = child.id() as libc::pid_t;
+        unsafe {
+            let _ = libc::kill(-pid, libc::SIGKILL);
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill();
+    }
     let grace = Duration::from_millis(500);
     let start = Instant::now();
     loop {

@@ -103,6 +103,20 @@ pub enum StorageKind {
     S3,
 }
 
+/// Stable identity for plugin execution (digest + per-stage config), excluding volatile plan ids.
+pub fn plugin_execution_identity(plan: &ExecutablePlan) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for segment in &plan.segments {
+        let CompiledSegment::Fused(fused) = segment else { continue };
+        for op in &fused.ops {
+            let FusedOperation::Plugin(pinned) = op else { continue };
+            let config = serde_json::to_string(&pinned.config).unwrap_or_else(|_| "{}".into());
+            parts.push(format!("{}@{}:{}", pinned.name, pinned.digest, config));
+        }
+    }
+    parts.join(";")
+}
+
 impl ExecutablePlan {
     pub fn to_transform_plan(&self) -> TransformPlan {
         TransformPlan {

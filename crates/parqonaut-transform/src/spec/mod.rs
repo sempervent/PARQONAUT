@@ -10,8 +10,8 @@ mod types;
 pub use execute::*;
 pub use parse::*;
 pub use plan::{
-    compile_plan, validate_spec, BarrierPlanSegment, CompiledSegment, ExecutablePlan,
-    FusedOperation, FusedPlanSegment, ResolvedStep, StorageKind,
+    compile_plan, plugin_execution_identity, validate_spec, BarrierPlanSegment, CompiledSegment,
+    ExecutablePlan, FusedOperation, FusedPlanSegment, ResolvedStep, StorageKind,
 };
 pub use plugin::PinnedBatchPlugin;
 pub use plugin_run::TransformRunContext;

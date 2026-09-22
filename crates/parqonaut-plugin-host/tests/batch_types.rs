@@ -113,6 +113,24 @@ fn arrow_ipc_dictionary_utf8() {
 }
 
 #[test]
+fn arrow_ipc_timestamp_with_timezone() {
+    let schema = Arc::new(Schema::new(vec![Field::new(
+        "ts",
+        DataType::Timestamp(TimeUnit::Microsecond, Some("America/New_York".into())),
+        true,
+    )]));
+    let batch = RecordBatch::try_new(
+        schema,
+        vec![Arc::new(
+            TimestampMicrosecondArray::from(vec![Some(1_700_000_000_000_000)])
+                .with_timezone("America/New_York"),
+        )],
+    )
+    .unwrap();
+    passthrough_roundtrip(batch);
+}
+
+#[test]
 fn nested_list_rejected_before_spawn() {
     let schema = Arc::new(Schema::new(vec![Field::new(
         "items",

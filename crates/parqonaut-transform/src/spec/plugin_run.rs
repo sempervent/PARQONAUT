@@ -3,6 +3,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use parqonaut_plugin_host::{BatchBridgeMetricsSnapshot, CancelToken};
 use parqonaut_workflow::NoOpProgressObserver;
 use parqonaut_workflow::{
     PluginTransformRecord, ProgressEvent, ProgressEventKind, ProgressMetrics, ProgressObserver,
@@ -17,10 +18,12 @@ const PROGRESS_MIN_BATCHES: u64 = 32;
 pub struct TransformRunContext {
     progress: Arc<dyn ProgressObserver>,
     inner: Arc<Mutex<RunInner>>,
+    cancel: Option<CancelToken>,
 }
 
 struct RunInner {
     stages: Vec<PluginStageRun>,
+    bridge_metrics: Vec<BatchBridgeMetricsSnapshot>,
 }
 
 struct PluginStageRun {
@@ -46,11 +49,39 @@ enum StageStatus {
 
 impl TransformRunContext {
     pub fn new(progress: Arc<dyn ProgressObserver>) -> Self {
-        Self { progress, inner: Arc::new(Mutex::new(RunInner { stages: Vec::new() })) }
+        Self {
+            progress,
+            inner: Arc::new(Mutex::new(RunInner {
+                stages: Vec::new(),
+                bridge_metrics: Vec::new(),
+            })),
+            cancel: None,
+        }
+    }
+
+    pub fn with_cancel(progress: Arc<dyn ProgressObserver>, cancel: CancelToken) -> Self {
+        Self {
+            progress,
+            inner: Arc::new(Mutex::new(RunInner {
+                stages: Vec::new(),
+                bridge_metrics: Vec::new(),
+            })),
+            cancel: Some(cancel),
+        }
     }
 
     pub fn noop() -> Self {
         Self::new(Arc::new(NoOpProgressObserver))
+    }
+
+    pub fn cancel_token(&self) -> Option<CancelToken> {
+        self.cancel.clone()
+    }
+
+    pub fn request_cancel(&self) {
+        if let Some(token) = &self.cancel {
+            token.cancel();
+        }
     }
 
     pub fn register_plugin(&self, pinned: PinnedBatchPlugin) -> usize {
@@ -167,6 +198,16 @@ impl TransformRunContext {
         let msg = Some(label.to_string());
         drop(guard);
         self.emit(kind, stage, metrics, msg);
+    }
+
+    pub fn record_bridge_metrics(&self, snapshot: BatchBridgeMetricsSnapshot) {
+        if let Ok(mut guard) = self.inner.lock() {
+            guard.bridge_metrics.push(snapshot);
+        }
+    }
+
+    pub fn take_bridge_metrics(&self) -> Vec<BatchBridgeMetricsSnapshot> {
+        self.inner.lock().expect("plugin run lock").bridge_metrics.clone()
     }
 
     pub fn take_plugin_executions(&self) -> Vec<PluginTransformRecord> {

@@ -2,6 +2,7 @@
 
 use std::io::Write;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -18,9 +19,16 @@ use crate::env::plugin_child_env;
 use crate::error::PluginHostError;
 use crate::policy::BatchResourcePolicy;
 use crate::scan_execute::{
-    build_pythonpath, resolve_python, terminate_child, CancelToken, PluginRuntimeConfig,
-    RUNNER_MODULE,
+    build_pythonpath, configure_plugin_child, resolve_python, terminate_child, CancelToken,
+    PluginRuntimeConfig, RUNNER_MODULE,
 };
+
+static BATCH_PLUGIN_SPAWNS: AtomicUsize = AtomicUsize::new(0);
+
+/// Test/diagnostic counter incremented on each batch plugin child spawn.
+pub fn batch_plugin_spawn_count() -> &'static AtomicUsize {
+    &BATCH_PLUGIN_SPAWNS
+}
 
 /// Active batch plugin child (one process per pipeline stage).
 pub struct BatchPluginSession {
@@ -79,8 +87,8 @@ impl BatchPluginSession {
         let mut env = plugin_child_env(&pythonpath);
         env.insert("PARQONAUT_BATCH_CONTEXT_PATH".into(), ctx_path.to_string_lossy().into_owned());
 
-        let mut child = Command::new(&python)
-            .arg("-m")
+        let mut cmd = Command::new(&python);
+        cmd.arg("-m")
             .arg(RUNNER_MODULE)
             .arg("batch")
             .arg("--context")
@@ -90,9 +98,10 @@ impl BatchPluginSession {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .env_clear()
-            .envs(env)
-            .spawn()
-            .map_err(|e| PluginHostError::SpawnFailed(e.to_string()))?;
+            .envs(env);
+        configure_plugin_child(&mut cmd);
+        let mut child = cmd.spawn().map_err(|e| PluginHostError::SpawnFailed(e.to_string()))?;
+        BATCH_PLUGIN_SPAWNS.fetch_add(1, Ordering::SeqCst);
 
         let stdin = child.stdin.take().expect("stdin");
         let stdout = child.stdout.take().expect("stdout");

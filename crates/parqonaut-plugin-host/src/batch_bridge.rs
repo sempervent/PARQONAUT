@@ -79,13 +79,23 @@ impl BatchBridgeMetrics {
         self.plugin_to_host_peak.load(Ordering::SeqCst)
     }
 
-    pub fn host_to_plugin_inflight(&self) -> usize {
-        self.host_to_plugin_inflight.load(Ordering::SeqCst)
+    pub fn snapshot(&self) -> BatchBridgeMetricsSnapshot {
+        BatchBridgeMetricsSnapshot {
+            host_to_plugin_capacity: self.host_to_plugin_capacity,
+            plugin_to_host_capacity: self.plugin_to_host_capacity,
+            host_to_plugin_peak: self.host_to_plugin_peak(),
+            plugin_to_host_peak: self.plugin_to_host_peak(),
+        }
     }
+}
 
-    pub fn plugin_to_host_inflight(&self) -> usize {
-        self.plugin_to_host_inflight.load(Ordering::SeqCst)
-    }
+/// Point-in-time bridge queue metrics (for tests and observability).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatchBridgeMetricsSnapshot {
+    pub host_to_plugin_capacity: usize,
+    pub plugin_to_host_capacity: usize,
+    pub host_to_plugin_peak: usize,
+    pub plugin_to_host_peak: usize,
 }
 
 /// Runs one batch-transform plugin subprocess; host sends batches, receives transformed batches.
