@@ -13,7 +13,7 @@ LOG="${RUN_DIR}/server.log"
 LISTEN="${PLUGIN_SERVER_LISTEN:-127.0.0.1:3857}"
 BASE_URL="http://${LISTEN}"
 FIXTURES="$(cd "${REPO_ROOT}/fixtures" && pwd)"
-SCAN_FILE="${FIXTURES}/scan/tiny_parquet/micro.parquet"
+SCAN_TARGET="${FIXTURES}/csv"
 PLUGINS_ROOT="${REPO_ROOT}/fixtures/plugins"
 
 cleanup() {
@@ -74,16 +74,16 @@ auth="Authorization: Bearer ${PRQNT_BOOTSTRAP_ADMIN_TOKEN}"
 plugins="$(curl -fsS -H "${auth}" "${BASE_URL}/api/v1/plugins")"
 echo "${plugins}" | grep -q '"name"[[:space:]]*:[[:space:]]*"example-rules"'
 
+export SCAN_TARGET
 body="$(python3 - <<PY
 import json, os
 print(json.dumps({
-  "target": {"type": "local_file", "path": os.environ["SCAN_FILE"]},
+  "target": {"type": "local_directory", "path": os.environ["SCAN_TARGET"]},
   "profile": "quick",
   "plugins": ["example-rules"],
 }))
 PY
 )"
-export SCAN_FILE
 
 job="$(curl -fsS -X POST "${BASE_URL}/api/v1/jobs/scans" \
   -H "${auth}" -H "content-type: application/json" \
@@ -101,6 +101,7 @@ for _ in $(seq 1 120); do
 done
 [[ "${status}" == "succeeded" ]] || {
   echo "job did not succeed: ${status}" >&2
+  echo "${row}" >&2
   tail -50 "${LOG}" >&2 || true
   exit 1
 }
@@ -108,8 +109,8 @@ done
 run_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["run_id"])' <<<"${row}")"
 report="$(curl -fsS -H "${auth}" "${BASE_URL}/api/v1/runs/${run_id}/report")"
 echo "${report}" | grep -q 'plugin.example_rules'
-echo "${report}" | grep -q '"plugin_version"'
-echo "${report}" | grep -q '"plugin_digest"'
+echo "${report}" | grep -q '"plugin_metadata"'
+echo "${report}" | grep -q '"digest"'
 echo "${report}" | grep -q '"phase"'
 
-echo "plugin-server-demo PASS (${BASE_URL})"
+echo "plugin-server-demo PASS: ${BASE_URL}"

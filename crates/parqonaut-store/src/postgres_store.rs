@@ -123,9 +123,13 @@ impl PostgresScanStore {
             .await?;
         }
 
+        let mut finding_fps = std::collections::HashSet::new();
         for f in &stored.findings {
             let fp =
                 f.fingerprint.as_ref().map(|x| x.digest.as_str()).unwrap_or("missing_fingerprint");
+            if !finding_fps.insert(fp.to_string()) {
+                continue;
+            }
             let asset_path =
                 f.locations.first().and_then(|l| l.file.as_ref()).map(|p| p.as_str().to_string());
             let dataset_id: Option<String> =
