@@ -11,6 +11,7 @@ pub fn canonical_plugin_root(root: &Path) -> Result<PathBuf, PluginHostError> {
     Ok(canonical)
 }
 
+#[allow(dead_code)]
 pub fn manifest_path_in_root(root: &Path, manifest_rel: &str) -> Result<PathBuf, PluginHostError> {
     if manifest_rel.contains("..") {
         return Err(PluginHostError::InvalidPath("manifest path traversal".into()));
@@ -37,6 +38,7 @@ pub fn ensure_within_root(path: &Path, root: &Path) -> Result<(), PluginHostErro
 }
 
 /// Rejects plugin roots whose path contains `..` before canonicalization.
+#[allow(dead_code)]
 pub fn reject_parent_components(root: &Path) -> Result<(), PluginHostError> {
     for c in root.components() {
         if matches!(c, Component::ParentDir) {

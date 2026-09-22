@@ -103,7 +103,7 @@ impl PluginCatalog {
         Ok(catalog)
     }
 
-    pub fn validate_path(plugin_root: &PathBuf) -> Result<CatalogEntry, PluginHostError> {
+    pub fn validate_path(plugin_root: &std::path::Path) -> Result<CatalogEntry, PluginHostError> {
         let canonical_root = canonical_plugin_root(plugin_root)?;
         let manifest_path = canonical_root.join(MANIFEST_FILENAME);
         ensure_within_root(&manifest_path, &canonical_root)?;

@@ -57,7 +57,7 @@ fn scan_only_plugin_rejected_at_compile() {
         repo_root().join("python/parqonaut_plugins/src").to_string_lossy().to_string(),
     );
     let mut spec =
-        parse_spec(&repo_root().join("fixtures/transform/specs/plugin-normalize-strings.yaml"))
+        parse_spec(repo_root().join("fixtures/transform/specs/plugin-normalize-strings.yaml"))
             .expect("parse");
     spec.input = Some(
         repo_root()

@@ -77,7 +77,7 @@ pub fn execute_plan_with_run(
     for segment in &plan.segments {
         match segment {
             CompiledSegment::Fused(fused) => {
-                let (written, read) = execute_fused_segment(fused, &run)?;
+                let (written, read) = execute_fused_segment(fused, run)?;
                 files_read += read;
                 files_written += written;
                 if fused.is_intermediate {

@@ -576,6 +576,7 @@ impl futures::Stream for FusedInputStream {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fused_partition_to_storage(
     io: &ColumnarPipelineIo,
     inputs: &[String],

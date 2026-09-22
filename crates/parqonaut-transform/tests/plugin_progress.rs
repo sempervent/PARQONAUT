@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use parqonaut_transform::{compile_plan, execute_plan, parse_spec, TransformRunContext};
+use parqonaut_transform::{compile_plan, parse_spec, TransformRunContext};
 use parqonaut_workflow::{CollectingProgressObserver, ProgressEventKind, ProgressObserver};
 
 fn repo_root() -> PathBuf {
@@ -41,6 +41,6 @@ fn plugin_progress_lifecycle_success() {
     let kinds: Vec<_> = collector.take_events().iter().map(|e| e.kind.clone()).collect();
     if !kinds.is_empty() {
         assert_eq!(kinds[0], ProgressEventKind::PluginStarted);
-        assert!(kinds.iter().any(|k| *k == ProgressEventKind::PluginCompleted));
+        assert!(kinds.contains(&ProgressEventKind::PluginCompleted));
     }
 }

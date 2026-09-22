@@ -67,6 +67,7 @@ impl ScanPluginExecutor {
         Self { runtime }
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn execute_scan(
         &self,
         entry: &CatalogEntry,
@@ -385,6 +386,8 @@ pub(crate) fn terminate_child(child: &mut Child) -> Result<(), PluginHostError> 
     #[cfg(unix)]
     {
         let pid = child.id() as libc::pid_t;
+        // SAFETY: kill(-pgid) targets the plugin process group we create with process_group(0).
+        #[allow(clippy::undocumented_unsafe_blocks)]
         unsafe {
             let _ = libc::kill(-pid, libc::SIGKILL);
         }
