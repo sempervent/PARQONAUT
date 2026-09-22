@@ -11,6 +11,7 @@ use parqonaut_plugin_host::{
     validate_schema_supported, BatchPluginSession, PluginCatalog, PluginHostError,
     PluginRuntimeConfig,
 };
+use std::collections::HashMap;
 
 fn sdk_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../python/parqonaut_plugins/src")
@@ -127,6 +128,16 @@ fn arrow_ipc_timestamp_with_timezone() {
         )],
     )
     .unwrap();
+    passthrough_roundtrip(batch);
+}
+
+#[test]
+fn arrow_ipc_field_metadata_preserved() {
+    let mut meta = HashMap::new();
+    meta.insert("unit".into(), "widgets".into());
+    let field = Field::new("id", DataType::Int32, false).with_metadata(meta);
+    let schema = Arc::new(Schema::new(vec![field]));
+    let batch = RecordBatch::try_new(schema, vec![Arc::new(Int32Array::from(vec![1]))]).unwrap();
     passthrough_roundtrip(batch);
 }
 

@@ -32,6 +32,7 @@ source "$ROOT/scripts/s3-test/env.sh"
 if command -v aws >/dev/null 2>&1; then
   aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://${FOGBANK_BUCKET}" 2>/dev/null || true
   aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://${PARQONAUT_S3_BUCKET}" 2>/dev/null || true
+  aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://contract-test" 2>/dev/null || true
 fi
 
 echo "RustFS FOGBANK endpoint: ${PARQONAUT_S3_ENDPOINT}"

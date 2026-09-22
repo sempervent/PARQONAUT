@@ -1,7 +1,7 @@
 //! In-memory fused transform chain including digest-pinned batch plugins.
 
 use arrow::record_batch::RecordBatch;
-use parqonaut_plugin_host::BatchPluginBridge;
+use parqonaut_plugin_host::{BatchPluginBridge, PluginHostError};
 
 use crate::engine::pipeline_from_rewrite_ops;
 use crate::engine::Pipeline;
@@ -78,6 +78,10 @@ impl FusedTransformChain {
                     let in_rows = b.num_rows() as u64;
                     b = match self.bridges[*idx].transform(b) {
                         Ok(out) => out,
+                        Err(e @ PluginHostError::Cancelled) => {
+                            self.run.cancel_plugin(self.plugin_stage_ids[*idx]);
+                            return Err(map_plugin_err(e));
+                        }
                         Err(e) => {
                             self.run.fail_plugin(self.plugin_stage_ids[*idx], "plugin_error");
                             return Err(map_plugin_err(e));

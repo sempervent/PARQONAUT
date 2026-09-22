@@ -84,6 +84,23 @@ impl TransformRunContext {
         }
     }
 
+    /// Emit cancellation terminal events for plugin stages that started but did not finish.
+    pub fn finalize_aborted_plugins(&self) {
+        let indices: Vec<usize> = {
+            let guard = self.inner.lock().expect("plugin run lock");
+            guard
+                .stages
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.started_event_sent && !s.terminal_sent)
+                .map(|(i, _)| i)
+                .collect()
+        };
+        for idx in indices {
+            self.cancel_plugin(idx);
+        }
+    }
+
     pub fn register_plugin(&self, pinned: PinnedBatchPlugin) -> usize {
         let mut guard = self.inner.lock().expect("plugin run lock");
         let idx = guard.stages.len();

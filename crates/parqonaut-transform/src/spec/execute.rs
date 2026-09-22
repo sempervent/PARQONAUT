@@ -68,6 +68,19 @@ pub fn execute_plan_with_run(
     plan: &ExecutablePlan,
     run: &TransformRunContext,
 ) -> Result<TransformReport> {
+    match execute_plan_with_run_inner(plan, run) {
+        Ok(report) => Ok(report),
+        Err(e) => {
+            run.finalize_aborted_plugins();
+            Err(e)
+        }
+    }
+}
+
+fn execute_plan_with_run_inner(
+    plan: &ExecutablePlan,
+    run: &TransformRunContext,
+) -> Result<TransformReport> {
     let started = Instant::now();
     let mut completed = 0u64;
     let warnings: Vec<String> = Vec::new();

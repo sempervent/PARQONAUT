@@ -3,10 +3,11 @@ use arrow::record_batch::RecordBatch;
 
 use crate::error::PluginHostError;
 
+/// Protocol v1 uses Arrow `Schema` equality, which includes schema-level and field-level metadata.
 pub fn require_schema_equal(input: &Schema, output: &Schema) -> Result<(), PluginHostError> {
     if input != output {
         return Err(PluginHostError::PluginSchemaMismatch(
-            "output schema must equal input schema (schema-preserving v1)".into(),
+            "output schema must equal input schema including metadata (batch-transform v1)".into(),
         ));
     }
     Ok(())
