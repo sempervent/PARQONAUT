@@ -1,14 +1,14 @@
-//! Scan analyzer plugin bridge into `paraclete-core`.
+//! Scan analyzer plugin bridge into `parqonaut-core`.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use paraclete_core::ScanPluginHost;
-use paraclete_types::{Finding, PluginExecutionRecord};
+use parqonaut_core::ScanPluginHost;
 use parqonaut_plugin_host::{
     CancelToken, PluginCatalog, PluginHost, PluginRuntimeConfig, ResolvedPlugin,
 };
 use parqonaut_plugin_protocol::{PluginExecutionPhase, PluginScanContext};
+use parqonaut_types::{Finding, PluginExecutionRecord};
 
 use crate::error::ApplicationError;
 
@@ -81,10 +81,10 @@ impl ScanPluginHost for ScanPluginBridge {
         phase: PluginExecutionPhase,
         context: PluginScanContext,
         known_evidence: &BTreeSet<String>,
-    ) -> Result<(Vec<Finding>, Vec<PluginExecutionRecord>), paraclete_core::CoreError> {
+    ) -> Result<(Vec<Finding>, Vec<PluginExecutionRecord>), parqonaut_core::CoreError> {
         self.host
             .run_phase(&self.resolved, phase, context, known_evidence, &self.cancel)
-            .map_err(|e| paraclete_core::CoreError::PluginHost(e.to_string()))
+            .map_err(|e| parqonaut_core::CoreError::PluginHost(e.to_string()))
     }
 
     fn resolved_plugin_order(&self) -> &[String] {

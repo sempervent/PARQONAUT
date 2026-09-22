@@ -6,7 +6,7 @@ use parqonaut_storage::backend::StorageBackend;
 use parqonaut_storage::location::ObjectLocation;
 use parqonaut_storage::LocalStorageBackend;
 
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 
 #[cfg(feature = "s3")]
 use parqonaut_storage::{S3Config, S3StorageBackend};
@@ -100,7 +100,7 @@ pub fn ensure_s3_for_remote(input: &str, output: &str) -> Result<()> {
     if needs_storage_routing(input, output) {
         #[cfg(not(feature = "s3"))]
         {
-            return Err(ParqknifeError::InvalidInput(
+            return Err(TransformError::InvalidInput(
                 "remote s3:// paths require building prqnt with the `s3` feature".into(),
             ));
         }

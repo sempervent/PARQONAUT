@@ -62,7 +62,7 @@ fn write_small_parquet(path: &std::path::Path) -> Vec<u8> {
     std::fs::read(path).unwrap()
 }
 
-fn plan_for_local_root(root: &Utf8Path, scan: &paraclete_types::ScanReport) -> RepairPlan {
+fn plan_for_local_root(root: &Utf8Path, scan: &parqonaut_types::ScanReport) -> RepairPlan {
     let inventory = parqonaut_repair::DatasetInventory::from_scan_report(root, scan).unwrap();
     let fingerprint = compute_dataset_fingerprint(root, &inventory).unwrap();
     RepairPlan {

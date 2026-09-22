@@ -1,5 +1,5 @@
-use paraclete_types::{ScanProfile, ScanReport};
 use parqonaut_app::{ParqonautApp, ScanRequest};
+use parqonaut_types::{ScanProfile, ScanReport};
 
 use crate::location::parse_dataset_location;
 

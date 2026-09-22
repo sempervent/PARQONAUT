@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use paraclete_types::{DataFormat, FindingSeverity, ScanRequest};
+use parqonaut_types::{DataFormat, FindingSeverity, ScanRequest};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 

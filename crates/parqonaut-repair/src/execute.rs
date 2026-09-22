@@ -54,7 +54,7 @@ impl RepairExecutor {
         &self,
         plan: &RepairPlan,
         output: &Utf8Path,
-        scan: &paraclete_types::ScanReport,
+        scan: &parqonaut_types::ScanReport,
     ) -> Result<ExecutionReport, RepairError> {
         plan.validate_version()?;
         let root = Utf8Path::new(&plan.dataset_root);
@@ -225,11 +225,11 @@ pub(crate) fn run_repair_operations(
 pub(crate) fn seed_work_dir(
     root: &Utf8Path,
     work: &Utf8Path,
-    scan: &paraclete_types::ScanReport,
+    scan: &parqonaut_types::ScanReport,
 ) -> Result<BTreeMap<String, Utf8PathBuf>, RepairError> {
     let mut map = BTreeMap::new();
     for asset in &scan.assets {
-        if asset.format != paraclete_types::DataFormat::Parquet {
+        if asset.format != parqonaut_types::DataFormat::Parquet {
             continue;
         }
         let rel = relativize(root, &asset.path)?;

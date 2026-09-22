@@ -2,8 +2,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use paraclete_types::{Finding, FindingCategory, FindingCode, FindingCodeError};
 use parqonaut_plugin_protocol::{PluginExecutionPhase, PluginFindingContribution, PluginManifest};
+use parqonaut_types::{Finding, FindingCategory, FindingCode, FindingCodeError};
 use uuid::Uuid;
 
 use crate::error::PluginHostError;

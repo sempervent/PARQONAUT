@@ -1509,7 +1509,7 @@
         "example": {
           "completed_at": "2026-04-15T12:00:05Z",
           "contract_schema_version": "0.5.0",
-          "engine_revision": "paraclete-test",
+          "engine_revision": "parqonaut-test",
           "normalized_target_key": "/data/sample.parquet",
           "report_format_version": "0.5.0",
           "report_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -2173,7 +2173,7 @@
               },
               {
                 "$ref": "#/components/schemas/RedactionPolicy",
-                "description": "When omitted, [`paraclete_types::RedactionPolicy::transport_safe_persist`] is applied before persistence."
+                "description": "When omitted, [`parqonaut_types::RedactionPolicy::transport_safe_persist`] is applied before persistence."
               }
             ]
           },
@@ -2270,7 +2270,7 @@
         "type": "object"
       },
       "StoredFindingRow": {
-        "description": "One row from `scan_findings` (projection; not a full [`paraclete_types::Finding`]).",
+        "description": "One row from `scan_findings` (projection; not a full [`parqonaut_types::Finding`]).",
         "properties": {
           "asset_path": {
             "type": [

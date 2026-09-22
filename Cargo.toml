@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/paraclete-types",
-    "crates/paraclete-core",
-    "crates/paraclete-report",
+    "crates/parqonaut-types",
+    "crates/parqonaut-core",
+    "crates/parqonaut-report",
     "crates/parqonaut-plugin-protocol",
     "crates/parqonaut-plugin-host",
-    "crates/paraclete-store",
-    "crates/paraclete-service",
+    "crates/parqonaut-store",
+    "crates/parqonaut-service",
     "crates/parqonaut-transform",
     "crates/parqonaut-stream",
     "crates/parqonaut-repair",
@@ -44,7 +44,7 @@ rand = "0.8"
 walkdir = "2.5"
 arrow = { version = "54.3.1", default-features = false, features = ["csv", "ipc"] }
 parquet = { version = "54.3.1", default-features = false, features = ["arrow", "snap", "flate2", "lz4", "zstd"] }
-paraclete-types = { path = "crates/paraclete-types" }
+parqonaut-types = { path = "crates/parqonaut-types" }
 parqonaut-plugin-protocol = { path = "crates/parqonaut-plugin-protocol" }
 parqonaut-plugin-host = { path = "crates/parqonaut-plugin-host" }
 sqlx = { version = "0.8.3", features = ["runtime-tokio", "sqlite", "postgres", "migrate", "uuid", "chrono"] }

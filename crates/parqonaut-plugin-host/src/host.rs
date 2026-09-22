@@ -2,8 +2,8 @@
 
 use std::time::Instant;
 
-use paraclete_types::{Finding, PluginExecutionRecord, ScanPluginMetadata};
 use parqonaut_plugin_protocol::PluginExecutionPhase;
+use parqonaut_types::{Finding, PluginExecutionRecord, ScanPluginMetadata};
 
 use crate::catalog::{CatalogEntry, PluginCatalog, PluginCompatibility};
 use crate::error::PluginHostError;

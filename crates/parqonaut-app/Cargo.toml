@@ -11,8 +11,8 @@ default = ["s3"]
 s3 = ["parqonaut-repair/s3", "parqonaut-storage/s3"]
 
 [dependencies]
-paraclete-core = { path = "../paraclete-core" }
-paraclete-types = { path = "../paraclete-types" }
+parqonaut-core = { path = "../parqonaut-core" }
+parqonaut-types = { path = "../parqonaut-types" }
 parqonaut-repair = { path = "../parqonaut-repair" }
 parqonaut-storage = { path = "../parqonaut-storage" }
 parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }

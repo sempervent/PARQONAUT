@@ -1,5 +1,5 @@
 use crate::engine::compat::*;
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use arrow::array::*;
 use arrow::compute;
 use arrow::datatypes::*;
@@ -55,7 +55,7 @@ impl PartialEq for Value {
 pub fn parse_filter(expr: &str) -> Result<FilterExpr> {
     filter_expr(expr)
         .map(|(_, expr)| expr)
-        .map_err(|e| ParqknifeError::FilterError(format!("Parse error: {:?}", e)))
+        .map_err(|e| TransformError::FilterError(format!("Parse error: {:?}", e)))
 }
 
 fn filter_expr(input: &str) -> IResult<&str, FilterExpr> {
@@ -212,14 +212,14 @@ pub fn evaluate_filter(batch: &RecordBatch, expr: &FilterExpr) -> Result<Boolean
 fn eval_eq(batch: &RecordBatch, col: &str, val: &Value) -> Result<BooleanArray> {
     let array = batch
         .column_by_name(col)
-        .ok_or_else(|| ParqknifeError::InvalidInput(format!("Column not found: {}", col)))?;
+        .ok_or_else(|| TransformError::InvalidInput(format!("Column not found: {}", col)))?;
 
     match val {
         Value::Int64(v) => {
             let arr = array
                 .as_any()
                 .downcast_ref::<Int64Array>()
-                .ok_or_else(|| ParqknifeError::FilterError("Type mismatch".to_string()))?;
+                .ok_or_else(|| TransformError::FilterError("Type mismatch".to_string()))?;
             // Create a constant array and compare
             let constant = Int64Array::from(vec![*v; arr.len()]);
             eq_arrays(arr, &constant)
@@ -228,11 +228,11 @@ fn eval_eq(batch: &RecordBatch, col: &str, val: &Value) -> Result<BooleanArray> 
             let arr = array
                 .as_any()
                 .downcast_ref::<StringArray>()
-                .ok_or_else(|| ParqknifeError::FilterError("Type mismatch".to_string()))?;
+                .ok_or_else(|| TransformError::FilterError("Type mismatch".to_string()))?;
             let constant = StringArray::from(vec![v.as_str(); arr.len()]);
             eq_string_arrays(arr, &constant)
         }
-        _ => Err(ParqknifeError::FilterError("Unsupported comparison type".to_string())),
+        _ => Err(TransformError::FilterError("Unsupported comparison type".to_string())),
     }
 }
 
@@ -244,79 +244,79 @@ fn eval_ne(batch: &RecordBatch, col: &str, val: &Value) -> Result<BooleanArray> 
 fn eval_lt(batch: &RecordBatch, col: &str, val: &Value) -> Result<BooleanArray> {
     let array = batch
         .column_by_name(col)
-        .ok_or_else(|| ParqknifeError::InvalidInput(format!("Column not found: {}", col)))?;
+        .ok_or_else(|| TransformError::InvalidInput(format!("Column not found: {}", col)))?;
 
     match val {
         Value::Int64(v) => {
             let arr = array
                 .as_any()
                 .downcast_ref::<Int64Array>()
-                .ok_or_else(|| ParqknifeError::FilterError("Type mismatch".to_string()))?;
+                .ok_or_else(|| TransformError::FilterError("Type mismatch".to_string()))?;
             let constant = Int64Array::from(vec![*v; arr.len()]);
             lt_arrays(arr, &constant)
         }
-        _ => Err(ParqknifeError::FilterError("Unsupported comparison type".to_string())),
+        _ => Err(TransformError::FilterError("Unsupported comparison type".to_string())),
     }
 }
 
 fn eval_le(batch: &RecordBatch, col: &str, val: &Value) -> Result<BooleanArray> {
     let array = batch
         .column_by_name(col)
-        .ok_or_else(|| ParqknifeError::InvalidInput(format!("Column not found: {}", col)))?;
+        .ok_or_else(|| TransformError::InvalidInput(format!("Column not found: {}", col)))?;
 
     match val {
         Value::Int64(v) => {
             let arr = array
                 .as_any()
                 .downcast_ref::<Int64Array>()
-                .ok_or_else(|| ParqknifeError::FilterError("Type mismatch".to_string()))?;
+                .ok_or_else(|| TransformError::FilterError("Type mismatch".to_string()))?;
             let constant = Int64Array::from(vec![*v; arr.len()]);
             le_arrays(arr, &constant)
         }
-        _ => Err(ParqknifeError::FilterError("Unsupported comparison type".to_string())),
+        _ => Err(TransformError::FilterError("Unsupported comparison type".to_string())),
     }
 }
 
 fn eval_gt(batch: &RecordBatch, col: &str, val: &Value) -> Result<BooleanArray> {
     let array = batch
         .column_by_name(col)
-        .ok_or_else(|| ParqknifeError::InvalidInput(format!("Column not found: {}", col)))?;
+        .ok_or_else(|| TransformError::InvalidInput(format!("Column not found: {}", col)))?;
 
     match val {
         Value::Int64(v) => {
             let arr = array
                 .as_any()
                 .downcast_ref::<Int64Array>()
-                .ok_or_else(|| ParqknifeError::FilterError("Type mismatch".to_string()))?;
+                .ok_or_else(|| TransformError::FilterError("Type mismatch".to_string()))?;
             let constant = Int64Array::from(vec![*v; arr.len()]);
             gt_arrays(arr, &constant)
         }
-        _ => Err(ParqknifeError::FilterError("Unsupported comparison type".to_string())),
+        _ => Err(TransformError::FilterError("Unsupported comparison type".to_string())),
     }
 }
 
 fn eval_ge(batch: &RecordBatch, col: &str, val: &Value) -> Result<BooleanArray> {
     let array = batch
         .column_by_name(col)
-        .ok_or_else(|| ParqknifeError::InvalidInput(format!("Column not found: {}", col)))?;
+        .ok_or_else(|| TransformError::InvalidInput(format!("Column not found: {}", col)))?;
 
     match val {
         Value::Int64(v) => {
             let arr = array
                 .as_any()
                 .downcast_ref::<Int64Array>()
-                .ok_or_else(|| ParqknifeError::FilterError("Type mismatch".to_string()))?;
+                .ok_or_else(|| TransformError::FilterError("Type mismatch".to_string()))?;
             let constant = Int64Array::from(vec![*v; arr.len()]);
             ge_arrays(arr, &constant)
         }
-        _ => Err(ParqknifeError::FilterError("Unsupported comparison type".to_string())),
+        _ => Err(TransformError::FilterError("Unsupported comparison type".to_string())),
     }
 }
 
 fn eval_in(batch: &RecordBatch, col: &str, vals: &[Value]) -> Result<BooleanArray> {
     let array = batch
         .column_by_name(col)
-        .ok_or_else(|| ParqknifeError::InvalidInput(format!("Column not found: {}", col)))?;
+        .ok_or_else(|| TransformError::InvalidInput(format!("Column not found: {}", col)))?;
 
     // Build a Vec for membership testing (HashSet doesn't work with f64)
     // For small lists, linear scan is fine
@@ -330,7 +330,7 @@ fn eval_in(batch: &RecordBatch, col: &str, vals: &[Value]) -> Result<BooleanArra
     match &vals[0] {
         Value::Int64(_) => {
             let arr = array.as_any().downcast_ref::<Int64Array>().ok_or_else(|| {
-                ParqknifeError::FilterError("Type mismatch for IN: expected Int64".to_string())
+                TransformError::FilterError("Type mismatch for IN: expected Int64".to_string())
             })?;
             let mut result = Vec::with_capacity(arr.len());
             for i in 0..arr.len() {
@@ -345,7 +345,7 @@ fn eval_in(batch: &RecordBatch, col: &str, vals: &[Value]) -> Result<BooleanArra
         }
         Value::String(_) => {
             let arr = array.as_any().downcast_ref::<StringArray>().ok_or_else(|| {
-                ParqknifeError::FilterError("Type mismatch for IN: expected String".to_string())
+                TransformError::FilterError("Type mismatch for IN: expected String".to_string())
             })?;
             let mut result = Vec::with_capacity(arr.len());
             for i in 0..arr.len() {
@@ -360,7 +360,7 @@ fn eval_in(batch: &RecordBatch, col: &str, vals: &[Value]) -> Result<BooleanArra
         }
         Value::Bool(_) => {
             let arr = array.as_any().downcast_ref::<BooleanArray>().ok_or_else(|| {
-                ParqknifeError::FilterError("Type mismatch for IN: expected Bool".to_string())
+                TransformError::FilterError("Type mismatch for IN: expected Bool".to_string())
             })?;
             let mut result = Vec::with_capacity(arr.len());
             for i in 0..arr.len() {
@@ -375,7 +375,7 @@ fn eval_in(batch: &RecordBatch, col: &str, vals: &[Value]) -> Result<BooleanArra
         }
         Value::Float64(_) => {
             let arr = array.as_any().downcast_ref::<Float64Array>().ok_or_else(|| {
-                ParqknifeError::FilterError("Type mismatch for IN: expected Float64".to_string())
+                TransformError::FilterError("Type mismatch for IN: expected Float64".to_string())
             })?;
             let mut result = Vec::with_capacity(arr.len());
             for i in 0..arr.len() {
@@ -401,7 +401,7 @@ fn eval_in(batch: &RecordBatch, col: &str, vals: &[Value]) -> Result<BooleanArra
             Ok(BooleanArray::from(result))
         }
         Value::Null => {
-            Err(ParqknifeError::FilterError("IN operator cannot use NULL as a value".to_string()))
+            Err(TransformError::FilterError("IN operator cannot use NULL as a value".to_string()))
         }
     }
 }
@@ -409,14 +409,14 @@ fn eval_in(batch: &RecordBatch, col: &str, vals: &[Value]) -> Result<BooleanArra
 fn eval_is_null(batch: &RecordBatch, col: &str) -> Result<BooleanArray> {
     let array = batch
         .column_by_name(col)
-        .ok_or_else(|| ParqknifeError::InvalidInput(format!("Column not found: {}", col)))?;
+        .ok_or_else(|| TransformError::InvalidInput(format!("Column not found: {}", col)))?;
     is_null_array(array)
 }
 
 fn eval_is_not_null(batch: &RecordBatch, col: &str) -> Result<BooleanArray> {
     let array = batch
         .column_by_name(col)
-        .ok_or_else(|| ParqknifeError::InvalidInput(format!("Column not found: {}", col)))?;
+        .ok_or_else(|| TransformError::InvalidInput(format!("Column not found: {}", col)))?;
     is_not_null_array(array)
 }
 

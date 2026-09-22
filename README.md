@@ -6,7 +6,7 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 
 ![PARQONAUT MASCOT](mascot.png)
 
-It consolidates [Paraclete](https://github.com/sempervent/paraclete), [parqknife](https://github.com/sempervent/parqknife), and [streaming-parquet (maw)](https://github.com/sempervent/streaming-parquet) into one workspace. See [docs/provenance.md](docs/provenance.md) for migration sources.
+Use **`prqnt`** for local and S3-backed workflows: forensic scans, repair planning, batch fleet operations, streaming conversion, declarative transforms, and batch Python plugins in the transform pipeline. For lineage and source provenance, see [docs/provenance.md](docs/provenance.md).
 
 **Current release:** [v0.9.2](https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.2) — bounded streaming Parquet publication to S3, complete local/S3 routing for transform and convert, and the 6×4 remote capability matrix. See [release notes](docs/history/v0.9.2/release-notes.md).
 
@@ -40,15 +40,16 @@ PARQONAUT provides the **`prqnt`** command.
 
 Local paths and **`s3://`** dataset URIs are supported when built with S3 features (see object-storage docs and `just s3-demo`).
 
-### Predecessor contributions
+### Workspace map (selected)
 
-| Source | Crates | CLI surface |
-|--------|--------|-------------|
-| **Paraclete** | `paraclete-*` | `scan` |
-| **parqknife** | `parqonaut-transform` | `inspect`, `rewrite` |
-| **maw** | `parqonaut-stream` | `convert` |
+| Area | Crates | CLI surface |
+|------|--------|-------------|
+| Scan / API | `parqonaut-core`, `parqonaut-service`, `parqonaut-store` | `scan`, `serve` |
+| Transform | `parqonaut-transform` | `inspect`, `rewrite`, `transform`, … |
+| Stream | `parqonaut-stream` | `convert` |
+| Plugins | `parqonaut-plugin-host`, `python/parqonaut_plugins` | transform pipeline plugins |
 
-Three Arrow/Parquet stacks coexist behind crate boundaries (documented in [ADR-0002](docs/adr/ADR-0002-coexisting-arrow-stacks.md)).
+Columnar execution converges on Arrow/Parquet 54 via `parqonaut-columnar` ([ADR-0015](docs/adr/ADR-0015-columnar-stack-convergence.md)).
 
 ## Build
 
@@ -122,8 +123,8 @@ just batch-resume-demo  # Batch: interrupt and resume
 ## Not yet implemented
 
 - Web dashboard / TUI
-- Plugin execution bridge
-- parqknife: partition, merge, split, and spec-file workflows beyond current transform surface
+- Server-managed plugin catalog and scan-job plugin selection (CLI/runtime plugins ship in v0.10 development)
+- Extended partition/merge/split and spec-file transform surface
 - Stream pipeline: resumability, progress UI wiring, full schema unification
 - Arrow/Parquet dependency convergence across engines
 - In-memory cross-engine pipelines
@@ -151,4 +152,4 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 MIT — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-`crates/parqonaut-transform` (parqknife lineage) declares `MIT OR Apache-2.0` in its `Cargo.toml`; [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0) is provided for the Apache option. Details in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+`crates/parqonaut-transform` declares `MIT OR Apache-2.0` in its `Cargo.toml`; [LICENSE-APACHE-2.0](LICENSE-APACHE-2.0) is provided for the Apache option. Details in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

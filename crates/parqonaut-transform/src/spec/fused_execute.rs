@@ -11,7 +11,7 @@ use crate::columnar_io::{columnar_io_from_env, location_is_remote};
 use crate::engine::partition_record_batches;
 use crate::engine::pipeline_from_rewrite_ops;
 use crate::engine::Pipeline;
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::spec::fused_chain::FusedTransformChain;
 use crate::spec::plan::{CompiledSegment, ExecutablePlan, FusedOperation, FusedPlanSegment};
 use crate::spec::plugin_run::TransformRunContext;
@@ -36,7 +36,7 @@ pub fn execute_fused_plan(
                 }
             }
             CompiledSegment::Barrier(barrier) => {
-                return Err(ParqknifeError::SpecError(format!(
+                return Err(TransformError::SpecError(format!(
                     "plan is not fully streamable: barrier {}",
                     barrier.reason
                 )));
@@ -128,16 +128,16 @@ pub fn execute_fused_segment(
         let schema = batches
             .first()
             .map(|b| b.schema())
-            .ok_or_else(|| ParqknifeError::SpecError("fused rewrite produced no batches".into()))?;
+            .ok_or_else(|| TransformError::SpecError("fused rewrite produced no batches".into()))?;
         let stream: parqonaut_columnar::BatchStream =
             Box::pin(futures::stream::iter(batches.into_iter().map(Ok)));
         let mut sink = LocalParquetBatchSink::new(&fused.output);
         sink.write_stream(schema, stream, &NoOpProgressObserver)
-            .map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
+            .map_err(|e| TransformError::InvalidInput(e.to_string()))?;
         return Ok((1, files_read));
     }
 
-    Err(ParqknifeError::SpecError(format!("unsupported fused output layout: {}", fused.output)))
+    Err(TransformError::SpecError(format!("unsupported fused output layout: {}", fused.output)))
 }
 
 fn stream_local_batches(
@@ -146,7 +146,7 @@ fn stream_local_batches(
     mut chain: Option<FusedTransformChain>,
 ) -> Result<Vec<RecordBatch>> {
     let work = move || {
-        let rt = tokio::runtime::Runtime::new().map_err(ParqknifeError::Io)?;
+        let rt = tokio::runtime::Runtime::new().map_err(TransformError::Io)?;
         rt.block_on(async move {
             let mut batches = Vec::new();
             for input in inputs {

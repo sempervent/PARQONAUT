@@ -2,15 +2,9 @@
 
 use camino::{Utf8Path, Utf8PathBuf};
 use chrono::Utc;
-use paraclete_core::{
+use parqonaut_core::{
     classify_format_from_path, infer_parquet_datasets, inspect_parquet_footer_buffer,
     parquet_read_failed_finding, ParquetInspection,
-};
-use paraclete_types::{
-    contract_schema_version, report_format_version, validate_report, AssetRecord, DataFormat,
-    DatasetSummary, FormatSummary, InspectionStatus, ObjectStoreTargetPlaceholder, ReportMetadata,
-    ResolvedAsset, ScanOptions, ScanPlan, ScanProfile, ScanReport, ScanRequest, ScanSummary,
-    ScanTarget,
 };
 use parqonaut_storage::backend::StorageBackend;
 use parqonaut_storage::inventory::{dataset_object_relative_key, list_remote_inventory};
@@ -18,6 +12,12 @@ use parqonaut_storage::location::{DatasetLocation, ObjectLocation};
 use parqonaut_storage::memory::MemoryStorageBackend;
 use parqonaut_storage::parquet_range::read_parquet_footer;
 use parqonaut_storage::LocalStorageBackend;
+use parqonaut_types::{
+    contract_schema_version, report_format_version, validate_report, AssetRecord, DataFormat,
+    DatasetSummary, FormatSummary, InspectionStatus, ObjectStoreTargetPlaceholder, ReportMetadata,
+    ResolvedAsset, ScanOptions, ScanPlan, ScanProfile, ScanReport, ScanRequest, ScanSummary,
+    ScanTarget,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use url::Url;
@@ -177,7 +177,7 @@ async fn scan_remote_dataset<B: StorageBackend>(
     let plan = ScanPlan { root: root.clone(), assets: assets_sorted.clone(), truncated: false };
 
     let mut parquet_inspections: BTreeMap<Utf8PathBuf, ParquetInspection> = BTreeMap::new();
-    let mut parquet_failures: Vec<(Utf8PathBuf, paraclete_core::CoreError)> = Vec::new();
+    let mut parquet_failures: Vec<(Utf8PathBuf, parqonaut_core::CoreError)> = Vec::new();
     let mut asset_records: Vec<AssetRecord> = Vec::new();
 
     for asset in &assets_sorted {
@@ -201,7 +201,7 @@ async fn scan_remote_dataset<B: StorageBackend>(
                 }
                 Err(err) => {
                     rec.inspection_status = InspectionStatus::Failed;
-                    rec.failure_kind = Some(paraclete_types::FailureKind::FormatReadError);
+                    rec.failure_kind = Some(parqonaut_types::FailureKind::FormatReadError);
                     rec.failure_message = Some(err.to_string());
                     parquet_failures.push((asset.path.clone(), err));
                 }
@@ -210,7 +210,7 @@ async fn scan_remote_dataset<B: StorageBackend>(
         asset_records.push(rec);
     }
 
-    let mut extra_findings: Vec<paraclete_types::Finding> = Vec::new();
+    let mut extra_findings: Vec<parqonaut_types::Finding> = Vec::new();
     for (path, err) in &parquet_failures {
         extra_findings.push(parquet_read_failed_finding(path, err));
     }
@@ -218,7 +218,7 @@ async fn scan_remote_dataset<B: StorageBackend>(
     let parquet_ok_paths: Vec<Utf8PathBuf> = parquet_inspections.keys().cloned().collect();
     let (datasets, anchor_notes) =
         infer_parquet_datasets(&plan, &parquet_ok_paths, &parquet_inspections);
-    extra_findings.extend(paraclete_core::grouping_ambiguous_from_notes(&anchor_notes));
+    extra_findings.extend(parqonaut_core::grouping_ambiguous_from_notes(&anchor_notes));
 
     let path_to_dataset: BTreeMap<Utf8PathBuf, String> = datasets
         .iter()
@@ -235,14 +235,14 @@ async fn scan_remote_dataset<B: StorageBackend>(
 
     if datasets.len() >= 2 {
         extra_findings
-            .push(paraclete_core::multiple_datasets_finding(root.as_str(), datasets.len()));
+            .push(parqonaut_core::multiple_datasets_finding(root.as_str(), datasets.len()));
     }
 
     for ds in &datasets {
-        if ds.partition_layout == paraclete_types::PartitionLayout::Unpartitioned
+        if ds.partition_layout == parqonaut_types::PartitionLayout::Unpartitioned
             && ds.files.len() >= 2
         {
-            extra_findings.push(paraclete_core::unpartitioned_collection_finding(
+            extra_findings.push(parqonaut_core::unpartitioned_collection_finding(
                 &ds.dataset_id,
                 ds.files.len(),
             ));
@@ -251,7 +251,7 @@ async fn scan_remote_dataset<B: StorageBackend>(
 
     let inspection_list: Vec<_> = parquet_inspections.values().cloned().collect();
     let mut findings =
-        paraclete_core::evaluate_scan_rules(&plan, &assets_sorted, &inspection_list, &datasets);
+        parqonaut_core::evaluate_scan_rules(&plan, &assets_sorted, &inspection_list, &datasets);
     findings.extend(extra_findings);
     findings.sort_by(|a, b| a.code.as_str().cmp(b.code.as_str()));
 
@@ -322,7 +322,7 @@ async fn inspect_remote_parquet<B: StorageBackend>(
     backend: &B,
     path: &Utf8Path,
     object_size: u64,
-) -> Result<ParquetInspection, paraclete_core::CoreError> {
+) -> Result<ParquetInspection, parqonaut_core::CoreError> {
     let object = object_location_from_display_uri(path.as_str())?;
     let (footer, _metrics) =
         read_parquet_footer(backend, &object).await.map_err(core_storage_err)?;
@@ -331,13 +331,13 @@ async fn inspect_remote_parquet<B: StorageBackend>(
 
 fn object_location_from_display_uri(
     uri: &str,
-) -> Result<ObjectLocation, paraclete_core::CoreError> {
+) -> Result<ObjectLocation, parqonaut_core::CoreError> {
     if let Some(rest) = uri.strip_prefix("s3://") {
         let (bucket, key) = rest.split_once('/').ok_or_else(|| {
-            paraclete_core::CoreError::Parquet(format!("invalid S3 object URI: {uri}"))
+            parqonaut_core::CoreError::Parquet(format!("invalid S3 object URI: {uri}"))
         })?;
         if key.is_empty() {
-            return Err(paraclete_core::CoreError::Parquet(format!(
+            return Err(parqonaut_core::CoreError::Parquet(format!(
                 "invalid S3 object URI (missing key): {uri}"
             )));
         }
@@ -346,10 +346,10 @@ fn object_location_from_display_uri(
     if let Ok(url) = Url::parse(uri) {
         if url.scheme() == "file" {
             let path = url.to_file_path().map_err(|_| {
-                paraclete_core::CoreError::Parquet(format!("invalid file URI: {uri}"))
+                parqonaut_core::CoreError::Parquet(format!("invalid file URI: {uri}"))
             })?;
             return Ok(ObjectLocation::from_local_path(Utf8PathBuf::from_path_buf(path).map_err(
-                |_| paraclete_core::CoreError::Parquet(format!("non-UTF8 file URI: {uri}")),
+                |_| parqonaut_core::CoreError::Parquet(format!("non-UTF8 file URI: {uri}")),
             )?));
         }
     }
@@ -387,11 +387,11 @@ pub(crate) fn parquet_inspection_from_hints(
                 ))
             },
         )?;
-    let row_groups: Vec<paraclete_core::RowGroupSummary> = serde_json::from_value(
+    let row_groups: Vec<parqonaut_core::RowGroupSummary> = serde_json::from_value(
         node.get("row_groups").cloned().unwrap_or_default(),
     )
     .map_err(|e| RepairError::DatasetUnreadable(format!("invalid row_groups for {path}: {e}")))?;
-    let schema: paraclete_types::SchemaSnapshot =
+    let schema: parqonaut_types::SchemaSnapshot =
         serde_json::from_value(node.get("schema").cloned().unwrap_or_default()).map_err(|e| {
             RepairError::DatasetUnreadable(format!("invalid schema for {path}: {e}"))
         })?;
@@ -423,21 +423,21 @@ fn summarize_formats(assets: &[ResolvedAsset]) -> Vec<FormatSummary> {
 
 fn dominant_format_in_dataset(
     assets: &[ResolvedAsset],
-    dataset: &paraclete_types::Dataset,
+    dataset: &parqonaut_types::Dataset,
 ) -> DataFormat {
     let paths: BTreeSet<_> = dataset.files.iter().map(|f| &f.path).collect();
     let subset: Vec<ResolvedAsset> =
         assets.iter().filter(|a| paths.contains(&a.path)).cloned().collect();
-    paraclete_core::dominant_format(&subset)
+    parqonaut_core::dominant_format(&subset)
 }
 
-fn severity_key(s: paraclete_types::FindingSeverity) -> &'static str {
+fn severity_key(s: parqonaut_types::FindingSeverity) -> &'static str {
     match s {
-        paraclete_types::FindingSeverity::Info => "info",
-        paraclete_types::FindingSeverity::Low => "low",
-        paraclete_types::FindingSeverity::Medium => "medium",
-        paraclete_types::FindingSeverity::High => "high",
-        paraclete_types::FindingSeverity::Critical => "critical",
+        parqonaut_types::FindingSeverity::Info => "info",
+        parqonaut_types::FindingSeverity::Low => "low",
+        parqonaut_types::FindingSeverity::Medium => "medium",
+        parqonaut_types::FindingSeverity::High => "high",
+        parqonaut_types::FindingSeverity::Critical => "critical",
     }
 }
 
@@ -445,8 +445,8 @@ fn storage_err(err: parqonaut_storage::StorageError) -> RepairError {
     RepairError::ScanFailed(err.to_string())
 }
 
-fn core_storage_err(err: parqonaut_storage::StorageError) -> paraclete_core::CoreError {
-    paraclete_core::CoreError::Parquet(err.to_string())
+fn core_storage_err(err: parqonaut_storage::StorageError) -> parqonaut_core::CoreError {
+    parqonaut_core::CoreError::Parquet(err.to_string())
 }
 
 #[cfg(test)]
@@ -531,7 +531,7 @@ mod tests {
         let remote =
             inspect_parquet_footer_buffer("s3://b/k.parquet".into(), object_size, footer).unwrap();
         let local =
-            paraclete_core::inspect_parquet_reader("local.parquet".into(), bytes::Bytes::from(buf))
+            parqonaut_core::inspect_parquet_reader("local.parquet".into(), bytes::Bytes::from(buf))
                 .unwrap();
         assert_eq!(remote.num_rows, local.num_rows);
         assert_eq!(remote.num_row_groups, local.num_row_groups);
@@ -557,7 +557,7 @@ mod tests {
         let footer_start = local_size - u64::from(metadata_len) - 8;
         let footer = buf[footer_start as usize..].to_vec();
         let declared_size = 50u64 << 30;
-        let bound = paraclete_core::footer_inspection_heap_bound(footer.len());
+        let bound = parqonaut_core::footer_inspection_heap_bound(footer.len());
         let inspection = inspect_parquet_footer_buffer(
             "s3://bucket/huge.parquet".into(),
             declared_size,

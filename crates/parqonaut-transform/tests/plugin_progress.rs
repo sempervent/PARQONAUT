@@ -124,7 +124,7 @@ fn plugin_progress_lifecycle_failure() {
     let plan = compile_plan(&spec).expect("compile");
     assert!(execute_plan_with_run(&plan, &run).is_err());
     let kinds: Vec<_> = collector.take_events().iter().map(|e| e.kind.clone()).collect();
-    if kinds.iter().any(|k| *k == ProgressEventKind::PluginStarted) {
+    if kinds.contains(&ProgressEventKind::PluginStarted) {
         assert!(kinds.contains(&ProgressEventKind::PluginFailed));
         assert!(!kinds.contains(&ProgressEventKind::PluginCompleted));
         assert_single_terminal_plugin_events(&kinds);
@@ -164,7 +164,7 @@ fn plugin_progress_lifecycle_cancellation() {
     run.request_cancel();
     assert!(handle.join().expect("join").is_err());
     let kinds: Vec<_> = collector.take_events().iter().map(|e| e.kind.clone()).collect();
-    if kinds.iter().any(|k| *k == ProgressEventKind::PluginStarted) {
+    if kinds.contains(&ProgressEventKind::PluginStarted) {
         assert!(kinds.contains(&ProgressEventKind::PluginFailed));
         assert_single_terminal_plugin_events(&kinds);
     }

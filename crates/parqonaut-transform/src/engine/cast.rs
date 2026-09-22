@@ -9,7 +9,7 @@ use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::output::{compression_from_str, ParquetWriter};
 
 /// Rewrite Parquet, casting `column` to `target_type` label (INT32/INT64/...).
@@ -29,7 +29,7 @@ pub fn rewrite_parquet_with_cast(
         .fields()
         .iter()
         .position(|f| f.name() == column)
-        .ok_or_else(|| ParqknifeError::InvalidInput(format!("column not found: {column}")))?;
+        .ok_or_else(|| TransformError::InvalidInput(format!("column not found: {column}")))?;
 
     let current = schema.field(field_idx);
     let (target_dt, target_nullable) =
@@ -60,11 +60,11 @@ pub fn rewrite_parquet_with_cast(
             array
         } else {
             cast(&array, &target_dt)
-                .map_err(|e| ParqknifeError::InvalidInput(format!("cast failed: {e}")))?
+                .map_err(|e| TransformError::InvalidInput(format!("cast failed: {e}")))?
         };
         columns[field_idx] = casted;
         let out_batch = RecordBatch::try_new(out_schema.clone(), columns)
-            .map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
+            .map_err(|e| TransformError::InvalidInput(e.to_string()))?;
         writer.write_batch(out_batch)?;
     }
     writer.close()?;
@@ -91,7 +91,7 @@ pub fn parse_cast_target(
     } else if upper.contains("FLOAT") || upper.contains("DOUBLE") {
         DataType::Float64
     } else {
-        return Err(ParqknifeError::InvalidInput(format!("unsupported cast target: {label}")));
+        return Err(TransformError::InvalidInput(format!("unsupported cast target: {label}")));
     };
     Ok((dt, current_nullable))
 }

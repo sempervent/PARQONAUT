@@ -1,6 +1,6 @@
 use camino::Utf8Path;
-use paraclete_core::ScanEngine;
-use paraclete_types::{system, ScanProfile, ScanReport, ScanRequest, ScanTarget};
+use parqonaut_core::ScanEngine;
+use parqonaut_types::{system, ScanProfile, ScanReport, ScanRequest, ScanTarget};
 
 use crate::diagnose::diagnose;
 use crate::error::RepairError;

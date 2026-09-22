@@ -39,7 +39,7 @@ Pinned **mdBook** version: see `scripts/docs/env.sh` (`MDBOOK_VERSION`).
 |--------|---------|
 | API (SQLite) | `just api-test` |
 | S3 / RustFS | `just s3-demo` (requires RustFS) |
-| Postgres | `PARACLETE_TEST_PG_URL=… cargo test -p paraclete-store --test postgres_store_integration -- --ignored` |
+| Postgres | `PARQONAUT_TEST_PG_URL=… cargo test -p parqonaut-store --test postgres_store_integration -- --ignored` |
 
 ## Naming
 

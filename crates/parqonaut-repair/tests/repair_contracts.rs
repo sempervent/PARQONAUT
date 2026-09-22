@@ -3,7 +3,7 @@ use parqonaut_repair::{canonical_plan_json, generate_plan, EffectivePolicy, PLAN
 #[test]
 fn plan_json_has_schema_version() {
     let json = include_str!("../../../fixtures/reports/minimal_report.json");
-    let scan: paraclete_types::ScanReport = serde_json::from_str(json).unwrap();
+    let scan: parqonaut_types::ScanReport = serde_json::from_str(json).unwrap();
     let root = camino::Utf8Path::new("fixtures/scan/single_parquet");
     if !root.exists() {
         return;

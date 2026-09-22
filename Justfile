@@ -44,6 +44,7 @@ docs:
 
 naming-check:
     scripts/check-active-naming.sh
+    bash scripts/check-active-naming-selftest.sh
 
 columnar-check:
     bash scripts/columnar-check.sh
@@ -100,8 +101,8 @@ api-restart-demo:
 api-test:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo test -p paraclete-service --tests
-    cargo test -p paraclete-store --test auth_tokens
+    cargo test -p parqonaut-service --tests
+    cargo test -p parqonaut-store --test auth_tokens
     scripts/api-test/smoke.sh --start
 
 repair-fixtures:

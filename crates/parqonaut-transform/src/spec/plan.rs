@@ -1,4 +1,4 @@
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::io::resolve_inputs;
 use crate::spec::plugin::resolve_pinned_batch_plugin;
 use crate::spec::plugin::PinnedBatchPlugin;
@@ -200,7 +200,7 @@ fn operation_to_fused(op: &Operation) -> Result<FusedOperation> {
             rebuild_stats,
         } => {
             if metadata.is_some() {
-                return Err(ParqknifeError::SpecError(
+                return Err(TransformError::SpecError(
                     "rewrite metadata updates require a materialized barrier step".into(),
                 ));
             }
@@ -220,7 +220,7 @@ fn operation_to_fused(op: &Operation) -> Result<FusedOperation> {
         Operation::Merge { row_group_size_mb } => {
             Ok(FusedOperation::Merge { row_group_size_mb: *row_group_size_mb })
         }
-        Operation::Split { .. } => Err(ParqknifeError::SpecError("split is not fusible".into())),
+        Operation::Split { .. } => Err(TransformError::SpecError("split is not fusible".into())),
         Operation::Plugin { plugin, config } => {
             let pinned = resolve_pinned_batch_plugin(plugin, config.clone())?;
             Ok(FusedOperation::Plugin(pinned))
@@ -235,14 +235,14 @@ pub fn compile_plan(spec: &Spec) -> Result<ExecutablePlan> {
     let final_output = spec.output.as_ref().unwrap();
     let initial_inputs = resolve_inputs(input)?;
     if initial_inputs.is_empty() {
-        return Err(ParqknifeError::SpecError("no input files resolved".into()));
+        return Err(TransformError::SpecError("no input files resolved".into()));
     }
 
     if !spec.options.overwrite
         && !final_output.starts_with("s3://")
         && path_exists_nonempty(Path::new(final_output))
     {
-        return Err(ParqknifeError::SpecError(format!(
+        return Err(TransformError::SpecError(format!(
             "output already exists and overwrite is false: {final_output}"
         )));
     }
@@ -430,39 +430,39 @@ fn validate_step(operation: &Operation, inputs: &[String], output: &str) -> Resu
     match operation {
         Operation::Rewrite { .. } => {
             if inputs.is_empty() {
-                return Err(ParqknifeError::SpecError("rewrite requires inputs".into()));
+                return Err(TransformError::SpecError("rewrite requires inputs".into()));
             }
         }
         Operation::Partition { partition_by } => {
             if partition_by.is_empty() {
-                return Err(ParqknifeError::SpecError("partition-by required".into()));
+                return Err(TransformError::SpecError("partition-by required".into()));
             }
             if inputs.len() != 1 {
-                return Err(ParqknifeError::SpecError(
+                return Err(TransformError::SpecError(
                     "partition requires exactly one Parquet input".into(),
                 ));
             }
         }
         Operation::Merge { .. } => {
             if inputs.is_empty() {
-                return Err(ParqknifeError::SpecError("merge requires inputs".into()));
+                return Err(TransformError::SpecError("merge requires inputs".into()));
             }
         }
         Operation::Split { .. } => {
             if inputs.len() != 1 {
-                return Err(ParqknifeError::SpecError(
+                return Err(TransformError::SpecError(
                     "split requires exactly one Parquet input".into(),
                 ));
             }
         }
         Operation::Plugin { .. } => {
             if inputs.is_empty() {
-                return Err(ParqknifeError::SpecError("plugin step requires inputs".into()));
+                return Err(TransformError::SpecError("plugin step requires inputs".into()));
             }
         }
     }
     if output.trim().is_empty() {
-        return Err(ParqknifeError::SpecError("step output path required".into()));
+        return Err(TransformError::SpecError("step output path required".into()));
     }
     Ok(())
 }
@@ -516,19 +516,19 @@ fn predict_outputs(operation: &Operation, output: &str, inputs: &[String]) -> Re
 
 pub fn validate_spec(spec: &Spec) -> Result<()> {
     if spec.steps.is_empty() {
-        return Err(ParqknifeError::SpecError("spec must contain at least one step".into()));
+        return Err(TransformError::SpecError("spec must contain at least one step".into()));
     }
     let _ =
-        spec.input.as_ref().ok_or_else(|| ParqknifeError::SpecError("input is required".into()))?;
+        spec.input.as_ref().ok_or_else(|| TransformError::SpecError("input is required".into()))?;
     let _ = spec
         .output
         .as_ref()
-        .ok_or_else(|| ParqknifeError::SpecError("output is required".into()))?;
+        .ok_or_else(|| TransformError::SpecError("output is required".into()))?;
 
     for step in &spec.steps {
         match &step.operation {
             Operation::Partition { partition_by } if partition_by.is_empty() => {
-                return Err(ParqknifeError::SpecError("partition-by required".into()));
+                return Err(TransformError::SpecError("partition-by required".into()));
             }
             _ => {}
         }

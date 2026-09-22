@@ -5,7 +5,7 @@ use parqonaut_plugin_host::{BatchPluginBridge, PluginHostError};
 
 use crate::engine::pipeline_from_rewrite_ops;
 use crate::engine::Pipeline;
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::spec::plan::{FusedOperation, FusedPlanSegment};
 use crate::spec::plugin::{map_plugin_err, plugin_runtime_config, verify_pinned_plugin};
 use crate::spec::plugin_run::TransformRunContext;
@@ -164,7 +164,7 @@ fn merge_rewrite_run(ops: &[FusedOperation]) -> Result<(Pipeline, usize)> {
         consumed += 1;
     }
     if consumed == 0 {
-        return Err(ParqknifeError::SpecError("expected rewrite operation".into()));
+        return Err(TransformError::SpecError("expected rewrite operation".into()));
     }
     Ok((pipeline_from_rewrite_ops(projection, filter.as_deref(), rename, cast)?, consumed))
 }

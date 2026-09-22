@@ -14,7 +14,7 @@ use crate::engine::{
     encode_partition_value, merge_parquet_files, partition_parquet_file, partition_record_batches,
     pipeline_from_rewrite_ops, split_parquet_file, Pipeline,
 };
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::remote::{merge_parquet_storage, rewrite_parquet_storage, run_io_runtime};
 use crate::spec::fused_chain::FusedTransformChain;
 use crate::spec::TransformRunContext;
@@ -289,7 +289,7 @@ fn object_under_prefix(prefix: &str, relative: &str) -> Result<ObjectLocation> {
                     continue;
                 }
                 if comp == ".." {
-                    return Err(ParqknifeError::InvalidInput(
+                    return Err(TransformError::InvalidInput(
                         "partition path must not contain '..'".into(),
                     ));
                 }
@@ -304,12 +304,12 @@ fn object_under_prefix(prefix: &str, relative: &str) -> Result<ObjectLocation> {
     }
 }
 
-fn map_storage(e: parqonaut_storage::error::StorageError) -> ParqknifeError {
-    ParqknifeError::InvalidInput(e.to_string())
+fn map_storage(e: parqonaut_storage::error::StorageError) -> TransformError {
+    TransformError::InvalidInput(e.to_string())
 }
 
-fn map_columnar(e: ColumnarError) -> ParqknifeError {
-    ParqknifeError::InvalidInput(e.to_string())
+fn map_columnar(e: ColumnarError) -> TransformError {
+    TransformError::InvalidInput(e.to_string())
 }
 
 /// Fused rewrite/partition segment with independent source/sink backends.
@@ -378,7 +378,7 @@ async fn execute_fused_segment_routed_async(
         return Ok((1, files_read));
     }
 
-    Err(ParqknifeError::SpecError(format!(
+    Err(TransformError::SpecError(format!(
         "unsupported fused routed output layout: {}",
         fused.output
     )))
@@ -432,7 +432,7 @@ async fn schema_from_inputs(
 ) -> Result<arrow::datatypes::SchemaRef> {
     let first = inputs
         .first()
-        .ok_or_else(|| ParqknifeError::SpecError("fused segment has no inputs".into()))?;
+        .ok_or_else(|| TransformError::SpecError("fused segment has no inputs".into()))?;
     let loc = ObjectLocation::parse(first).map_err(map_storage)?;
     let backend = io.backend_for(&loc);
     let source = StorageParquetBatchSource::new(backend, loc);

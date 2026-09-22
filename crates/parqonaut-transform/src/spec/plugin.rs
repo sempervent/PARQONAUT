@@ -9,7 +9,7 @@ use parqonaut_plugin_host::{
 use parqonaut_plugin_protocol::PLUGIN_PROTOCOL_VERSION;
 use serde::{Deserialize, Serialize};
 
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PinnedBatchPlugin {
@@ -42,9 +42,9 @@ pub fn resolve_pinned_batch_plugin(
 ) -> Result<PinnedBatchPlugin> {
     let policy = BatchResourcePolicy::default();
     let serialized =
-        serde_json::to_vec(&config).map_err(|e| ParqknifeError::SpecError(e.to_string()))?;
+        serde_json::to_vec(&config).map_err(|e| TransformError::SpecError(e.to_string()))?;
     if serialized.len() > policy.max_config_bytes {
-        return Err(ParqknifeError::SpecError(format!(
+        return Err(TransformError::SpecError(format!(
             "plugin config exceeds max size {} bytes",
             policy.max_config_bytes
         )));
@@ -52,17 +52,17 @@ pub fn resolve_pinned_batch_plugin(
     let catalog = PluginCatalog::discover_from_roots(&plugin_roots()).map_err(map_plugin_err)?;
     let entry = catalog
         .get(name)
-        .ok_or_else(|| ParqknifeError::SpecError(format!("unknown plugin: {name}")))?;
+        .ok_or_else(|| TransformError::SpecError(format!("unknown plugin: {name}")))?;
     if entry.compatibility != PluginCompatibility::Compatible {
-        return Err(ParqknifeError::SpecError(format!(
+        return Err(TransformError::SpecError(format!(
             "plugin {name} is not compatible with this PARQONAUT version"
         )));
     }
     if entry.manifest.protocol_version != PLUGIN_PROTOCOL_VERSION {
-        return Err(ParqknifeError::SpecError(format!("plugin {name} protocol version mismatch")));
+        return Err(TransformError::SpecError(format!("plugin {name} protocol version mismatch")));
     }
     entry.manifest.capabilities.batch_transform.as_ref().ok_or_else(|| {
-        ParqknifeError::SpecError(format!(
+        TransformError::SpecError(format!(
             "plugin {name} does not declare batch_transform capability"
         ))
     })?;
@@ -80,9 +80,9 @@ pub fn verify_pinned_plugin(pinned: &PinnedBatchPlugin) -> Result<CatalogEntry> 
     let catalog = PluginCatalog::discover_from_roots(&plugin_roots()).map_err(map_plugin_err)?;
     let entry = catalog
         .get(&pinned.name)
-        .ok_or_else(|| ParqknifeError::SpecError(format!("unknown plugin: {}", pinned.name)))?;
+        .ok_or_else(|| TransformError::SpecError(format!("unknown plugin: {}", pinned.name)))?;
     if entry.digest != pinned.digest {
-        return Err(ParqknifeError::SpecError(format!(
+        return Err(TransformError::SpecError(format!(
             "STALE PLUGIN: plan digest {} != current {}",
             pinned.digest, entry.digest
         )));
@@ -94,6 +94,6 @@ pub fn plugin_runtime_config() -> PluginRuntimeConfig {
     PluginRuntimeConfig::default()
 }
 
-pub fn map_plugin_err(err: PluginHostError) -> ParqknifeError {
-    ParqknifeError::SpecError(err.to_string())
+pub fn map_plugin_err(err: PluginHostError) -> TransformError {
+    TransformError::SpecError(err.to_string())
 }

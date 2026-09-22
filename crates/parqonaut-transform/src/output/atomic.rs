@@ -1,4 +1,4 @@
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use std::path::{Path, PathBuf};
 
 pub struct AtomicWriter {
@@ -11,9 +11,9 @@ impl AtomicWriter {
         let final_path = Path::new(final_path);
         let parent = final_path
             .parent()
-            .ok_or_else(|| ParqknifeError::InvalidInput("Invalid output path".to_string()))?;
+            .ok_or_else(|| TransformError::InvalidInput("Invalid output path".to_string()))?;
 
-        let temp_name = format!(".parqknife.tmp.{}", uuid::Uuid::new_v4());
+        let temp_name = format!(".parqonaut.tmp.{}", uuid::Uuid::new_v4());
         let temp_dir = parent.join(temp_name);
 
         std::fs::create_dir_all(&temp_dir)?;

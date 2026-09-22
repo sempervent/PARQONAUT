@@ -1,4 +1,4 @@
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use async_trait::async_trait;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};

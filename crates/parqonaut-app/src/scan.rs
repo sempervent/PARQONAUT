@@ -1,9 +1,9 @@
 //! Forensic scan use case (local engine + storage-backed remote datasets).
 
-use paraclete_core::ScanEngine;
-use paraclete_types::{ScanProfile, ScanReport, ScanRequest, ScanTarget};
+use parqonaut_core::ScanEngine;
 use parqonaut_repair::backend_for_location;
 use parqonaut_storage::location::DatasetLocation;
+use parqonaut_types::{ScanProfile, ScanReport, ScanRequest, ScanTarget};
 
 use crate::error::ApplicationError;
 use crate::plugins::ScanPluginBridge;

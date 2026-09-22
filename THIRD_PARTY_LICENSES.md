@@ -6,7 +6,7 @@ PARQONAUT consolidates code from three predecessor repositories. This document r
 
 | Component | Location in PARQONAUT | Upstream declared license | Files in PARQONAUT |
 |-----------|----------------------|---------------------------|------------------|
-| Paraclete | `crates/paraclete-*`, `fixtures/`, `python/parqonaut_plugins/`, `scripts/` | MIT | MIT (`LICENSE`) |
+| Paraclete | `crates/parqonaut-types`, `parqonaut-core`, `parqonaut-report`, `parqonaut-store`, `parqonaut-service`, `parqonaut-plugin-protocol`, `fixtures/`, `python/parqonaut_plugins/`, `scripts/` | MIT | MIT (`LICENSE`) |
 | streaming-parquet (maw) | `crates/parqonaut-stream/`, `benches/stream-throughput/` | MIT | MIT (`LICENSE`) |
 | parqknife | `crates/parqonaut-transform/` | `MIT OR Apache-2.0` in `Cargo.toml` | See parqknife section below |
 
@@ -17,7 +17,7 @@ The repository root [`LICENSE`](LICENSE) is **MIT** and applies to the combined 
 - **Source:** https://github.com/sempervent/paraclete @ `4dd0316f76811370bdd38f7b3778beed7b71a1c6`
 - **Upstream copyright:** Copyright (c) 2026 Joshua Grant
 - **Upstream license file:** MIT
-- **Imported:** workspace crates (`paraclete-types`, `paraclete-core`, `paraclete-report`, `paraclete-store`, `paraclete-service`, `parqonaut-plugin-protocol`), fixtures, Python plugin contracts, scripts
+- **Imported:** workspace crates (`parqonaut-types`, `parqonaut-core`, `parqonaut-report`, `parqonaut-store`, `parqonaut-service`, `parqonaut-plugin-protocol`), fixtures, Python plugin contracts, scripts
 
 ## streaming-parquet / maw (MIT)
 

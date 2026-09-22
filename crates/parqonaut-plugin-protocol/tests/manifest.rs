@@ -1,8 +1,8 @@
-use paraclete_types::DataFormat;
 use parqonaut_plugin_protocol::{
     BatchTransformCapabilities, PluginCapabilities, PluginExecutionPhase, PluginManifest,
     ScanAnalyzerCapabilities, PLUGIN_PROTOCOL_VERSION,
 };
+use parqonaut_types::DataFormat;
 
 fn scan_caps() -> PluginCapabilities {
     PluginCapabilities {

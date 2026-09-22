@@ -1,6 +1,6 @@
 //! Transport-neutral application errors mapped at CLI/HTTP edges.
 
-use paraclete_core::CoreError;
+use parqonaut_core::CoreError;
 use parqonaut_repair::RepairError;
 use parqonaut_storage::error::StorageError;
 

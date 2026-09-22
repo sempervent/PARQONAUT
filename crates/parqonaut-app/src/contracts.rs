@@ -1,12 +1,12 @@
 //! Transport-neutral application request/response contracts.
 
 use camino::Utf8PathBuf;
-use paraclete_types::{ScanProfile, ScanReport};
 use parqonaut_orchestrator::{BatchPlan, BatchStatusReport};
 use parqonaut_repair::{
     CheckReport, DiagnosisReport, EffectivePolicy, FieldDescriptor, RepairPlan, VerificationReport,
 };
 use parqonaut_storage::location::DatasetLocation;
+use parqonaut_types::{ScanProfile, ScanReport};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

@@ -7,8 +7,8 @@ authors.workspace = true
 description = "Evidence-driven Parquet dataset repair planning, execution, and verification"
 
 [dependencies]
-paraclete-core = { path = "../paraclete-core" }
-paraclete-types = { path = "../paraclete-types" }
+parqonaut-core = { path = "../parqonaut-core" }
+parqonaut-types = { path = "../parqonaut-types" }
 parqonaut-transform = { path = "../parqonaut-transform" }
 parqonaut-columnar = { path = "../parqonaut-columnar" }
 parqonaut-storage = { path = "../parqonaut-storage" }

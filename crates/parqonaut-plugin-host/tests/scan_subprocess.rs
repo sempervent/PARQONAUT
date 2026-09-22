@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use paraclete_types::{ScanProfile, ScanRequest, ScanTarget};
 use parqonaut_plugin_host::{CancelToken, PluginCatalog, PluginHost, PluginRuntimeConfig};
 use parqonaut_plugin_protocol::{PluginExecutionPhase, PluginScanContext};
+use parqonaut_types::{ScanProfile, ScanRequest, ScanTarget};
 
 fn sdk_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../python/parqonaut_plugins/src")

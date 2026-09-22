@@ -47,7 +47,7 @@ impl RepairExecutor {
         &self,
         plan: &RepairPlan,
         output: &DatasetLocation,
-        scan: &paraclete_types::ScanReport,
+        scan: &parqonaut_types::ScanReport,
         source_backend: &SB,
         output_backend: &OB,
         run_id: &str,
@@ -196,9 +196,9 @@ fn before_scan_root(source: &DatasetLocation, work: &Utf8Path) -> Utf8PathBuf {
 
 fn before_scan_for_source(
     source: &DatasetLocation,
-    scan: &paraclete_types::ScanReport,
+    scan: &parqonaut_types::ScanReport,
     work: &Utf8Path,
-) -> Result<paraclete_types::ScanReport, RepairError> {
+) -> Result<parqonaut_types::ScanReport, RepairError> {
     match source {
         DatasetLocation::Local(_) => Ok(scan.clone()),
         DatasetLocation::S3(_) => scan_directory(work),
@@ -248,7 +248,7 @@ async fn ensure_output_available<B: StorageBackend + ?Sized>(
 async fn verify_source_fingerprint(
     source: &DatasetLocation,
     plan: &RepairPlan,
-    scan: &paraclete_types::ScanReport,
+    scan: &parqonaut_types::ScanReport,
 ) -> Result<(), RepairError> {
     let root = location_root(source);
     let current = compute_fingerprint_from_scan(&root, scan)?;
@@ -259,7 +259,7 @@ async fn seed_working_set<B: StorageBackend + ?Sized>(
     source: &DatasetLocation,
     backend: &B,
     work: &Utf8Path,
-    scan: &paraclete_types::ScanReport,
+    scan: &parqonaut_types::ScanReport,
 ) -> Result<BTreeMap<String, Utf8PathBuf>, RepairError> {
     match source {
         DatasetLocation::Local(root) => seed_work_dir(&root.path, work, scan),

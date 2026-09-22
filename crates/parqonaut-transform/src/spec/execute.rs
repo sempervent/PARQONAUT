@@ -2,7 +2,7 @@ use crate::engine::{
     merge_parquet_files, partition_parquet_file, rewrite_parquet_file, rewrite_parquet_with_cast,
     rewrite_parquet_with_rename, split_parquet_file,
 };
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::io::resolve_inputs;
 use crate::spec::fused_execute::execute_fused_segment;
 use crate::spec::plan::{compile_plan, CompiledSegment, ExecutablePlan, ResolvedStep};
@@ -49,7 +49,7 @@ fn plan_to_dry_run_report(plan: &ExecutablePlan) -> Result<TransformReport> {
         warnings: vec![],
         failures: vec![],
         plan: Some(
-            serde_json::to_value(plan).map_err(|e| ParqknifeError::SpecError(e.to_string()))?,
+            serde_json::to_value(plan).map_err(|e| TransformError::SpecError(e.to_string()))?,
         ),
         plugin_executions: vec![],
     })
@@ -314,7 +314,7 @@ fn execute_step(step: &ResolvedStep) -> Result<(u64, u64)> {
             let outs = resolve_inputs(&step.output)?;
             Ok((outs.len() as u64, read))
         }
-        Operation::Plugin { .. } => Err(ParqknifeError::SpecError(
+        Operation::Plugin { .. } => Err(TransformError::SpecError(
             "plugin transform steps are only supported via fused execution".into(),
         )),
     }

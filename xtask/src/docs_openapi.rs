@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use paraclete_service::openapi_spec;
+use parqonaut_service::openapi_spec;
 use serde_json::Value;
 
 fn normalize_openapi_document(v: Value) -> String {

@@ -1,5 +1,5 @@
 use camino::Utf8Path;
-use paraclete_types::{
+use parqonaut_types::{
     system, Evidence, EvidenceKind, EvidenceLocationRef, Finding, FindingCategory, FindingCode,
     FindingLocation, FindingSeverity, ScanReport,
 };

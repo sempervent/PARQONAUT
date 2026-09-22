@@ -1,6 +1,6 @@
 # Durable jobs
 
-`prqnt serve` persists long-running work in **`application_jobs`** (SQLite or Postgres via `paraclete-store`).
+`prqnt serve` persists long-running work in **`application_jobs`** (SQLite or Postgres via `parqonaut-store`).
 
 ## Job kinds (durable async)
 

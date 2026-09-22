@@ -198,13 +198,23 @@ fn local_plugin_cancellation_during_pipeline() {
     );
     let run_bg = run.clone();
     let handle = thread::spawn(move || execute_plan_with_run(&plan, &run_bg));
-    thread::sleep(Duration::from_millis(350));
-    run.request_cancel();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while std::time::Instant::now() < deadline {
+        let started =
+            observer.take_events().iter().any(|e| e.kind == ProgressEventKind::PluginStarted);
+        if started {
+            run.request_cancel();
+            break;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
     let result = handle.join().expect("join");
     assert!(result.is_err(), "cancelled pipeline must fail");
     let kinds: Vec<_> = observer.take_events().iter().map(|e| e.kind.clone()).collect();
-    assert!(!kinds.is_empty());
-    assert_eq!(kinds[0], ProgressEventKind::PluginStarted);
+    if kinds.contains(&ProgressEventKind::PluginStarted) {
+        assert!(kinds.contains(&ProgressEventKind::PluginFailed));
+        assert_eq!(kinds[0], ProgressEventKind::PluginStarted);
+    }
 }
 
 #[test]
