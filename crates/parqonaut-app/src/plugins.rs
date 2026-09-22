@@ -45,7 +45,13 @@ impl ScanPluginBridge {
             .map_err(|e| ApplicationError::PluginHost(e.to_string()))?;
         let resolved_order: Vec<String> =
             resolved.iter().map(|p| p.entry.manifest.name.clone()).collect();
-        Ok(Self { host, resolved, _requested: requested, resolved_order, cancel: CancelToken::new() })
+        Ok(Self {
+            host,
+            resolved,
+            _requested: requested,
+            resolved_order,
+            cancel: CancelToken::new(),
+        })
     }
 
     pub fn from_catalog(
@@ -59,7 +65,13 @@ impl ScanPluginBridge {
             .map_err(|e| ApplicationError::PluginHost(e.to_string()))?;
         let resolved_order: Vec<String> =
             resolved.iter().map(|p| p.entry.manifest.name.clone()).collect();
-        Ok(Self { host, resolved, _requested: requested, resolved_order, cancel: CancelToken::new() })
+        Ok(Self {
+            host,
+            resolved,
+            _requested: requested,
+            resolved_order,
+            cancel: CancelToken::new(),
+        })
     }
 }
 
