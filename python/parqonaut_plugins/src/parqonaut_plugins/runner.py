@@ -28,7 +28,8 @@ def _read_stdin(limit: int = MAX_IO_BYTES) -> bytes:
     chunks: list[bytes] = []
     total = 0
     while True:
-        part = sys.stdin.buffer.read(min(65536, limit - total))
+        remaining = limit - total + 1
+        part = sys.stdin.buffer.read(min(65536, remaining))
         if not part:
             break
         total += len(part)

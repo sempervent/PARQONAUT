@@ -218,3 +218,74 @@ fn slow_scan_cancellable_via_token() {
         .unwrap_err();
     assert!(matches!(err, PluginHostError::Cancelled));
 }
+
+#[test]
+fn scan_large_stdin_never_consumed_cancels_and_times_out_promptly() {
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join("hang-stdin");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(
+        plugin_dir.join("parqonaut-plugin.json"),
+        r#"{
+          "protocol_version": 1,
+          "name": "hang-stdin",
+          "version": "0.1.0",
+          "entrypoint": "hang_stdin:analyze",
+          "capabilities": { "scan": { "supported_formats": ["parquet"], "supported_phases": ["post_rules"] } }
+        }"#,
+    )
+    .unwrap();
+    // Note: runner reads stdin before importing plugin module, so test with a wrapper python script
+    // or a slow-reading scenario; here we test a Python script passed as python_executable that sleeps without reading stdin.
+    let sleeper = dir.path().join("sleep_ignore_stdin.py");
+    std::fs::write(&sleeper, "#!/usr/bin/env python3\nimport time\ntime.sleep(30)\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&sleeper).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&sleeper, perms).unwrap();
+    }
+    std::fs::write(plugin_dir.join("hang_stdin.py"), "def analyze(c): pass\n").unwrap();
+    let entry = PluginCatalog::validate_path(&plugin_dir).unwrap();
+
+    let mut big_ctx = ctx();
+    // > 256 KiB exceeds OS pipe buffer so blocking stdin write would deadlock without background stdin writer.
+    big_ctx.discovered_files = vec!["a".repeat(2048); 200];
+
+    let executor = ScanPluginExecutor::new(PluginRuntimeConfig {
+        python_executable: Some(sleeper),
+        sdk_src_root: Some(sdk_path()),
+        policy: PluginResourcePolicy { default_timeout_ms: 250, ..Default::default() },
+        ..Default::default()
+    });
+    let start = std::time::Instant::now();
+    let err = executor
+        .execute_scan(
+            &entry,
+            PluginExecutionPhase::PostRules,
+            big_ctx.clone(),
+            &CancelToken::new(),
+            Some(250),
+        )
+        .unwrap_err();
+    assert!(matches!(err, PluginHostError::Timeout { .. }), "expected Timeout, got {err:?}");
+    assert!(start.elapsed() < std::time::Duration::from_secs(3));
+
+    let cancel = CancelToken::new();
+    let cancel_bg = cancel.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(120));
+        cancel_bg.cancel();
+    });
+    let start_cancel = std::time::Instant::now();
+    let err_cancel = executor
+        .execute_scan(&entry, PluginExecutionPhase::PostRules, big_ctx, &cancel, Some(30_000))
+        .unwrap_err();
+    assert!(matches!(err_cancel, PluginHostError::Cancelled), "got {err_cancel:?}");
+    assert!(
+        start_cancel.elapsed() < std::time::Duration::from_secs(3),
+        "cancellation waited for timeout: {:?}",
+        start_cancel.elapsed()
+    );
+}

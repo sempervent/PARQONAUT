@@ -39,3 +39,29 @@ fn duplicate_name_is_deterministic() {
     let err = PluginCatalog::discover_from_roots(&[root]).unwrap_err();
     assert!(err.to_string().contains("duplicate"));
 }
+
+#[cfg(unix)]
+#[test]
+fn symlink_inside_plugin_package_rejected() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = TempDir::new().unwrap();
+    let plugin_dir = tmp.path().join("sym-plugin");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    let outside = tmp.path().join("outside.py");
+    std::fs::write(&outside, "SECRET = 'x'\n").unwrap();
+
+    let manifest = r#"{
+      "protocol_version": 1,
+      "name": "sym-plugin",
+      "version": "0.1.0",
+      "entrypoint": "x:run",
+      "capabilities": { "scan": { "supported_formats": ["parquet"], "supported_phases": ["post_rules"] } }
+    }"#;
+    std::fs::write(plugin_dir.join("parqonaut-plugin.json"), manifest).unwrap();
+    std::fs::write(plugin_dir.join("x.py"), "def run(c): pass\n").unwrap();
+    symlink(&outside, plugin_dir.join("linked.py")).unwrap();
+
+    let err = PluginCatalog::validate_path(&plugin_dir).unwrap_err();
+    assert!(err.to_string().contains("symlink"), "expected symlink rejection, got {err}");
+}

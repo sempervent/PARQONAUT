@@ -151,3 +151,168 @@ fn nested_list_rejected_before_spawn() {
     let err = validate_schema_supported(&schema).unwrap_err();
     assert!(matches!(err, PluginHostError::PluginUnsupportedArrowType(_)));
 }
+
+#[test]
+fn unsupported_struct_map_fixed_binary_rejected_before_spawn() {
+    let struct_schema = Schema::new(vec![Field::new(
+        "nested",
+        DataType::Struct(vec![Field::new("a", DataType::Int32, false)].into()),
+        true,
+    )]);
+    assert!(matches!(
+        validate_schema_supported(&struct_schema).unwrap_err(),
+        PluginHostError::PluginUnsupportedArrowType(_)
+    ));
+
+    let fixed_bin_schema =
+        Schema::new(vec![Field::new("bin", DataType::FixedSizeBinary(16), false)]);
+    assert!(matches!(
+        validate_schema_supported(&fixed_bin_schema).unwrap_err(),
+        PluginHostError::PluginUnsupportedArrowType(_)
+    ));
+}
+
+#[test]
+fn arrow_ipc_zero_row_batch_and_multiple_consecutive_batches() {
+    let catalog = PluginCatalog::discover_from_roots(&[plugins_root()]).unwrap();
+    let entry = catalog.get("batch-passthrough").unwrap();
+    let runtime =
+        PluginRuntimeConfig { sdk_src_root: Some(sdk_path()), ..PluginRuntimeConfig::default() };
+    let mut session = BatchPluginSession::start(
+        entry,
+        serde_json::json!({}),
+        "multi-batch-test",
+        &runtime,
+        None,
+        None,
+    )
+    .unwrap();
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, true),
+        Field::new("name", DataType::Utf8, true),
+    ]));
+    let zero_batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(Int32Array::from(Vec::<Option<i32>>::new())),
+            Arc::new(StringArray::from(Vec::<Option<&str>>::new())),
+        ],
+    )
+    .unwrap();
+    let out_zero = session.transform(zero_batch).unwrap();
+    assert_eq!(out_zero.num_rows(), 0);
+
+    for i in 0..4 {
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int32Array::from(vec![Some(i), None])),
+                Arc::new(StringArray::from(vec![Some("row"), None])),
+            ],
+        )
+        .unwrap();
+        let out = session.transform(batch.clone()).unwrap();
+        assert_eq!(out.num_rows(), 2);
+        assert_eq!(out.schema(), batch.schema());
+    }
+    session.finish().unwrap();
+}
+
+#[test]
+fn arrow_ipc_large_payload_roundtrip() {
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("payload", DataType::Utf8, false),
+    ]));
+    let n = 8_000usize;
+    let ids: Vec<i32> = (0..n as i32).collect();
+    let payload_str = "x".repeat(256);
+    let payloads: Vec<&str> = vec![payload_str.as_str(); n];
+    let batch = RecordBatch::try_new(
+        schema,
+        vec![Arc::new(Int32Array::from(ids)), Arc::new(StringArray::from(payloads))],
+    )
+    .unwrap();
+    passthrough_roundtrip(batch);
+}
+
+#[test]
+fn schema_metadata_change_and_missing_column_rejected() {
+    let work = tempfile::tempdir().unwrap();
+    let p_meta = work.path().join("meta-mut");
+    std::fs::create_dir_all(&p_meta).unwrap();
+    std::fs::write(
+        p_meta.join("parqonaut-plugin.json"),
+        r#"{
+          "protocol_version": 1,
+          "name": "meta-mut",
+          "version": "0.1.0",
+          "entrypoint": "meta_mut:transform",
+          "capabilities": { "batch_transform": {} }
+        }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        p_meta.join("meta_mut.py"),
+        "def transform(batch, _cfg):\n    return batch.replace_schema_metadata({'injected': 'yes'})\n",
+    )
+    .unwrap();
+    let entry_meta = PluginCatalog::validate_path(&p_meta).unwrap();
+    let runtime =
+        PluginRuntimeConfig { sdk_src_root: Some(sdk_path()), ..PluginRuntimeConfig::default() };
+    let mut sess = BatchPluginSession::start(
+        &entry_meta,
+        serde_json::json!({}),
+        "meta-test",
+        &runtime,
+        None,
+        None,
+    )
+    .unwrap();
+    let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int32, false)]));
+    let batch = RecordBatch::try_new(schema, vec![Arc::new(Int32Array::from(vec![1]))]).unwrap();
+    let err = sess.transform(batch).unwrap_err();
+    assert!(matches!(err, PluginHostError::PluginSchemaMismatch(_)));
+    drop(sess);
+
+    let p_drop = work.path().join("drop-col");
+    std::fs::create_dir_all(&p_drop).unwrap();
+    std::fs::write(
+        p_drop.join("parqonaut-plugin.json"),
+        r#"{
+          "protocol_version": 1,
+          "name": "drop-col",
+          "version": "0.1.0",
+          "entrypoint": "drop_col:transform",
+          "capabilities": { "batch_transform": {} }
+        }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        p_drop.join("drop_col.py"),
+        "import pyarrow as pa\ndef transform(batch, _cfg):\n    return pa.RecordBatch.from_arrays([batch.column(0)], names=['id'])\n",
+    )
+    .unwrap();
+    let entry_drop = PluginCatalog::validate_path(&p_drop).unwrap();
+    let mut sess2 = BatchPluginSession::start(
+        &entry_drop,
+        serde_json::json!({}),
+        "drop-test",
+        &runtime,
+        None,
+        None,
+    )
+    .unwrap();
+    let schema2 = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("extra", DataType::Int32, false),
+    ]));
+    let batch2 = RecordBatch::try_new(
+        schema2,
+        vec![Arc::new(Int32Array::from(vec![1])), Arc::new(Int32Array::from(vec![2]))],
+    )
+    .unwrap();
+    let err2 = sess2.transform(batch2).unwrap_err();
+    assert!(matches!(err2, PluginHostError::PluginSchemaMismatch(_)));
+}

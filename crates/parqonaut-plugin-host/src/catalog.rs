@@ -65,11 +65,14 @@ impl PluginCatalog {
                 continue;
             }
             let canonical_root = canonical_plugin_root(&root)?;
-            let mut children: Vec<PathBuf> = fs::read_dir(&canonical_root)?
-                .filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.is_dir())
-                .collect();
+            let mut children: Vec<PathBuf> = Vec::new();
+            for entry in fs::read_dir(&canonical_root)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    children.push(path);
+                }
+            }
             children.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
 
             for plugin_dir in children {
@@ -77,12 +80,14 @@ impl PluginCatalog {
                 if !manifest_path.is_file() {
                     continue;
                 }
+                ensure_within_root(&plugin_dir, &canonical_root)?;
                 ensure_within_root(&manifest_path, &canonical_root)?;
+                let canonical_plugin_dir = canonical_plugin_root(&plugin_dir)?;
                 let manifest_bytes = fs::read(&manifest_path)?;
                 let manifest: PluginManifest = serde_json::from_slice(&manifest_bytes)?;
                 manifest.validate()?;
 
-                let digest = compute_plugin_digest(&plugin_dir, &manifest_bytes)?;
+                let digest = compute_plugin_digest(&canonical_plugin_dir, &manifest_bytes)?;
                 let compatibility = evaluate_host_requirement(&manifest, &host_version);
 
                 let name = manifest.name.clone();
@@ -96,7 +101,7 @@ impl PluginCatalog {
                 }
                 catalog.entries.insert(
                     name,
-                    CatalogEntry { manifest, root: plugin_dir, digest, compatibility },
+                    CatalogEntry { manifest, root: canonical_plugin_dir, digest, compatibility },
                 );
             }
         }

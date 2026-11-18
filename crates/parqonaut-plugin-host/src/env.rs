@@ -32,6 +32,8 @@ const ALLOWLIST: &[&str] = &[
     "PYTHONDONTWRITEBYTECODE",
 ];
 
+const TEST_ALLOWLIST: &[&str] = &["PARQONAUT_TEST_SLOW_SCAN_SEC"];
+
 /// Builds a scrubbed environment for plugin subprocesses.
 pub fn plugin_child_env(extra_pythonpath: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
@@ -40,9 +42,9 @@ pub fn plugin_child_env(extra_pythonpath: &str) -> BTreeMap<String, String> {
             out.insert(key.to_string(), v);
         }
     }
-    for (k, v) in env::vars() {
-        if k.starts_with("PARQONAUT_TEST_") || (k.starts_with("PYTHON") && !out.contains_key(&k)) {
-            out.insert(k, v);
+    for key in TEST_ALLOWLIST {
+        if let Ok(v) = env::var(key) {
+            out.insert((*key).to_string(), v);
         }
     }
     for deny in SECRET_DENYLIST {
@@ -51,4 +53,25 @@ pub fn plugin_child_env(extra_pythonpath: &str) -> BTreeMap<String, String> {
     out.insert("PYTHONPATH".into(), extra_pythonpath.into());
     out.insert("PYTHONDONTWRITEBYTECODE".into(), "1".into());
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn env_scrubbing_blocks_pg_url_pythonstartup_and_secrets() {
+        env::set_var("PARQONAUT_TEST_PG_URL", "postgres://postgres:secret@db:5432/app");
+        env::set_var("PYTHONSTARTUP", "/tmp/evil_startup.py");
+        env::set_var("AWS_SECRET_ACCESS_KEY", "aws-secret");
+        env::set_var("PARQONAUT_TEST_SLOW_SCAN_SEC", "2");
+
+        let child_env = plugin_child_env("/tmp/plugins");
+        assert!(!child_env.contains_key("PARQONAUT_TEST_PG_URL"));
+        assert!(!child_env.contains_key("PYTHONSTARTUP"));
+        assert!(!child_env.contains_key("AWS_SECRET_ACCESS_KEY"));
+        assert_eq!(child_env.get("PARQONAUT_TEST_SLOW_SCAN_SEC").map(String::as_str), Some("2"));
+        assert_eq!(child_env.get("PYTHONPATH").map(String::as_str), Some("/tmp/plugins"));
+        assert_eq!(child_env.get("PYTHONDONTWRITEBYTECODE").map(String::as_str), Some("1"));
+    }
 }

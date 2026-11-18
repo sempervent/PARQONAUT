@@ -50,11 +50,48 @@ pub struct PluginRuntimeConfig {
 impl Default for PluginRuntimeConfig {
     fn default() -> Self {
         Self {
-            python_executable: std::env::var("PARQONAUT_PLUGIN_PYTHON").ok().map(PathBuf::from),
-            sdk_src_root: std::env::var("PARQONAUT_PLUGIN_SDK_PATH").ok().map(PathBuf::from),
+            python_executable: std::env::var("PARQONAUT_PLUGIN_PYTHON")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from),
+            sdk_src_root: std::env::var("PARQONAUT_PLUGIN_SDK_PATH")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from),
             policy: PluginResourcePolicy::default(),
             batch_policy: BatchResourcePolicy::default(),
         }
+    }
+}
+
+struct ChildGuard(Option<Child>);
+
+impl ChildGuard {
+    fn new(child: Child) -> Self {
+        Self(Some(child))
+    }
+
+    fn as_mut(&mut self) -> &mut Child {
+        self.0.as_mut().expect("child guard active")
+    }
+
+    fn terminate_and_reap(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            let _ = terminate_child(&mut child);
+        }
+    }
+
+    #[allow(clippy::zombie_processes)] // Caller already observed exit via `try_wait()` -> `Some(status)`.
+    fn mark_reaped(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        self.terminate_and_reap();
     }
 }
 
@@ -121,32 +158,37 @@ impl ScanPluginExecutor {
             .env_clear()
             .envs(env);
         configure_plugin_child(&mut cmd);
-        let mut child = cmd.spawn().map_err(|e| PluginHostError::SpawnFailed(e.to_string()))?;
+        let mut child =
+            ChildGuard::new(cmd.spawn().map_err(|e| PluginHostError::SpawnFailed(e.to_string()))?);
 
-        let mut stdin = child.stdin.take().expect("stdin");
-        stdin.write_all(&request_json).map_err(|e| {
-            let _ = terminate_child(&mut child);
-            PluginHostError::SpawnFailed(e.to_string())
-        })?;
-        drop(stdin);
+        let mut stdin = child.as_mut().stdin.take().expect("stdin");
+        let stdout = child.as_mut().stdout.take().expect("stdout");
+        let stderr = child.as_mut().stderr.take().expect("stderr");
 
         let timeout =
             Duration::from_millis(timeout_ms.unwrap_or(self.runtime.policy.default_timeout_ms));
-        let stdout = child.stdout.take().expect("stdout");
-        let stderr = child.stderr.take().expect("stderr");
-
         let policy = self.runtime.policy.clone();
         let max_stdout = policy.max_response_bytes;
         let max_stderr = policy.max_stderr_bytes;
+
+        let stdin_out: Arc<Mutex<Option<std::io::Result<()>>>> = Arc::new(Mutex::new(None));
         let stdout_out: Arc<Mutex<Option<Result<Vec<u8>, PluginHostError>>>> =
             Arc::new(Mutex::new(None));
         let stderr_out: Arc<Mutex<Option<Result<Vec<u8>, PluginHostError>>>> =
             Arc::new(Mutex::new(None));
+
+        let stdin_slot = Arc::clone(&stdin_out);
+        let stdin_handle = thread::spawn(move || {
+            let res = stdin.write_all(&request_json).and_then(|()| stdin.flush());
+            drop(stdin);
+            *stdin_slot.lock().expect("lock") = Some(res);
+        });
+
         let stdout_slot = Arc::clone(&stdout_out);
-        let stderr_slot = Arc::clone(&stderr_out);
         let stdout_handle = thread::spawn(move || {
             *stdout_slot.lock().expect("lock") = Some(read_bounded(stdout, max_stdout));
         });
+        let stderr_slot = Arc::clone(&stderr_out);
         let stderr_handle = thread::spawn(move || {
             *stderr_slot.lock().expect("lock") =
                 Some(read_stderr_capped(stderr, max_stderr).map_err(PluginHostError::Io));
@@ -155,19 +197,23 @@ impl ScanPluginExecutor {
         let start = Instant::now();
         loop {
             if cancel.is_cancelled() {
-                let _ = terminate_child(&mut child);
+                child.terminate_and_reap();
+                let _ = stdin_handle.join();
                 let _ = stdout_handle.join();
                 let _ = stderr_handle.join();
                 return Err(PluginHostError::Cancelled);
             }
             if matches!(stdout_out.lock().expect("lock").as_ref(), Some(Err(_))) {
                 let err = stdout_out.lock().expect("lock").take().unwrap().unwrap_err();
-                let _ = terminate_child(&mut child);
+                child.terminate_and_reap();
+                let _ = stdin_handle.join();
                 let _ = stdout_handle.join();
                 let _ = stderr_handle.join();
                 return Err(err);
             }
-            if let Some(status) = child.try_wait().map_err(PluginHostError::Io)? {
+            if let Some(status) = child.as_mut().try_wait().map_err(PluginHostError::Io)? {
+                child.mark_reaped();
+                let _ = stdin_handle.join();
                 let _ = stdout_handle.join();
                 let _ = stderr_handle.join();
                 let stdout_bytes = stdout_out.lock().expect("lock").take().unwrap_or(Err(
@@ -180,20 +226,18 @@ impl ScanPluginExecutor {
                 };
                 let stderr_tail = tail_str(&stderr_bytes, 8 * 1024);
                 if !status.success() {
-                    let detail = format!(
-                        "plugin={} version={} digest={}: {stderr_tail}",
-                        entry.manifest.name, entry.manifest.version, entry.digest
-                    );
-                    if stderr_tail.contains("No module named")
-                        || stderr_tail.contains("entrypoint not callable")
-                        || stderr_tail.contains("entrypoint must be module:callable")
-                    {
-                        return Err(PluginHostError::EntrypointInvalid {
-                            name: entry.manifest.name.clone(),
-                            detail: stderr_tail,
-                        });
+                    return Err(classify_process_failure(
+                        &entry.manifest.name,
+                        &entry.manifest.version,
+                        &entry.digest,
+                        status.code(),
+                        &stderr_tail,
+                    ));
+                }
+                if let Some(Err(e)) = stdin_out.lock().expect("lock").take() {
+                    if e.kind() != std::io::ErrorKind::BrokenPipe {
+                        return Err(PluginHostError::Io(e));
                     }
-                    return Err(PluginHostError::ProcessFailed { code: status.code(), detail });
                 }
                 let (response, _trailing) = parse_stdout_json(&stdout_bytes)?;
                 if let Err(e) = response.validate() {
@@ -209,13 +253,13 @@ impl ScanPluginExecutor {
                 return Ok((response.result, stderr_tail));
             }
             if start.elapsed() >= timeout {
-                let _ = terminate_child(&mut child);
+                child.terminate_and_reap();
+                let _ = stdin_handle.join();
                 let _ = stdout_handle.join();
                 let _ = stderr_handle.join();
-                let _ = child.wait();
                 return Err(PluginHostError::Timeout { timeout_ms: timeout.as_millis() as u64 });
             }
-            thread::sleep(Duration::from_millis(20));
+            thread::sleep(Duration::from_millis(10));
         }
     }
 }
@@ -232,13 +276,72 @@ fn map_protocol_validate_err(e: parqonaut_plugin_protocol::PluginProtocolError) 
     }
 }
 
+fn is_bare_executable_name(p: &Path) -> bool {
+    let s = p.to_string_lossy();
+    !p.is_absolute()
+        && !s.contains('/')
+        && !s.contains('\\')
+        && matches!(
+            p.components().collect::<Vec<_>>().as_slice(),
+            [std::path::Component::Normal(_)]
+        )
+}
+
+fn is_executable_file(p: &Path) -> bool {
+    let Ok(meta) = std::fs::metadata(p) else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        meta.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn absolutize_preserving_symlink(p: &Path) -> PathBuf {
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else if let Ok(cwd) = std::env::current_dir() {
+        cwd.join(p)
+    } else {
+        p.to_path_buf()
+    }
+}
+
 pub(crate) fn resolve_python(
     plugin_root: &Path,
     runtime: &PluginRuntimeConfig,
 ) -> Result<PathBuf, PluginHostError> {
     if let Some(p) = &runtime.python_executable {
-        if p.is_file() {
-            return Ok(p.clone());
+        if p.as_os_str().is_empty() {
+            return Err(PluginHostError::RuntimeUnavailable(
+                "configured python path is empty".into(),
+            ));
+        }
+        if is_bare_executable_name(p) {
+            return which::which(p).map_err(|_| {
+                PluginHostError::RuntimeUnavailable(format!(
+                    "configured python not found in PATH: {}",
+                    p.display()
+                ))
+            });
+        }
+        let abs = absolutize_preserving_symlink(p);
+        if is_executable_file(&abs) {
+            return Ok(abs);
+        }
+        if abs.exists() {
+            return Err(PluginHostError::RuntimeUnavailable(format!(
+                "configured python is not an executable file: {}",
+                p.display()
+            )));
         }
         return Err(PluginHostError::RuntimeUnavailable(format!(
             "configured python not found: {}",
@@ -248,14 +351,14 @@ pub(crate) fn resolve_python(
     if let Some(sdk) = &runtime.sdk_src_root {
         let sdk_venv = sdk.parent().map(|p| p.join(".venv").join("bin").join("python"));
         if let Some(p) = sdk_venv {
-            if p.is_file() {
-                return Ok(p);
+            if is_executable_file(&p) {
+                return Ok(absolutize_preserving_symlink(&p));
             }
         }
     }
     let venv = plugin_root.join(".venv").join("bin").join("python");
-    if venv.is_file() {
-        return Ok(venv);
+    if is_executable_file(&venv) {
+        return Ok(absolutize_preserving_symlink(&venv));
     }
     for candidate in ["python3", "python"] {
         if let Ok(p) = which::which(candidate) {
@@ -265,6 +368,37 @@ pub(crate) fn resolve_python(
     Err(PluginHostError::RuntimeUnavailable(
         "no python interpreter found (set PARQONAUT_PLUGIN_PYTHON)".into(),
     ))
+}
+
+pub(crate) fn classify_process_failure(
+    name: &str,
+    version: &str,
+    digest: &str,
+    code: Option<i32>,
+    stderr_tail: &str,
+) -> PluginHostError {
+    if stderr_tail.contains("No module named 'pyarrow'")
+        || stderr_tail.contains("No module named \"pyarrow\"")
+        || stderr_tail.contains("No module named 'pydantic'")
+        || stderr_tail.contains("No module named \"pydantic\"")
+        || stderr_tail.contains("No module named 'parqonaut_plugins'")
+        || stderr_tail.contains("No module named \"parqonaut_plugins\"")
+    {
+        return PluginHostError::RuntimeUnavailable(format!(
+            "python runtime missing required SDK dependencies for plugin={name} version={version}: {stderr_tail}"
+        ));
+    }
+    if stderr_tail.contains("No module named")
+        || stderr_tail.contains("entrypoint not callable")
+        || stderr_tail.contains("entrypoint must be module:callable")
+    {
+        return PluginHostError::EntrypointInvalid {
+            name: name.to_string(),
+            detail: stderr_tail.to_string(),
+        };
+    }
+    let detail = format!("plugin={name} version={version} digest={digest}: {stderr_tail}");
+    PluginHostError::ProcessFailed { code, detail }
 }
 
 pub(crate) fn build_pythonpath(
@@ -279,7 +413,7 @@ pub(crate) fn build_pythonpath(
 }
 
 /// Reads stderr up to `max` bytes, then drains the remainder so the child cannot block on a full pipe.
-fn read_stderr_capped<R: Read>(mut reader: R, max: usize) -> std::io::Result<Vec<u8>> {
+pub(crate) fn read_stderr_capped<R: Read>(mut reader: R, max: usize) -> std::io::Result<Vec<u8>> {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 4096];
     loop {
@@ -364,13 +498,20 @@ fn validate_result_bounds(
     Ok(())
 }
 
-fn tail_str(bytes: &[u8], max: usize) -> String {
-    let s = String::from_utf8_lossy(bytes);
-    if s.len() <= max {
-        s.into_owned()
-    } else {
-        s[s.len() - max..].to_string()
+pub(crate) fn tail_str(bytes: &[u8], max: usize) -> String {
+    if bytes.len() <= max {
+        return String::from_utf8_lossy(bytes).into_owned();
     }
+    let mut start = bytes.len() - max;
+    // Advance past up to 3 UTF-8 continuation bytes so valid UTF-8 isn't split mid-codepoint.
+    for _ in 0..3 {
+        if start < bytes.len() && (bytes[start] & 0xC0) == 0x80 {
+            start += 1;
+        } else {
+            break;
+        }
+    }
+    String::from_utf8_lossy(&bytes[start..]).into_owned()
 }
 
 #[cfg(unix)]
@@ -408,5 +549,144 @@ pub(crate) fn terminate_child(child: &mut Child) -> Result<(), PluginHostError> 
             return Ok(());
         }
         thread::sleep(Duration::from_millis(25));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+    use tempfile::TempDir;
+
+    fn make_executable(path: &Path) {
+        std::fs::write(path, "#!/bin/sh\nexit 0\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(path, perms).unwrap();
+        }
+    }
+
+    #[test]
+    fn resolve_python_accepts_absolute_executable() {
+        let dir = TempDir::new().unwrap();
+        let py = dir.path().join("my-python");
+        make_executable(&py);
+        let runtime = PluginRuntimeConfig {
+            python_executable: Some(py.clone()),
+            ..PluginRuntimeConfig::default()
+        };
+        let resolved = resolve_python(dir.path(), &runtime).unwrap();
+        assert_eq!(resolved, py);
+    }
+
+    #[test]
+    fn resolve_python_resolves_bare_name_from_path() {
+        let dir = TempDir::new().unwrap();
+        let runtime = PluginRuntimeConfig {
+            python_executable: Some(PathBuf::from("python3")),
+            ..PluginRuntimeConfig::default()
+        };
+        let resolved = resolve_python(dir.path(), &runtime).unwrap();
+        assert!(
+            resolved.is_absolute(),
+            "expected resolved PATH entry to be absolute: {resolved:?}"
+        );
+        assert!(resolved.is_file());
+    }
+
+    #[test]
+    fn resolve_python_rejects_missing_bare_name_with_actionable_error() {
+        let dir = TempDir::new().unwrap();
+        let runtime = PluginRuntimeConfig {
+            python_executable: Some(PathBuf::from("parqonaut-definitely-missing-python-bin")),
+            ..PluginRuntimeConfig::default()
+        };
+        let err = resolve_python(dir.path(), &runtime).unwrap_err();
+        match err {
+            PluginHostError::RuntimeUnavailable(msg) => {
+                assert!(msg.contains("PATH"), "expected PATH hint in {msg}");
+                assert!(msg.contains("parqonaut-definitely-missing-python-bin"));
+            }
+            other => panic!("expected RuntimeUnavailable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_python_rejects_missing_absolute_and_non_executable() {
+        let dir = TempDir::new().unwrap();
+        let missing = dir.path().join("missing-python");
+        let runtime = PluginRuntimeConfig {
+            python_executable: Some(missing),
+            ..PluginRuntimeConfig::default()
+        };
+        let err = resolve_python(dir.path(), &runtime).unwrap_err();
+        assert!(matches!(err, PluginHostError::RuntimeUnavailable(_)));
+
+        let non_exec = dir.path().join("plain.txt");
+        std::fs::write(&non_exec, "not executable").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&non_exec).unwrap().permissions();
+            perms.set_mode(0o644);
+            std::fs::set_permissions(&non_exec, perms).unwrap();
+            let runtime2 = PluginRuntimeConfig {
+                python_executable: Some(non_exec),
+                ..PluginRuntimeConfig::default()
+            };
+            let err2 = resolve_python(dir.path(), &runtime2).unwrap_err();
+            match err2 {
+                PluginHostError::RuntimeUnavailable(msg) => {
+                    assert!(msg.contains("not an executable file"), "got {msg}");
+                }
+                other => panic!("expected RuntimeUnavailable, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_python_handles_relative_path_predictably() {
+        let cwd = std::env::current_dir().unwrap();
+        let dir = tempfile::Builder::new().prefix("rel-py-").tempdir_in(&cwd).unwrap();
+        let rel_dir = dir.path().strip_prefix(&cwd).unwrap();
+        let py_abs = dir.path().join("py");
+        make_executable(&py_abs);
+        let py_rel = rel_dir.join("py");
+
+        let runtime = PluginRuntimeConfig {
+            python_executable: Some(py_rel),
+            ..PluginRuntimeConfig::default()
+        };
+        let resolved = resolve_python(dir.path(), &runtime).unwrap();
+        assert!(resolved.is_absolute());
+        assert_eq!(resolved, py_abs);
+
+        let missing_rel = rel_dir.join("missing-py");
+        let runtime_missing = PluginRuntimeConfig {
+            python_executable: Some(missing_rel),
+            ..PluginRuntimeConfig::default()
+        };
+        let err = resolve_python(dir.path(), &runtime_missing).unwrap_err();
+        assert!(matches!(err, PluginHostError::RuntimeUnavailable(_)));
+    }
+
+    #[test]
+    fn tail_str_handles_multibyte_utf8_boundaries() {
+        let s = "hello-🦀🦀🦀-world";
+        let bytes = s.as_bytes();
+        for max in 0..=bytes.len() + 2 {
+            let out = tail_str(bytes, max);
+            assert!(out.len() <= max, "max={max}, out_len={}, out={out:?}", out.len());
+        }
+    }
+
+    #[test]
+    fn read_stderr_capped_terminates_and_caps_beyond_limit() {
+        let data = vec![b'x'; 32 * 1024];
+        let out = read_stderr_capped(Cursor::new(data), 1024).unwrap();
+        assert_eq!(out.len(), 1024);
     }
 }

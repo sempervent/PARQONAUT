@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use crate::error::PluginHostError;
+use crate::path_safety::ensure_within_root;
 
 const DIGEST_VERSION: &str = "v1";
 
@@ -35,17 +36,30 @@ pub fn compute_plugin_digest(
         .map_err(|e| PluginHostError::InvalidPath(format!("plugin root: {e}")))?;
 
     let mut paths: Vec<PathBuf> = Vec::new();
-    for entry in WalkDir::new(&root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+    for entry in WalkDir::new(&root).follow_links(false) {
+        let entry = entry.map_err(|e| {
+            PluginHostError::InvalidPath(format!("plugin directory traversal failed: {e}"))
+        })?;
         let path = entry.path();
-        if path.is_dir() {
-            continue;
-        }
         let rel = path
             .strip_prefix(&root)
             .map_err(|_| PluginHostError::InvalidPath("walkdir path outside plugin root".into()))?;
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
         if excluded_rel(rel) {
             continue;
         }
+        if entry.file_type().is_symlink() {
+            return Err(PluginHostError::InvalidPath(format!(
+                "unexpected symlink in plugin package: {}",
+                rel.display()
+            )));
+        }
+        if entry.file_type().is_dir() {
+            continue;
+        }
+        ensure_within_root(path, &root)?;
         paths.push(rel.to_path_buf());
     }
     paths.sort();

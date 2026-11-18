@@ -28,3 +28,22 @@ def test_response_roundtrip() -> None:
     )
     back = PluginResponse.model_validate_json(resp.model_dump_json())
     assert back.plugin == "example-rules"
+
+
+def test_read_stdin_rejects_oversized_payload(monkeypatch) -> None:
+    import io
+
+    import pytest
+
+    from parqonaut_plugins.runner import _read_stdin
+
+    class FakeStdin:
+        def __init__(self, data: bytes) -> None:
+            self.buffer = io.BytesIO(data)
+
+    monkeypatch.setattr("sys.stdin", FakeStdin(b"abcde"))
+    assert _read_stdin(limit=5) == b"abcde"
+
+    monkeypatch.setattr("sys.stdin", FakeStdin(b"abcdef"))
+    with pytest.raises(ValueError, match="request too large"):
+        _read_stdin(limit=5)
