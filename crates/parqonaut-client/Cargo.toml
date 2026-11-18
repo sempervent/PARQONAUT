@@ -1,0 +1,31 @@
+[package]
+name = "parqonaut-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Shared operator HTTP/SSE client and console state model for PARQONAUT TUI and tools."
+
+[dependencies]
+parqonaut-types.workspace = true
+parqonaut-workflow = { path = "../parqonaut-workflow" }
+parqonaut-repair = { path = "../parqonaut-repair" }
+parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
+parqonaut-service = { path = "../parqonaut-service" }
+reqwest = { workspace = true, features = ["stream"] }
+futures-util = "0.3"
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+urlencoding.workspace = true
+
+[dev-dependencies]
+axum.workspace = true
+parqonaut-app = { path = "../parqonaut-app" }
+parqonaut-store = { path = "../parqonaut-store" }
+tempfile = "3"
+camino.workspace = true

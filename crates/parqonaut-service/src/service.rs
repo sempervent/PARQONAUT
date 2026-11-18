@@ -418,7 +418,7 @@ impl ParqonautService {
         let (recent_runs, _) = self.store.list_scan_runs_page(0, 10).await?;
         let catalog = self.list_plugin_catalog();
         Ok(OverviewResponse {
-            status: "ok",
+            status: "ok".into(),
             job_counts,
             plugins_enabled: catalog.plugins_enabled,
             allowed_plugins_count: catalog.plugins.len(),

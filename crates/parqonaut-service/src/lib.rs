@@ -6,7 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod api_types;
-mod application_http;
+pub mod application_http;
 pub mod error;
 pub mod events;
 pub mod http;

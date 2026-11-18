@@ -35,17 +35,17 @@ const KNOWN_TARGET_KINDS: &[&str] =
     &["local_file", "local_directory", "logical_dataset", "object_store_placeholder"];
 
 pub async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse { status: "ok" })
+    Json(HealthResponse { status: "ok".into() })
 }
 
 pub async fn health_live() -> Json<HealthResponse> {
-    Json(HealthResponse { status: "ok" })
+    Json(HealthResponse { status: "ok".into() })
 }
 
 pub async fn health_ready(State(state): State<AppState>) -> Result<Json<HealthResponse>, AppError> {
     state.service.store().ping().await?;
     metrics::gauge!("parqonaut_workers_active").set(1.0);
-    Ok(Json(HealthResponse { status: "ready" }))
+    Ok(Json(HealthResponse { status: "ready".into() }))
 }
 
 /// Prometheus text exposition (unauthenticated; scrape locally or protect at the edge).

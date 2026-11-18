@@ -17,6 +17,7 @@ members = [
     "crates/parqonaut-app",
     "crates/parqonaut-workflow",
     "crates/parqonaut-columnar",
+    "crates/parqonaut-client",
     "xtask",
 ]
 
