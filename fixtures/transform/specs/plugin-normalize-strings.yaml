@@ -1,0 +1,16 @@
+schema-version: 1
+
+input: fixtures/transform/partition-basic/input.parquet
+output: target/plugin-normalize-output.parquet
+
+options:
+  overwrite: true
+
+steps:
+  - operation:
+      type: plugin
+      plugin: normalize-strings
+      config:
+        columns:
+          - email
+          - notes

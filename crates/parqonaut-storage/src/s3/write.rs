@@ -348,5 +348,14 @@ pub(crate) async fn open_write_stream(
     metrics: Arc<StorageMetricsCollector>,
 ) -> Result<ObjectWriteStream, StorageError> {
     let writer = MultipartAsyncWrite::create(client, bucket, key, metrics).await?;
-    Ok(ObjectWriteStream::new(writer))
+    let state = Arc::clone(&writer.state);
+    Ok(ObjectWriteStream::with_abort(
+        writer,
+        Box::new(move || {
+            Box::pin(async move {
+                let mut guard = state.lock().await;
+                guard.abort().await;
+            })
+        }),
+    ))
 }

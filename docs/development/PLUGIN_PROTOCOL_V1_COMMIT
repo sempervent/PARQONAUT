@@ -1,0 +1,14 @@
+# Plugin protocol v1 freeze marker
+
+This file records the **Git commit SHA** that frozen plugin protocol v1 contracts
+(manifest, scan JSON request/response, validation rules) were committed on branch
+`feat/plugin-execution`.
+
+It is **not** a content digest. Host plugin identity digests are computed separately
+from plugin package contents.
+
+```
+PLUGIN_PROTOCOL_V1_COMMIT=7f978ef53594f50b401069d1c10f6039c9db4e31
+```
+
+Full SHA: `7f978ef53594f50b401069d1c10f6039c9db4e31`

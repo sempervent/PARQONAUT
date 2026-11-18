@@ -1,13 +1,17 @@
 {
-  "name": "example_rules",
+  "protocol_version": 1,
+  "name": "example-rules",
   "version": "0.1.0",
-  "entrypoint": "paraclete_plugins.examples:run",
+  "requires_parqonaut": ">=0.10,<1.0",
+  "entrypoint": "parqonaut_plugins.examples:analyze",
   "capabilities": {
-    "supported_formats": ["parquet", "csv"],
-    "supported_phases": ["post_inventory", "post_rules"],
-    "tags": ["example"]
+    "scan": {
+      "supported_formats": ["parquet", "csv"],
+      "supported_phases": ["post_inventory", "post_rules"],
+      "tags": ["example"]
+    }
   },
   "metadata": {
-    "author": "paraclete"
+    "author": "PARQONAUT"
   }
 }

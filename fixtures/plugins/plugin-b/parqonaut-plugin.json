@@ -1,0 +1,12 @@
+{
+  "protocol_version": 1,
+  "name": "plugin-b",
+  "version": "0.1.0",
+  "entrypoint": "plugin_b:analyze",
+  "capabilities": {
+    "scan": {
+      "supported_formats": ["parquet", "csv"],
+      "supported_phases": ["post_rules"]
+    }
+  }
+}

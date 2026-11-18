@@ -1,0 +1,11 @@
+{
+  "protocol_version": 1,
+  "name": "adv-batch-extra-column",
+  "version": "0.1.0",
+  "entrypoint": "adv_batch_extra_column:transform",
+  "capabilities": {
+    "batch_transform": {
+      "tags": ["adversarial"]
+    }
+  }
+}

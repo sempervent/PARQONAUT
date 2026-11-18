@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "parqknife")]
+#[command(name = "prqnt-transform")]
 #[command(about = "A general-purpose Parquet swiss army knife")]
 #[command(version)]
 pub struct Cli {

@@ -30,7 +30,7 @@ fn test_parse_filter_eq() -> Result<()> {
         FilterExpr::Eq(col, val) => {
             assert_eq!(col, "id");
             match val {
-                parqknife::engine::filter::Value::Int64(v) => assert_eq!(v, 3),
+                parqonaut_transform::engine::filter::Value::Int64(v) => assert_eq!(v, 3),
                 _ => panic!("Expected Int64"),
             }
         }

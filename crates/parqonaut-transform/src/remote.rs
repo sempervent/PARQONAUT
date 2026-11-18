@@ -12,7 +12,7 @@ use parqonaut_storage::location::ObjectLocation;
 use parqonaut_workflow::NoOpProgressObserver;
 
 use crate::columnar_io::ColumnarPipelineIo;
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 
 /// Supported endpoint pairing for columnar rewrite/merge (local ↔ S3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,9 +54,9 @@ async fn rewrite_parquet_storage_async(
     output: &str,
 ) -> Result<WriteSummary> {
     let input_loc =
-        ObjectLocation::parse(input).map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
+        ObjectLocation::parse(input).map_err(|e| TransformError::InvalidInput(e.to_string()))?;
     let output_loc =
-        ObjectLocation::parse(output).map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
+        ObjectLocation::parse(output).map_err(|e| TransformError::InvalidInput(e.to_string()))?;
 
     let source_backend = io.backend_for(&input_loc);
     let sink_backend = io.backend_for(&output_loc);
@@ -88,17 +88,17 @@ async fn merge_parquet_storage_async(
     output: &str,
 ) -> Result<WriteSummary> {
     if inputs.is_empty() {
-        return Err(ParqknifeError::InvalidInput("no inputs for merge".into()));
+        return Err(TransformError::InvalidInput("no inputs for merge".into()));
     }
     let mut sorted = inputs.to_vec();
     sorted.sort();
 
     let output_loc =
-        ObjectLocation::parse(output).map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
+        ObjectLocation::parse(output).map_err(|e| TransformError::InvalidInput(e.to_string()))?;
     let progress = NoOpProgressObserver;
 
     let first = ObjectLocation::parse(&sorted[0])
-        .map_err(|e| ParqknifeError::InvalidInput(e.to_string()))?;
+        .map_err(|e| TransformError::InvalidInput(e.to_string()))?;
     let first_backend = io.backend_for(&first);
     let schema: SchemaRef =
         StorageParquetBatchSource::new(first_backend, first).schema().map_err(map_columnar)?;
@@ -180,6 +180,6 @@ where
     }
 }
 
-fn map_columnar(err: ColumnarError) -> ParqknifeError {
-    ParqknifeError::InvalidInput(err.to_string())
+fn map_columnar(err: ColumnarError) -> TransformError {
+    TransformError::InvalidInput(err.to_string())
 }

@@ -53,6 +53,11 @@ pub enum Operation {
         #[serde(default, alias = "target-row-groups")]
         target_row_groups: Option<usize>,
     },
+    Plugin {
+        plugin: String,
+        #[serde(default)]
+        config: serde_json::Value,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

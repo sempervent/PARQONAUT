@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use paraclete_types::FieldDefinition;
+use parqonaut_types::FieldDefinition;
 
 use super::compatibility::{classify_conversion, PhysicalType};
 use super::types::{FieldDescriptor, FieldDifference, FieldPath, SchemaDiff, SchemaDifferenceKind};
@@ -14,7 +14,7 @@ pub struct FileSchemaView {
 }
 
 impl FileSchemaView {
-    pub fn from_snapshot(path: String, snapshot: &paraclete_types::SchemaSnapshot) -> Self {
+    pub fn from_snapshot(path: String, snapshot: &parqonaut_types::SchemaSnapshot) -> Self {
         let fields = snapshot.fields.iter().map(field_from_definition).collect();
         Self { path, fields }
     }

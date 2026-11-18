@@ -1,7 +1,7 @@
 use crate::engine::cast::parse_cast_target;
 use crate::engine::filter::{parse_filter, FilterTransform};
 use crate::engine::pipeline::{Pipeline, Transform};
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use arrow::array::*;
 use arrow::compute::{self, cast};
 use arrow::datatypes::*;
@@ -27,7 +27,7 @@ impl Transform for ProjectionTransform {
 
         for col_name in &self.columns {
             let idx = schema.index_of(col_name).map_err(|_| {
-                ParqknifeError::InvalidInput(format!("Column not found: {}", col_name))
+                TransformError::InvalidInput(format!("Column not found: {}", col_name))
             })?;
             indices.push(idx);
             new_fields.push(schema.field(idx).clone());
@@ -37,7 +37,7 @@ impl Transform for ProjectionTransform {
         let columns: Result<Vec<_>> =
             indices.iter().map(|&idx| Ok(batch.column(idx).clone())).collect();
 
-        RecordBatch::try_new(new_schema, columns?).map_err(ParqknifeError::Arrow)
+        RecordBatch::try_new(new_schema, columns?).map_err(TransformError::Arrow)
     }
 
     fn name(&self) -> &str {
@@ -84,13 +84,13 @@ impl Transform for RenameColumnsTransform {
             schema.fields().iter().map(|f| f.as_ref().clone()).collect();
         for (from, to) in &self.renames {
             if from == to {
-                return Err(ParqknifeError::InvalidInput("rename from and to must differ".into()));
+                return Err(TransformError::InvalidInput("rename from and to must differ".into()));
             }
             let idx = schema
                 .index_of(from)
-                .map_err(|_| ParqknifeError::InvalidInput(format!("column not found: {from}")))?;
+                .map_err(|_| TransformError::InvalidInput(format!("column not found: {from}")))?;
             if schema.fields().iter().any(|f| f.name() == to) {
-                return Err(ParqknifeError::InvalidInput(format!(
+                return Err(TransformError::InvalidInput(format!(
                     "target column already exists: {to}"
                 )));
             }
@@ -98,7 +98,7 @@ impl Transform for RenameColumnsTransform {
             new_fields[idx] = Field::new(to, field.data_type().clone(), field.is_nullable());
         }
         let out_schema = Arc::new(Schema::new(new_fields));
-        RecordBatch::try_new(out_schema, batch.columns().to_vec()).map_err(ParqknifeError::Arrow)
+        RecordBatch::try_new(out_schema, batch.columns().to_vec()).map_err(TransformError::Arrow)
     }
 
     fn name(&self) -> &str {
@@ -125,7 +125,7 @@ impl Transform for CastColumnsTransform {
         for (col, target) in &self.casts {
             let idx = schema
                 .index_of(col)
-                .map_err(|_| ParqknifeError::InvalidInput(format!("column not found: {col}")))?;
+                .map_err(|_| TransformError::InvalidInput(format!("column not found: {col}")))?;
             let field = schema.field(idx);
             let (target_dt, target_nullable) =
                 parse_cast_target(field.data_type(), field.is_nullable(), target)?;
@@ -135,11 +135,11 @@ impl Transform for CastColumnsTransform {
                 array
             } else {
                 cast(&array, &target_dt)
-                    .map_err(|e| ParqknifeError::InvalidInput(format!("cast failed: {e}")))?
+                    .map_err(|e| TransformError::InvalidInput(format!("cast failed: {e}")))?
             };
         }
         let out_schema = Arc::new(Schema::new(new_fields));
-        RecordBatch::try_new(out_schema, columns).map_err(ParqknifeError::Arrow)
+        RecordBatch::try_new(out_schema, columns).map_err(TransformError::Arrow)
     }
 
     fn name(&self) -> &str {

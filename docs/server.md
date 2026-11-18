@@ -15,7 +15,7 @@ prqnt serve
 ## Configuration precedence
 
 1. CLI flags (`--listen`, `--database`, `--state-dir`, `--workers`)
-2. Environment (`PRQNT_STATE_DIR`, `PRQNT_BOOTSTRAP_ADMIN_TOKEN`, legacy `PARACLETE_BOOTSTRAP_TOKEN`)
+2. Environment (`PRQNT_STATE_DIR`, `PRQNT_BOOTSTRAP_ADMIN_TOKEN`, legacy `PARQONAUT_BOOTSTRAP_TOKEN`)
 3. Optional `--config` TOML (`[server]` / `[storage]` policy sections)
 
 ## Bootstrap auth

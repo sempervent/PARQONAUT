@@ -1,4 +1,4 @@
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::{BrotliLevel, Compression, GzipLevel, ZstdLevel};
@@ -68,6 +68,6 @@ pub fn compression_from_str(s: &str) -> Result<Compression> {
         "lz4" => Ok(Compression::LZ4),
         "zstd" => Ok(Compression::ZSTD(ZstdLevel::default())),
         "lz4_raw" => Ok(Compression::LZ4_RAW),
-        _ => Err(ParqknifeError::InvalidInput(format!("Unknown compression: {}", s))),
+        _ => Err(TransformError::InvalidInput(format!("Unknown compression: {}", s))),
     }
 }

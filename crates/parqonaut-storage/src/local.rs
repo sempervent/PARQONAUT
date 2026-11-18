@@ -560,6 +560,14 @@ struct LocalWriteStream {
     finalized: bool,
 }
 
+impl Drop for LocalWriteStream {
+    fn drop(&mut self) {
+        if !self.finalized {
+            let _ = std::fs::remove_file(&self.temp_path);
+        }
+    }
+}
+
 impl tokio::io::AsyncWrite for LocalWriteStream {
     fn poll_write(
         self: Pin<&mut Self>,

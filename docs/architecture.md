@@ -24,9 +24,9 @@ Direct CLI utilities (intentionally outside parqonaut-app):
 ## Control plane and storage
 
 ```text
-paraclete-store  →  SQLite / Postgres (jobs, tokens, runs)
+parqonaut-store   →  SQLite / Postgres (jobs, tokens, runs)
 parqonaut-storage →  S3StorageBackend (s3://)
-paraclete-service →  HTTP router, auth, metrics, OpenAPI
+parqonaut-service →  HTTP router, auth, metrics, OpenAPI
 ```
 
 ## Workspace map (selected)
@@ -35,14 +35,14 @@ paraclete-service →  HTTP router, auth, metrics, OpenAPI
 |-------|------|
 | `parqonaut-app` | Transport-neutral use cases |
 | `parqonaut-cli` | `prqnt` binary |
-| `paraclete-core` | Forensic scan engine |
+| `parqonaut-core` | Forensic scan engine |
 | `parqonaut-repair` | Planning and repair execution |
 | `parqonaut-orchestrator` | Batch journal and scheduler |
-| `paraclete-store` | Durable metadata |
-| `paraclete-service` | `/api/v1` server library |
+| `parqonaut-store` | Durable metadata |
+| `parqonaut-service` | `/api/v1` server library |
 | `parqonaut-transform` / `parqonaut-stream` | Direct Parquet/CSV utilities |
 
-Historical crate names (`paraclete-*`) reflect provenance; see [Provenance](./provenance.md) and [ADR index](./adr/README.md).
+Lineage of imported components is documented in [Provenance](./provenance.md) and [ADR index](./adr/README.md).
 
 ## Columnar execution (v0.9+)
 

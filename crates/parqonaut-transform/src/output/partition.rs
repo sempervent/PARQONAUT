@@ -1,4 +1,4 @@
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -18,7 +18,7 @@ impl PartitionWriter {
         // Extract partition values from batch
         // Route to appropriate partition directory
         // This is a simplified placeholder
-        Err(ParqknifeError::Unsupported("Partitioning not yet fully implemented".to_string()))
+        Err(TransformError::Unsupported("Partitioning not yet fully implemented".to_string()))
     }
 
     fn partition_path(&self, values: &[String]) -> PathBuf {

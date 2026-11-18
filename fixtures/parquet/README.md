@@ -4,7 +4,7 @@ This directory includes a **tiny valid Parquet** file for early integration test
 smoke checks. Regenerate it any time with:
 
 ```bash
-cd python/paraclete_plugins
+cd python/parqonaut_plugins
 uv sync --group dev
 uv run python ../../scripts/generate_parquet_fixture.py
 ```

@@ -12,6 +12,6 @@ pub fn stable_hex_id(prefix: &str, canonical_json: &str) -> String {
 
 /// Canonical JSON for hashing: sorted keys via serde_json Value roundtrip.
 pub fn canonical_json(value: &serde_json::Value) -> String {
-    let sorted = paraclete_types::sort_json_value(value.clone());
+    let sorted = parqonaut_types::sort_json_value(value.clone());
     serde_json::to_string(&sorted).unwrap_or_default()
 }

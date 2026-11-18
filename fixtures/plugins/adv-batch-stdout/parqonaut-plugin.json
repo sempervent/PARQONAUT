@@ -1,0 +1,9 @@
+{
+  "protocol_version": 1,
+  "name": "adv-batch-stdout",
+  "version": "0.1.0",
+  "entrypoint": "adv_batch_stdout:transform",
+  "capabilities": {
+    "batch_transform": { "tags": ["adversarial"] }
+  }
+}

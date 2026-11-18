@@ -3,7 +3,7 @@
 
 Run from repo root or anywhere, with dev deps installed:
 
-  cd python/paraclete_plugins && uv sync --group dev && uv run python ../../scripts/generate_parquet_fixture.py
+  cd python/parqonaut_plugins && uv sync --group dev && uv run python ../../scripts/generate_parquet_fixture.py
 """
 
 from __future__ import annotations

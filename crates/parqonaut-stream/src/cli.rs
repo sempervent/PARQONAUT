@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 #[derive(Parser, Clone)]
 #[command(
-    name = "maw",
+    name = "parqonaut-stream-cli",
     about = "A high-performance CLI for streaming and concatenating CSV and Parquet files",
     version = env!("CARGO_PKG_VERSION")
 )]

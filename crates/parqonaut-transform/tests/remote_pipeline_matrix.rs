@@ -27,7 +27,15 @@ async fn matrix_rewrite_four_legs() {
     let fixture = parquet_fixture(2);
     for leg in Leg::ALL {
         let paths = leg
-            .materialize(&work, &s3, &bucket, "rewrite", "in.parquet", "out.parquet", &fixture)
+            .materialize(
+                work.path(),
+                &s3,
+                &bucket,
+                "rewrite",
+                "in.parquet",
+                "out.parquet",
+                &fixture,
+            )
             .await;
         rewrite_parquet_storage(&io, &paths.input, &paths.output).expect("rewrite");
         assert_eq!(count_parquet_rows(&s3, &paths.output).await, 2, "{leg:?}");
@@ -44,10 +52,12 @@ async fn matrix_merge_four_legs() {
     let work = tempfile::tempdir().unwrap();
     let fixture = parquet_fixture(2);
     for leg in Leg::ALL {
-        let a =
-            leg.materialize(&work, &s3, &bucket, "merge", "a.parquet", "a.parquet", &fixture).await;
-        let b =
-            leg.materialize(&work, &s3, &bucket, "merge", "b.parquet", "b.parquet", &fixture).await;
+        let a = leg
+            .materialize(work.path(), &s3, &bucket, "merge", "a.parquet", "a.parquet", &fixture)
+            .await;
+        let b = leg
+            .materialize(work.path(), &s3, &bucket, "merge", "b.parquet", "b.parquet", &fixture)
+            .await;
         let out = leg.output_uri(&work, &bucket, "merge", "merged.parquet");
         merge_parquet_storage(&io, &[a.input, b.input], &out).expect("merge");
         assert_eq!(count_parquet_rows(&s3, &out).await, 4, "{leg:?}");
@@ -66,8 +76,9 @@ async fn matrix_split_four_legs() {
         .join("../../fixtures/transform/split-basic/input.parquet");
     let bytes = std::fs::read(&root).expect("split fixture");
     for leg in Leg::ALL {
-        let paths =
-            leg.materialize(&work, &s3, &bucket, "split", "in.parquet", "parts", &bytes).await;
+        let paths = leg
+            .materialize(work.path(), &s3, &bucket, "split", "in.parquet", "parts", &bytes)
+            .await;
         let source_rows = count_parquet_rows(&s3, &paths.input).await;
         let outs = split_parquet_routed(&io, &paths.input, &paths.output, 1).expect("split");
         assert!(outs.len() >= 2, "{leg:?} expected multiple parts");
@@ -89,8 +100,9 @@ async fn matrix_partition_four_legs() {
     let work = tempfile::tempdir().unwrap();
     let bytes = partition_fixture();
     for leg in Leg::ALL {
-        let paths =
-            leg.materialize(&work, &s3, &bucket, "partition", "in.parquet", "out", &bytes).await;
+        let paths = leg
+            .materialize(work.path(), &s3, &bucket, "partition", "in.parquet", "out", &bytes)
+            .await;
         let source_rows = count_parquet_rows(&s3, &paths.input).await;
         let outs =
             partition_parquet_routed(&io, &paths.input, &paths.output, &["region".into()], 8)
@@ -116,8 +128,9 @@ async fn matrix_fused_spec_four_legs() {
     let spec_template = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../fixtures/transform/specs/rewrite-partition.yaml");
     for leg in Leg::ALL {
-        let paths =
-            leg.materialize(&work, &s3, &bucket, "fused", "in.parquet", "processed", &bytes).await;
+        let paths = leg
+            .materialize(work.path(), &s3, &bucket, "fused", "in.parquet", "processed", &bytes)
+            .await;
         let source_rows = count_parquet_rows(&s3, &paths.input).await;
         let mut spec = parse_spec(&spec_template).expect("parse spec");
         *spec.input.as_mut().unwrap() = paths.input.clone();
@@ -147,7 +160,15 @@ async fn matrix_convert_four_legs() {
     let fixture = parquet_fixture(3);
     for leg in Leg::ALL {
         let paths = leg
-            .materialize(&work, &s3, &bucket, "convert", "in.parquet", "out.parquet", &fixture)
+            .materialize(
+                work.path(),
+                &s3,
+                &bucket,
+                "convert",
+                "in.parquet",
+                "out.parquet",
+                &fixture,
+            )
             .await;
         let mut cli = base_stream_cli();
         cli.inputs = vec![paths.input.clone()];

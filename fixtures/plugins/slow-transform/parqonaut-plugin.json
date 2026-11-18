@@ -1,0 +1,9 @@
+{
+  "protocol_version": 1,
+  "name": "slow-transform",
+  "version": "0.1.0",
+  "entrypoint": "slow_transform:transform",
+  "capabilities": {
+    "batch_transform": { "tags": ["test"] }
+  }
+}

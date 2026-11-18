@@ -18,6 +18,11 @@
 - [Batch orchestration](./batch-orchestration.md)
 - [Object storage](./object-storage.md)
 
+# Plugins
+
+- [Plugins](./plugins.md)
+- [Plugin authoring](./plugin-authoring.md)
+
 # Application Server
 
 - [prqnt serve](./server.md)

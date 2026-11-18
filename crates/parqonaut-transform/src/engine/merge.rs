@@ -6,7 +6,7 @@ use arrow::record_batch::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use tracing::info;
 
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::output::{compression_from_str, ParquetWriter};
 
 /// Merge sorted Parquet inputs into one or more output files capped at `target_bytes`.
@@ -23,7 +23,7 @@ pub fn merge_parquet_files(
     exact_output: Option<&Path>,
 ) -> Result<Vec<PathBuf>> {
     if inputs.is_empty() {
-        return Err(ParqknifeError::InvalidInput("no inputs for merge".into()));
+        return Err(TransformError::InvalidInput("no inputs for merge".into()));
     }
     std::fs::create_dir_all(output_dir)?;
 
@@ -44,7 +44,7 @@ pub fn merge_parquet_files(
         if schema.is_none() {
             schema = Some(file_schema.clone());
         } else if schema.as_ref() != Some(&file_schema) {
-            return Err(ParqknifeError::InvalidInput(format!(
+            return Err(TransformError::InvalidInput(format!(
                 "schema mismatch during merge at {input}"
             )));
         }

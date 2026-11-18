@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use paraclete_core::inspect_parquet_file;
-use paraclete_types::{DataFormat, FieldDefinition, ScanReport};
+use parqonaut_core::inspect_parquet_file;
+use parqonaut_types::{DataFormat, FieldDefinition, ScanReport};
 
 use crate::error::RepairError;
 
@@ -40,7 +40,7 @@ impl DatasetInventory {
         for asset in assets {
             let insp = inspect_asset(asset)?;
             total_rows += insp.num_rows;
-            let sig = paraclete_core::parquet_schema_signature(&insp);
+            let sig = parqonaut_core::parquet_schema_signature(&insp);
             schema_signatures.entry(sig.clone()).or_default().push(asset.path.clone());
 
             let rg_sizes: Vec<u64> =
@@ -98,8 +98,8 @@ impl DatasetInventory {
 }
 
 fn inspect_asset(
-    asset: &paraclete_types::AssetRecord,
-) -> Result<paraclete_core::ParquetInspection, RepairError> {
+    asset: &parqonaut_types::AssetRecord,
+) -> Result<parqonaut_core::ParquetInspection, RepairError> {
     if asset.path.as_std_path().is_file() {
         return inspect_parquet_file(&asset.path)
             .map_err(|e| RepairError::DatasetUnreadable(format!("{}: {e}", asset.path)));

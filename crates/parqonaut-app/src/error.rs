@@ -1,6 +1,6 @@
 //! Transport-neutral application errors mapped at CLI/HTTP edges.
 
-use paraclete_core::CoreError;
+use parqonaut_core::CoreError;
 use parqonaut_repair::RepairError;
 use parqonaut_storage::error::StorageError;
 
@@ -28,6 +28,20 @@ pub enum ApplicationError {
     StaleSource(String),
     #[error("internal error: {0}")]
     Internal(String),
+    #[error("plugin error: {0}")]
+    PluginHost(String),
+    #[error("plugin execution disabled on server")]
+    PluginExecutionDisabled,
+    #[error("plugin not allowed: {0}")]
+    PluginNotAllowed(String),
+    #[error("plugin not found: {0}")]
+    PluginNotFound(String),
+    #[error("plugin incompatible: {0}")]
+    PluginIncompatible(String),
+    #[error("stale plugin {name}: expected digest {expected}, current {actual}")]
+    PluginStale { name: String, expected: String, actual: String },
+    #[error("plugin execution cancelled")]
+    PluginCancelled,
 }
 
 impl From<CoreError> for ApplicationError {
@@ -35,6 +49,8 @@ impl From<CoreError> for ApplicationError {
         match e {
             CoreError::MissingPath(p) => Self::TargetNotFound(p.to_string()),
             CoreError::Unsupported(m) => Self::InvalidRequest(m.to_string()),
+            CoreError::PluginCancelled => Self::PluginCancelled,
+            CoreError::PluginHost(m) => Self::PluginHost(m),
             other => Self::Internal(other.to_string()),
         }
     }

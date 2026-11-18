@@ -9,7 +9,7 @@ execute Safe operations without touching source data, and verify results.
 |-------|----------------|
 | `parqonaut-repair` | Diagnosis, rules, plans, fingerprint, execution orchestration, verification |
 | `parqonaut-transform` | Parquet merge + rewrite (library calls, no subprocesses) |
-| `paraclete-core` / `paraclete-types` | Scan engine + durable finding/plan contracts |
+| `parqonaut-core` / `parqonaut-types` | Scan engine + durable finding/plan contracts |
 | `parqonaut-cli` | `doctor`, `diagnose`, `plan`, `repair`, `verify` commands |
 
 ## Fixtures

@@ -1,4 +1,4 @@
-//! Streaming CSV/Parquet conversion engine (maw lineage).
+//! Streaming CSV/Parquet conversion engine (PARQONAUT stream engine).
 //!
 //! Streaming conversion modules; see `docs/migration-analysis.md` for lineage.
 

@@ -1,11 +1,12 @@
-use paraclete_types::{ScanProfile, ScanReport};
 use parqonaut_app::{ParqonautApp, ScanRequest};
+use parqonaut_types::{ScanProfile, ScanReport};
 
 use crate::location::parse_dataset_location;
 
 pub async fn run_scan(
     path: String,
     profile: &str,
+    plugins: Vec<String>,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let location = parse_dataset_location(&path)?;
@@ -15,8 +16,9 @@ pub async fn run_scan(
         _ => ScanProfile::Standard,
     };
     let app = ParqonautApp::cli();
-    let out =
-        app.scan(ScanRequest::new(location, scan_profile)).await.map_err(|e| e.to_string())?;
+    let mut req = ScanRequest::new(location, scan_profile);
+    req.plugins = plugins;
+    let out = app.scan(req).await.map_err(|e| e.to_string())?;
     print_scan_report(&out.report, json)?;
     Ok(())
 }

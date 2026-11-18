@@ -1,4 +1,4 @@
-//! Parquet transformation engine (parqknife lineage).
+//! PARQONAUT declarative Parquet transform engine.
 //!
 //! Transform scaffolding (S3 I/O, spec wiring, partition writer).
 //! `#![allow(dead_code, ...)]` covers unwired modules until wired through `prqnt`.
@@ -77,7 +77,7 @@ pub async fn partition(
         partition_by.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
     let inputs = resolve_inputs(input)?;
     if inputs.len() != 1 {
-        return Err(ParqknifeError::InvalidInput(
+        return Err(TransformError::InvalidInput(
             "partition requires exactly one input Parquet file".into(),
         ));
     }
@@ -95,7 +95,7 @@ pub async fn split(input: &str, output: &str, target_size_mb: Option<u64>) -> Re
     let mb = target_size_mb.unwrap_or(512);
     let inputs = resolve_inputs(input)?;
     if inputs.len() != 1 {
-        return Err(ParqknifeError::InvalidInput("split requires exactly one input".into()));
+        return Err(TransformError::InvalidInput("split requires exactly one input".into()));
     }
     let io = columnar_io::columnar_io_from_env()?;
     storage_routing::split_parquet_routed(&io, &inputs[0], output, mb)?;

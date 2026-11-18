@@ -1,0 +1,12 @@
+{
+  "protocol_version": 1,
+  "name": "adv-wrong-protocol",
+  "version": "0.1.0",
+  "entrypoint": "adv_wrong_protocol:analyze",
+  "capabilities": {
+    "scan": {
+      "supported_formats": ["parquet"],
+      "supported_phases": ["post_rules"]
+    }
+  }
+}

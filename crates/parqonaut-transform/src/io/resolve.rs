@@ -1,13 +1,13 @@
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use url::Url;
 
 pub fn parse_url(path: &str) -> Result<Url> {
     if path.starts_with("s3://") {
-        Url::parse(path).map_err(|e| ParqknifeError::InvalidInput(format!("Invalid S3 URL: {}", e)))
+        Url::parse(path).map_err(|e| TransformError::InvalidInput(format!("Invalid S3 URL: {}", e)))
     } else {
         // Treat as file path
         Url::from_file_path(path)
-            .map_err(|_| ParqknifeError::InvalidInput(format!("Invalid file path: {}", path)))
+            .map_err(|_| TransformError::InvalidInput(format!("Invalid file path: {}", path)))
     }
 }
 

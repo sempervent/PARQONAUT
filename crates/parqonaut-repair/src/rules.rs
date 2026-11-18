@@ -1,5 +1,5 @@
 use camino::Utf8Path;
-use paraclete_types::{system, Finding, ScanReport};
+use parqonaut_types::{system, Finding, ScanReport};
 
 use crate::action::{EvidenceRef, ExpectedOutcome, Precondition, RepairAction};
 use crate::error::RepairError;

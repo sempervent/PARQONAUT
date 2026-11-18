@@ -1,0 +1,12 @@
+{
+  "protocol_version": 1,
+  "name": "adv-big-annotations",
+  "version": "0.1.0",
+  "entrypoint": "adv_big_annotations:analyze",
+  "capabilities": {
+    "scan": {
+      "supported_formats": ["parquet"],
+      "supported_phases": ["post_rules"]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "protocol_version": 1,
+  "name": "normalize-strings",
+  "version": "0.1.0",
+  "entrypoint": "normalize_strings:transform",
+  "capabilities": {
+    "batch_transform": {
+      "tags": ["transform", "strings"]
+    }
+  }
+}

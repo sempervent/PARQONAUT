@@ -11,6 +11,7 @@ Usage: prqnt [OPTIONS] <COMMAND>
 
 Commands:
   scan       Forensic scan of local paths or s3:// dataset prefixes
+  plugin     Discover and validate installed analyzer plugins
   inspect    Inspect Parquet schema and row-group metadata
   partition  Hive-style partition of a Parquet file
   merge      Merge Parquet files or a dataset directory
@@ -48,6 +49,7 @@ Arguments:
 Options:
       --json               Emit JSON where supported
   -p, --profile <PROFILE>  [default: standard]
+      --plugin <PLUGINS>   Scan analyzer plugin name (repeatable; explicit opt-in only)
   -h, --help               Print help
 ```
 

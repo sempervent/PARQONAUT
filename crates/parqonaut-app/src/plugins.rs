@@ -1,0 +1,123 @@
+//! Scan analyzer plugin bridge into `parqonaut-core`.
+
+use std::collections::BTreeSet;
+use std::path::PathBuf;
+
+use parqonaut_core::ScanPluginHost;
+use parqonaut_plugin_host::{
+    CancelToken, PluginCatalog, PluginHost, PluginRuntimeConfig, ResolvedPlugin,
+};
+use parqonaut_plugin_protocol::{PluginExecutionPhase, PluginScanContext};
+use parqonaut_types::ResolvedPluginSelection;
+use parqonaut_types::{Finding, PluginExecutionRecord};
+
+use crate::error::ApplicationError;
+
+pub fn default_plugin_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(extra) = std::env::var("PARQONAUT_PLUGIN_ROOTS") {
+        for part in extra.split(':').filter(|p| !p.is_empty()) {
+            roots.push(PathBuf::from(part));
+        }
+    }
+    if let Some(config) = dirs::config_dir() {
+        roots.push(config.join("parqonaut").join("plugins"));
+    }
+    roots
+}
+
+pub struct ScanPluginBridge {
+    host: PluginHost,
+    resolved: Vec<ResolvedPlugin>,
+    _requested: Vec<String>,
+    resolved_order: Vec<String>,
+    cancel: CancelToken,
+}
+
+impl ScanPluginBridge {
+    pub fn new(requested: Vec<String>) -> Result<Self, ApplicationError> {
+        let roots = default_plugin_roots();
+        let catalog = PluginCatalog::discover_from_roots(&roots)
+            .map_err(|e| ApplicationError::PluginHost(e.to_string()))?;
+        let runtime = PluginRuntimeConfig::default();
+        let host = PluginHost::new(catalog, runtime);
+        let resolved = host
+            .resolve_plugins(&requested)
+            .map_err(|e| ApplicationError::PluginHost(e.to_string()))?;
+        let resolved_order: Vec<String> =
+            resolved.iter().map(|p| p.entry.manifest.name.clone()).collect();
+        Ok(Self {
+            host,
+            resolved,
+            _requested: requested,
+            resolved_order,
+            cancel: CancelToken::new(),
+        })
+    }
+
+    pub fn from_catalog(
+        catalog: PluginCatalog,
+        requested: Vec<String>,
+        runtime: PluginRuntimeConfig,
+    ) -> Result<Self, ApplicationError> {
+        let host = PluginHost::new(catalog, runtime);
+        let resolved = host
+            .resolve_plugins(&requested)
+            .map_err(|e| ApplicationError::PluginHost(e.to_string()))?;
+        let resolved_order: Vec<String> =
+            resolved.iter().map(|p| p.entry.manifest.name.clone()).collect();
+        Ok(Self {
+            host,
+            resolved,
+            _requested: requested,
+            resolved_order,
+            cancel: CancelToken::new(),
+        })
+    }
+
+    pub fn from_pinned_resolved(
+        catalog: PluginCatalog,
+        runtime: PluginRuntimeConfig,
+        resolved: Vec<ResolvedPlugin>,
+        requested: Vec<String>,
+        cancel: CancelToken,
+    ) -> Self {
+        let resolved_order: Vec<String> =
+            resolved.iter().map(|p| p.entry.manifest.name.clone()).collect();
+        let host = PluginHost::new(catalog, runtime);
+        Self { host, resolved, _requested: requested, resolved_order, cancel }
+    }
+
+    pub fn cancel_token(&self) -> &CancelToken {
+        &self.cancel
+    }
+}
+
+pub fn pinned_to_resolved(
+    state: &crate::server_plugins::ServerPluginState,
+    pinned: &[ResolvedPluginSelection],
+) -> Result<Vec<ResolvedPlugin>, ApplicationError> {
+    state.revalidate_pinned(pinned)
+}
+
+impl ScanPluginHost for ScanPluginBridge {
+    fn run_phase(
+        &self,
+        phase: PluginExecutionPhase,
+        context: PluginScanContext,
+        known_evidence: &BTreeSet<String>,
+    ) -> Result<(Vec<Finding>, Vec<PluginExecutionRecord>), parqonaut_core::CoreError> {
+        self.host.run_phase(&self.resolved, phase, context, known_evidence, &self.cancel).map_err(
+            |e| match e {
+                parqonaut_plugin_host::PluginHostError::Cancelled => {
+                    parqonaut_core::CoreError::PluginCancelled
+                }
+                other => parqonaut_core::CoreError::PluginHost(other.to_string()),
+            },
+        )
+    }
+
+    fn resolved_plugin_order(&self) -> &[String] {
+        &self.resolved_order
+    }
+}

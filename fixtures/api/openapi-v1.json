@@ -585,7 +585,13 @@
           "internal_error",
           "unauthorized",
           "forbidden",
-          "location_not_allowed"
+          "location_not_allowed",
+          "plugin_execution_disabled",
+          "plugin_not_allowed",
+          "plugin_not_found",
+          "plugin_incompatible",
+          "plugin_stale",
+          "plugin_cancelled"
         ],
         "type": "string"
       },
@@ -1245,6 +1251,100 @@
         ],
         "type": "object"
       },
+      "PluginCatalogEntryView": {
+        "properties": {
+          "capabilities": {},
+          "compatible": {
+            "type": "boolean"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol_version": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "protocol_version",
+          "digest",
+          "compatible"
+        ],
+        "type": "object"
+      },
+      "PluginCatalogListResponse": {
+        "properties": {
+          "plugins": {
+            "items": {
+              "$ref": "#/components/schemas/PluginCatalogEntryView"
+            },
+            "type": "array"
+          },
+          "plugins_enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "plugins",
+          "plugins_enabled"
+        ],
+        "type": "object"
+      },
+      "PluginExecutionRecord": {
+        "description": "One plugin invocation during a scan phase.",
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "duration_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "findings_contributed": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "digest",
+          "phase",
+          "duration_ms",
+          "status",
+          "findings_contributed"
+        ],
+        "type": "object"
+      },
       "ProbeDepth": {
         "enum": [
           "full_within_cap",
@@ -1463,7 +1563,7 @@
         "example": {
           "completed_at": "2026-04-15T12:00:05Z",
           "contract_schema_version": "0.5.0",
-          "engine_revision": "paraclete-test",
+          "engine_revision": "parqonaut-test",
           "normalized_target_key": "/data/sample.parquet",
           "report_format_version": "0.5.0",
           "report_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -1764,8 +1864,44 @@
           },
           "mode": {
             "$ref": "#/components/schemas/ScanMode"
+          },
+          "requested_plugins": {
+            "description": "Explicitly requested analyzer plugins (empty = run none).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
+        "type": "object"
+      },
+      "ScanPluginMetadata": {
+        "description": "Ordered plugin selection and per-invocation outcomes.",
+        "properties": {
+          "executions": {
+            "items": {
+              "$ref": "#/components/schemas/PluginExecutionRecord"
+            },
+            "type": "array"
+          },
+          "requested": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resolved_order": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "requested",
+          "resolved_order",
+          "executions"
+        ],
         "type": "object"
       },
       "ScanProfile": {
@@ -1814,6 +1950,16 @@
           },
           "metadata": {
             "$ref": "#/components/schemas/ReportMetadata"
+          },
+          "plugin_metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ScanPluginMetadata"
+              }
+            ]
           },
           "request": {
             "$ref": "#/components/schemas/ScanRequest"
@@ -2071,6 +2217,13 @@
           "options": {
             "$ref": "#/components/schemas/ScanOptions"
           },
+          "plugins": {
+            "description": "Scan analyzer plugin names (explicit opt-in; server allowlist applies).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "profile": {
             "$ref": "#/components/schemas/ScanProfile"
           },
@@ -2081,7 +2234,7 @@
               },
               {
                 "$ref": "#/components/schemas/RedactionPolicy",
-                "description": "When omitted, [`paraclete_types::RedactionPolicy::transport_safe_persist`] is applied before persistence."
+                "description": "When omitted, [`parqonaut_types::RedactionPolicy::transport_safe_persist`] is applied before persistence."
               }
             ]
           },
@@ -2178,7 +2331,7 @@
         "type": "object"
       },
       "StoredFindingRow": {
-        "description": "One row from `scan_findings` (projection; not a full [`paraclete_types::Finding`]).",
+        "description": "One row from `scan_findings` (projection; not a full [`parqonaut_types::Finding`]).",
         "properties": {
           "asset_path": {
             "type": [
@@ -2351,7 +2504,7 @@
       "name": "MIT"
     },
     "title": "PARQONAUT API",
-    "version": "0.9.2"
+    "version": "0.10.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -3524,6 +3677,97 @@
         ]
       }
     },
+    "/api/v1/plugins": {
+      "get": {
+        "operationId": "list_plugins",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginCatalogListResponse"
+                }
+              }
+            },
+            "description": "Server allowlisted plugin catalog"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/v1/plugins/{name}": {
+      "get": {
+        "operationId": "get_plugin_by_name",
+        "parameters": [
+          {
+            "description": "Plugin name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginCatalogEntryView"
+                }
+              }
+            },
+            "description": "Allowlisted plugin entry"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Plugin not found or not allowlisted"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
     "/api/v1/repairs": {
       "post": {
         "operationId": "post_repairs",
@@ -4367,6 +4611,10 @@
     {
       "description": "Metrics and API contract",
       "name": "meta"
+    },
+    {
+      "description": "Server allowlisted plugin catalog",
+      "name": "plugins"
     },
     {
       "description": "Diagnose, plan, check, repair, verify",

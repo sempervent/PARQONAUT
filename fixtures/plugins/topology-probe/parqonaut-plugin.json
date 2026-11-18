@@ -1,0 +1,9 @@
+{
+  "protocol_version": 1,
+  "name": "topology-probe",
+  "version": "0.1.0",
+  "entrypoint": "topology_probe:transform",
+  "capabilities": {
+    "batch_transform": { "tags": ["adversarial"] }
+  }
+}

@@ -1,4 +1,4 @@
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use arrow::datatypes::*;
 use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
@@ -43,7 +43,7 @@ fn parse_type(type_str: &str) -> Result<DataType> {
         "float64" | "f64" => Ok(DataType::Float64),
         "string" | "utf8" => Ok(DataType::Utf8),
         "bool" | "boolean" => Ok(DataType::Boolean),
-        _ => Err(ParqknifeError::InvalidInput(format!("Unsupported type: {}", type_str))),
+        _ => Err(TransformError::InvalidInput(format!("Unsupported type: {}", type_str))),
     }
 }
 
@@ -78,7 +78,7 @@ impl crate::engine::pipeline::Transform for SchemaTransform {
         }
 
         let new_schema = Arc::new(Schema::new(new_fields));
-        RecordBatch::try_new(new_schema, new_columns).map_err(ParqknifeError::Arrow)
+        RecordBatch::try_new(new_schema, new_columns).map_err(TransformError::Arrow)
     }
 
     fn name(&self) -> &str {

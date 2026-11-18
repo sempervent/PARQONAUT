@@ -1,8 +1,8 @@
 //! Application contract smoke tests (no HTTP/CLI).
 
-use paraclete_types::ScanProfile;
 use parqonaut_app::{ParqonautApp, ScanRequest};
 use parqonaut_storage::location::DatasetLocation;
+use parqonaut_types::ScanProfile;
 
 #[tokio::test]
 async fn scan_local_fixture_through_app() {

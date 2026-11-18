@@ -10,7 +10,7 @@ use arrow::record_batch::RecordBatch;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use tracing::info;
 
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::output::{compression_from_str, ParquetWriter};
 
 /// Hive-style NULL partition token (documented; escaped literals use `__PQ_ESC__` prefix).
@@ -50,10 +50,10 @@ pub fn partition_parquet_file(
     row_group_size_mb: Option<u64>,
 ) -> Result<Vec<PathBuf>> {
     if partition_by.is_empty() {
-        return Err(ParqknifeError::InvalidInput("partition_by required".into()));
+        return Err(TransformError::InvalidInput("partition_by required".into()));
     }
     if max_open_partitions == 0 {
-        return Err(ParqknifeError::InvalidInput("max_open_partitions must be > 0".into()));
+        return Err(TransformError::InvalidInput("max_open_partitions must be > 0".into()));
     }
 
     let file = File::open(input)?;
@@ -61,7 +61,7 @@ pub fn partition_parquet_file(
     let schema = builder.schema().clone();
     for col in partition_by {
         schema.index_of(col).map_err(|_| {
-            ParqknifeError::InvalidInput(format!("partition column not in schema: {col}"))
+            TransformError::InvalidInput(format!("partition column not in schema: {col}"))
         })?;
     }
     let mut batches = Vec::new();
@@ -88,10 +88,10 @@ pub fn partition_record_batches(
     row_group_size_mb: Option<u64>,
 ) -> Result<Vec<PathBuf>> {
     if partition_by.is_empty() {
-        return Err(ParqknifeError::InvalidInput("partition_by required".into()));
+        return Err(TransformError::InvalidInput("partition_by required".into()));
     }
     if max_open_partitions == 0 {
-        return Err(ParqknifeError::InvalidInput("max_open_partitions must be > 0".into()));
+        return Err(TransformError::InvalidInput("max_open_partitions must be > 0".into()));
     }
     if batches.is_empty() {
         return Ok(Vec::new());
@@ -176,7 +176,7 @@ pub(crate) fn partition_keys(
         let idx = batch
             .schema()
             .index_of(c)
-            .map_err(|_| ParqknifeError::InvalidInput(format!("missing partition column {c}")))?;
+            .map_err(|_| TransformError::InvalidInput(format!("missing partition column {c}")))?;
         arrays.push(batch.column(idx));
     }
 
@@ -218,7 +218,7 @@ fn array_value_at(arr: &dyn Array, row: usize) -> Result<String> {
             let a = arr.as_any().downcast_ref::<StringArray>().unwrap();
             Ok(a.value(row).to_string())
         }
-        other => Err(ParqknifeError::InvalidInput(format!(
+        other => Err(TransformError::InvalidInput(format!(
             "unsupported partition column type: {other:?}"
         ))),
     }

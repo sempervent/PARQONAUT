@@ -28,13 +28,13 @@ PARQONAUT consolidates three predecessor projects owned by `sempervent`. The ori
 
 | Source path | PARQONAUT destination |
 |-------------|----------------------|
-| `crates/paraclete-types/` | `crates/paraclete-types/` |
-| `crates/paraclete-core/` | `crates/paraclete-core/` |
-| `crates/paraclete-report/` | `crates/paraclete-report/` |
-| `crates/paraclete-plugin-protocol/` | `crates/paraclete-plugin-protocol/` |
-| `crates/paraclete-store/` | `crates/paraclete-store/` |
-| `crates/paraclete-service/` | `crates/paraclete-service/` |
-| `python/paraclete_plugins/` | `python/paraclete_plugins/` |
+| `crates/paraclete-types/` | `crates/parqonaut-types/` |
+| `crates/paraclete-core/` | `crates/parqonaut-core/` |
+| `crates/paraclete-report/` | `crates/parqonaut-report/` |
+| `crates/paraclete-plugin-protocol/` | `crates/parqonaut-plugin-protocol/` |
+| `crates/paraclete-store/` | `crates/parqonaut-store/` |
+| `crates/paraclete-service/` | `crates/parqonaut-service/` |
+| `python/paraclete_plugins/` | `python/parqonaut_plugins/` |
 | `fixtures/` | `fixtures/` |
 | `scripts/` | `scripts/` |
 

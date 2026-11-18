@@ -1,5 +1,5 @@
 use camino::Utf8Path;
-use paraclete_types::ScanReport;
+use parqonaut_types::ScanReport;
 use serde::Serialize;
 
 use crate::diagnose::diagnose;

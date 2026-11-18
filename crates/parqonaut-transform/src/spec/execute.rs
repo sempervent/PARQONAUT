@@ -2,10 +2,11 @@ use crate::engine::{
     merge_parquet_files, partition_parquet_file, rewrite_parquet_file, rewrite_parquet_with_cast,
     rewrite_parquet_with_rename, split_parquet_file,
 };
-use crate::error::{ParqknifeError, Result};
+use crate::error::{Result, TransformError};
 use crate::io::resolve_inputs;
 use crate::spec::fused_execute::execute_fused_segment;
 use crate::spec::plan::{compile_plan, CompiledSegment, ExecutablePlan, ResolvedStep};
+use crate::spec::plugin_run::TransformRunContext;
 use crate::spec::types::{Compression, Operation, Spec};
 use parqonaut_columnar::IntermediateIoCounters;
 use parqonaut_workflow::{TransformReport, TRANSFORM_SPEC_SCHEMA_VERSION};
@@ -48,8 +49,9 @@ fn plan_to_dry_run_report(plan: &ExecutablePlan) -> Result<TransformReport> {
         warnings: vec![],
         failures: vec![],
         plan: Some(
-            serde_json::to_value(plan).map_err(|e| ParqknifeError::SpecError(e.to_string()))?,
+            serde_json::to_value(plan).map_err(|e| TransformError::SpecError(e.to_string()))?,
         ),
+        plugin_executions: vec![],
     })
 }
 
@@ -59,17 +61,36 @@ pub fn execute_spec(spec: &Spec) -> Result<TransformReport> {
 }
 
 pub fn execute_plan(plan: &ExecutablePlan) -> Result<TransformReport> {
+    execute_plan_with_run(plan, &TransformRunContext::noop())
+}
+
+pub fn execute_plan_with_run(
+    plan: &ExecutablePlan,
+    run: &TransformRunContext,
+) -> Result<TransformReport> {
+    match execute_plan_with_run_inner(plan, run) {
+        Ok(report) => Ok(report),
+        Err(e) => {
+            run.finalize_aborted_plugins();
+            Err(e)
+        }
+    }
+}
+
+fn execute_plan_with_run_inner(
+    plan: &ExecutablePlan,
+    run: &TransformRunContext,
+) -> Result<TransformReport> {
     let started = Instant::now();
     let mut completed = 0u64;
     let warnings: Vec<String> = Vec::new();
     let mut files_read = 0u64;
     let mut files_written = 0u64;
     let mut intermediate_io = IntermediateIoCounters::default();
-
     for segment in &plan.segments {
         match segment {
             CompiledSegment::Fused(fused) => {
-                let (written, read) = execute_fused_segment(fused)?;
+                let (written, read) = execute_fused_segment(fused, run)?;
                 files_read += read;
                 files_written += written;
                 if fused.is_intermediate {
@@ -134,6 +155,7 @@ pub fn execute_plan(plan: &ExecutablePlan) -> Result<TransformReport> {
         warnings,
         failures: vec![],
         plan: None,
+        plugin_executions: run.take_plugin_executions(),
     })
 }
 
@@ -292,6 +314,9 @@ fn execute_step(step: &ResolvedStep) -> Result<(u64, u64)> {
             let outs = resolve_inputs(&step.output)?;
             Ok((outs.len() as u64, read))
         }
+        Operation::Plugin { .. } => Err(TransformError::SpecError(
+            "plugin transform steps are only supported via fused execution".into(),
+        )),
     }
 }
 
