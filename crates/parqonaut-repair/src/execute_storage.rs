@@ -17,14 +17,17 @@ use parqonaut_storage::publication::{
     is_version_committed, read_current_version, PublicationManifest, PublicationObjectRecord,
     PublicationVersionId, RemotePublicationSession, PUBLICATION_CONTRACT_VERSION,
 };
+use parqonaut_workflow::{
+    NoOpProgressObserver, ProgressEvent, ProgressEventKind, ProgressMetrics, ProgressObserver,
+};
 use tracing::{info, instrument};
 use uuid::Uuid;
 
 use crate::authorization::OperationAuditContext;
 use crate::error::RepairError;
 use crate::execute::{
-    copy_work_to_output, run_repair_operations, seed_work_dir, ExecutionReport, RepairExecutor,
-    RepairOperationOutcome,
+    copy_work_to_output, run_repair_operations_with_progress, seed_work_dir, ExecutionReport,
+    RepairExecutor, RepairOperationOutcome,
 };
 use crate::fingerprint::{compute_fingerprint_from_scan, paths_overlap};
 use crate::manifest::{ExecutionManifest, MANIFEST_VERSION};
@@ -52,10 +55,42 @@ impl RepairExecutor {
         output_backend: &OB,
         run_id: &str,
     ) -> Result<ExecutionReport, RepairError> {
+        self.execute_storage_with_progress(
+            plan,
+            output,
+            scan,
+            source_backend,
+            output_backend,
+            run_id,
+            &NoOpProgressObserver,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[instrument(skip(self, plan, scan, source_backend, output_backend, progress), fields(plan_id = %plan.plan_id))]
+    pub async fn execute_storage_with_progress<SB: StorageBackend, OB: StorageBackend>(
+        &self,
+        plan: &RepairPlan,
+        output: &DatasetLocation,
+        scan: &parqonaut_types::ScanReport,
+        source_backend: &SB,
+        output_backend: &OB,
+        run_id: &str,
+        progress: &dyn ProgressObserver,
+    ) -> Result<ExecutionReport, RepairError> {
         plan.validate_version()?;
         let source = parse_dataset_location(&plan.dataset_root)?;
         let started = Utc::now();
         let execution_id = Uuid::new_v4();
+        let total_ops = plan.operations.len() as u64;
+
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::ExecutionStarted,
+            path: Some(output.display_uri()),
+            metrics: ProgressMetrics { files_total: total_ops, ..Default::default() },
+            message: Some(format!("storage repair plan {} started", plan.plan_id)),
+        });
 
         ensure_output_available(output_backend, output).await?;
         if locations_overlap(&source, output) {
@@ -83,11 +118,32 @@ impl RepairExecutor {
         let mut working = seed_working_set(&source, source_backend, &work, scan).await?;
         let op_root = operation_root(&source, &work);
 
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::InputsDiscovered,
+            path: Some(source.display_uri()),
+            metrics: ProgressMetrics { files_total: total_ops, ..Default::default() },
+            message: Some(format!("staged {} files for storage repair", working.len())),
+        });
+
         let RepairOperationOutcome { executed, skipped, audit } =
-            match run_repair_operations(self, plan, &op_root, &work, &mut working, &audit_ctx) {
+            match run_repair_operations_with_progress(
+                self,
+                plan,
+                &op_root,
+                &work,
+                &mut working,
+                &audit_ctx,
+                progress,
+            ) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     info!(staging = %staging, "storage repair failed; staging retained");
+                    progress.emit(ProgressEvent {
+                        kind: ProgressEventKind::ExecutionFailed,
+                        path: Some(output.display_uri()),
+                        metrics: ProgressMetrics::default(),
+                        message: Some(format!("storage repair failed: {err}")),
+                    });
                     return Err(RepairError::PartialExecution {
                         staging: format!("{} ({err})", staging),
                     });
@@ -98,14 +154,27 @@ impl RepairExecutor {
         let after_scan = scan_directory(&work)?;
         let before_root = before_scan_root(&source, &work);
         let verification = if self.verify_before_publish {
-            Some(verify_repair(
+            progress.emit(ProgressEvent {
+                kind: ProgressEventKind::VerificationStarted,
+                path: Some(output.display_uri()),
+                metrics: ProgressMetrics::default(),
+                message: Some("verifying staged repair output".into()),
+            });
+            let v = verify_repair(
                 &before_scan,
                 &after_scan,
                 &before_root,
                 &work,
                 &plan.policy.repair,
                 None,
-            )?)
+            )?;
+            progress.emit(ProgressEvent {
+                kind: ProgressEventKind::VerificationCompleted,
+                path: Some(output.display_uri()),
+                metrics: ProgressMetrics::default(),
+                message: Some(format!("verification outcome={:?}", v.outcome)),
+            });
+            Some(v)
         } else {
             None
         };
@@ -139,7 +208,29 @@ impl RepairExecutor {
             }
         };
 
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::OutputCommitted,
+            path: Some(output_path.clone()),
+            metrics: ProgressMetrics {
+                files_total: total_ops,
+                files_done: total_ops,
+                ..Default::default()
+            },
+            message: Some(format!("committed repair output to {output_path}")),
+        });
+
         let _ = fs::remove_dir_all(&staging);
+
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::ExecutionCompleted,
+            path: Some(output_path.clone()),
+            metrics: ProgressMetrics {
+                files_total: total_ops,
+                files_done: total_ops,
+                ..Default::default()
+            },
+            message: Some(format!("storage repair plan {} completed", plan.plan_id)),
+        });
 
         Ok(ExecutionReport {
             execution_id,

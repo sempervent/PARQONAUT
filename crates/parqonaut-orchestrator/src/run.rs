@@ -20,7 +20,9 @@ use crate::plan::{build_batch_plan, BatchPlan};
 use crate::report::{
     build_aggregate_report, BatchVerificationSummary, BATCH_REPORT_SCHEMA_VERSION,
 };
-use crate::verify::{verify_batch_with_run, verify_results_map, BatchVerifyReport};
+use crate::verify::{
+    verify_batch_with_run, verify_batch_with_run_async, verify_results_map, BatchVerifyReport,
+};
 
 pub const RUNS_DIR: &str = ".parqonaut/runs";
 pub const JOURNAL_FILE: &str = "journal.sqlite";
@@ -96,13 +98,35 @@ pub async fn execute_batch(
     plan_path: &Utf8Path,
     options: BatchRunOptions,
 ) -> Result<BatchExecutionResult, OrchestratorError> {
+    execute_batch_with_progress(
+        plan_path,
+        options,
+        Arc::new(parqonaut_workflow::NoOpProgressObserver),
+    )
+    .await
+}
+
+pub async fn execute_batch_with_progress(
+    plan_path: &Utf8Path,
+    options: BatchRunOptions,
+    progress: Arc<dyn parqonaut_workflow::ProgressObserver>,
+) -> Result<BatchExecutionResult, OrchestratorError> {
     let plan = BatchPlan::from_json(&fs::read(plan_path.as_std_path())?)?;
-    execute_batch_plan(plan, options).await
+    execute_batch_plan_with_progress(plan, options, progress).await
 }
 
 pub async fn resume_batch(
     run_dir: &Utf8Path,
     options: BatchRunOptions,
+) -> Result<BatchExecutionResult, OrchestratorError> {
+    resume_batch_with_progress(run_dir, options, Arc::new(parqonaut_workflow::NoOpProgressObserver))
+        .await
+}
+
+pub async fn resume_batch_with_progress(
+    run_dir: &Utf8Path,
+    options: BatchRunOptions,
+    progress: Arc<dyn parqonaut_workflow::ProgressObserver>,
 ) -> Result<BatchExecutionResult, OrchestratorError> {
     options.validate()?;
     let plan_path = run_dir.join(PLAN_SNAPSHOT);
@@ -142,12 +166,33 @@ pub async fn resume_batch(
         });
     }
 
-    execute_with_journal(plan, identity.run_id.clone(), run_dir.to_path_buf(), options, true).await
+    execute_with_journal(
+        plan,
+        identity.run_id.clone(),
+        run_dir.to_path_buf(),
+        options,
+        true,
+        progress,
+    )
+    .await
 }
 
 pub async fn execute_batch_plan(
     plan: BatchPlan,
     options: BatchRunOptions,
+) -> Result<BatchExecutionResult, OrchestratorError> {
+    execute_batch_plan_with_progress(
+        plan,
+        options,
+        Arc::new(parqonaut_workflow::NoOpProgressObserver),
+    )
+    .await
+}
+
+pub async fn execute_batch_plan_with_progress(
+    plan: BatchPlan,
+    options: BatchRunOptions,
+    progress: Arc<dyn parqonaut_workflow::ProgressObserver>,
 ) -> Result<BatchExecutionResult, OrchestratorError> {
     options.validate()?;
     if options.dry_run {
@@ -172,7 +217,7 @@ pub async fn execute_batch_plan(
     let run_dir = run_directory(&run_root, &run_id);
     fs::create_dir_all(run_dir.as_std_path())?;
     plan.write_json(&run_dir.join(PLAN_SNAPSHOT))?;
-    execute_with_journal(plan, run_id, run_dir, options, false).await
+    execute_with_journal(plan, run_id, run_dir, options, false, progress).await
 }
 
 async fn execute_with_journal(
@@ -181,6 +226,7 @@ async fn execute_with_journal(
     run_dir: Utf8PathBuf,
     options: BatchRunOptions,
     resume: bool,
+    progress: Arc<dyn parqonaut_workflow::ProgressObserver>,
 ) -> Result<BatchExecutionResult, OrchestratorError> {
     let now = Utc::now();
     let identity = RunIdentity {
@@ -232,7 +278,15 @@ async fn execute_with_journal(
     plan.max_concurrency = effective_jobs;
 
     let outcome = executor
-        .run(&plan, &run_id, journal.clone(), mode, options.cancel.clone(), options.dry_run)
+        .run_with_progress(
+            &plan,
+            &run_id,
+            journal.clone(),
+            mode,
+            options.cancel.clone(),
+            options.dry_run,
+            Arc::clone(&progress),
+        )
         .await?;
 
     let records = journal.list_datasets()?;
@@ -242,7 +296,7 @@ async fn execute_with_journal(
         journal.mark_run_completed(Utc::now())?;
     }
 
-    let verify = verify_batch_with_run(&plan, &records, Some(&run_id)).ok();
+    let verify = verify_batch_with_run_async(&plan, &records, Some(&run_id)).await.ok();
     let verify_map = verify.as_ref().map(verify_results_map).unwrap_or_default();
     let identity = journal.run_identity()?.unwrap_or(identity);
     let verification_summary = verify.as_ref().map(|v| BatchVerificationSummary {

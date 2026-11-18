@@ -8,7 +8,7 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 
 Use **`prqnt`** for local and S3-backed workflows: forensic scans, repair planning, batch fleet operations, streaming conversion, declarative transforms, and batch Python plugins in the transform pipeline. For lineage and source provenance, see [docs/provenance.md](docs/provenance.md).
 
-**Current release:** [v0.9.2](https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.2) — bounded streaming Parquet publication to S3, complete local/S3 routing for transform and convert, and the 6×4 remote capability matrix. See [release notes](docs/history/v0.9.2/release-notes.md).
+**Current release:** **v0.11.0** (in PR) — Operator Console (`prqnt tui`, bundled `/ui/` web dashboard), durable job-event journal + SSE stream, and `Idempotency-Key` protection (prior shipped milestone: [v0.10.0](docs/history/v0.10.0/release-notes.md); latest GitHub tag: [v0.9.2](https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.2)).
 
 **Documentation:** [PARQONAUT docs](https://sempervent.github.io/PARQONAUT/) (GitHub Pages)
 
@@ -19,7 +19,8 @@ PARQONAUT provides the **`prqnt`** command.
 | Command | Capability | Description |
 |---------|------------|-------------|
 | `prqnt scan <path>` | scan | Forensic scan of a file, directory, or `s3://` prefix |
-| `prqnt serve` | server | PARQONAUT HTTP API (`/api/v1`) with durable async scan jobs |
+| `prqnt serve` | server | PARQONAUT HTTP API (`/api/v1`) and bundled web dashboard (`/ui/`) |
+| `prqnt tui` | console | Interactive terminal operator console connected to `prqnt serve` |
 | `prqnt inspect <file>` | transform | Parquet schema and row-group metadata |
 | `prqnt rewrite <in> <out> [--compression zstd]` | transform | Rewrite Parquet with optional recompression |
 | `prqnt partition / merge / split` | transform | Hive partition, merge, and size-based split |
@@ -116,13 +117,14 @@ See [docs/batch-orchestration.md](docs/batch-orchestration.md) and [docs/batch-e
 ```bash
 just demo              # Stream demo: CSV → Parquet → scan → rewrite → rescan
 just schema-demo       # Schema: FRANKENLAKE schema reconciliation
-just batch-demo       # Batch: SHIPWRECK batch fleet
-just batch-resume-demo  # Batch: interrupt and resume
+just batch-demo        # Batch: SHIPWRECK batch fleet
+just batch-resume-demo # Batch: interrupt and resume
+just console-demo      # Operator console: prqnt serve + /ui/ browser smoke + restart
+just tui-demo          # Terminal console: prqnt tui tests and launch check
 ```
 
 ## Not yet implemented
 
-- Web dashboard / TUI
 - Generic HTTP server transform jobs (batch plugins via `prqnt transform --spec` and `parqonaut-app` only)
 - Additional plugin capability classes beyond scan analyzers and batch Arrow IPC transforms
 - Extended partition/merge/split transform surface

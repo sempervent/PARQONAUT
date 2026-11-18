@@ -50,7 +50,8 @@ pub use report::{
     StateCounts, BATCH_REPORT_SCHEMA_VERSION,
 };
 pub use run::{
-    check_config, execute_batch, execute_batch_plan, plan_batch, read_status, resume_batch,
+    check_config, execute_batch, execute_batch_plan, execute_batch_plan_with_progress,
+    execute_batch_with_progress, plan_batch, read_status, resume_batch, resume_batch_with_progress,
     verify_run, write_plan, BatchExecutionResult, BatchRunOptions, BatchStatusReport, JOURNAL_FILE,
     PLAN_SNAPSHOT, REPORT_FILE, RUNS_DIR,
 };
@@ -60,7 +61,9 @@ pub use storage::{
     block_on_async, remote_current_version, remote_output_committed, remote_publication_state,
     BatchStorageRuntime,
 };
-pub use verify::{verify_batch, BatchVerifyReport, DatasetVerifyResult};
+pub use verify::{
+    verify_batch, verify_batch_with_run_async, BatchVerifyReport, DatasetVerifyResult,
+};
 
 pub const BATCH_CONFIG_SCHEMA_VERSION: u32 = 1;
 pub const BATCH_PLAN_SCHEMA_VERSION: u32 = 1;

@@ -12,6 +12,7 @@
 
 mod auth_store;
 mod error;
+mod job_events_store;
 mod labels;
 mod models;
 mod postgres_store;
@@ -23,8 +24,8 @@ mod store_backend;
 pub use auth_store::AuthTokenSummary;
 pub use error::StoreError;
 pub use models::{
-    JobCancelOutcome, RunPublicMeta, ScanJobRow, StaleRecoveryStats, StoredAssetRow,
-    StoredFindingRow,
+    AppendJobEvent, IdempotencyInsertResult, JobCancelOutcome, RunPublicMeta, ScanJobRow,
+    StaleRecoveryStats, StoredAssetRow, StoredFindingRow,
 };
 pub use parqonaut_types::{
     apply_redaction_policy, diff_reports, RedactionPolicy, RetentionPolicy, RunDiff, RunId,

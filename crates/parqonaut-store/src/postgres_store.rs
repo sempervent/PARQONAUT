@@ -614,6 +614,9 @@ impl PostgresScanStore {
         let max = policy.max_attempts as i32;
 
         for (job_id, attempt_count) in rows {
+            let jid = Uuid::parse_str(&job_id)
+                .map(JobId)
+                .map_err(|_| StoreError::ReportValidation("invalid job_id".into()))?;
             if attempt_count >= max {
                 sqlx::query(
                     r#"UPDATE application_jobs SET status = 'failed', completed_at = $1, failure_code = $2, failure_message = $3,
@@ -630,6 +633,26 @@ impl PostgresScanStore {
                 .bind(&job_id)
                 .execute(&mut *tx)
                 .await?;
+                let ev = crate::job_events_store::append_event_postgres_tx(
+                    &mut tx,
+                    &crate::models::AppendJobEvent {
+                        job_id: jid,
+                        occurred_at: now,
+                        kind: parqonaut_workflow::ProgressEventKind::ExecutionFailed,
+                        stage: parqonaut_types::JobStage::Recovery,
+                        is_terminal: true,
+                        metrics: Default::default(),
+                        message: Some(
+                            "job failed after worker lease expired and retries exhausted".into(),
+                        ),
+                        run_id: None,
+                        plugin_name: None,
+                        plugin_digest: None,
+                    },
+                    parqonaut_types::DEFAULT_MAX_EVENTS_PER_JOB,
+                )
+                .await?;
+                stats.recovered_events.push(ev);
                 stats.failed_retries_exhausted += 1;
             } else {
                 sqlx::query(
@@ -644,6 +667,24 @@ impl PostgresScanStore {
                 .bind(&job_id)
                 .execute(&mut *tx)
                 .await?;
+                let ev = crate::job_events_store::append_event_postgres_tx(
+                    &mut tx,
+                    &crate::models::AppendJobEvent {
+                        job_id: jid,
+                        occurred_at: now,
+                        kind: parqonaut_workflow::ProgressEventKind::JobRecovered,
+                        stage: parqonaut_types::JobStage::Recovery,
+                        is_terminal: false,
+                        metrics: Default::default(),
+                        message: Some("job requeued after worker lease expired".into()),
+                        run_id: None,
+                        plugin_name: None,
+                        plugin_digest: None,
+                    },
+                    parqonaut_types::DEFAULT_MAX_EVENTS_PER_JOB,
+                )
+                .await?;
+                stats.recovered_events.push(ev);
                 stats.requeued += 1;
             }
         }

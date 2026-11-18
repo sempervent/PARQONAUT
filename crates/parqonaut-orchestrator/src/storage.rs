@@ -27,9 +27,33 @@ enum RemoteBackend {
     #[cfg(test)]
     Memory(MemoryStorageBackend),
     #[cfg(feature = "s3")]
-    S3(Arc<S3StorageBackend>),
+    S3(std::sync::OnceLock<Arc<S3StorageBackend>>),
     #[cfg(all(not(feature = "s3"), not(test)))]
     Unconfigured,
+}
+
+#[cfg(feature = "s3")]
+impl RemoteBackend {
+    fn get_or_init_s3(&self) -> &Arc<S3StorageBackend> {
+        let cell = match self {
+            Self::S3(cell) => cell,
+            #[cfg(test)]
+            Self::Memory(_) => unreachable!("not S3 remote backend"),
+        };
+        cell.get_or_init(|| {
+            let backend = std::thread::spawn(|| {
+                let config = S3Config::from_env();
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("tokio runtime")
+                    .block_on(S3StorageBackend::new(config))
+            })
+            .join()
+            .expect("s3 init thread");
+            Arc::new(backend)
+        })
+    }
 }
 
 /// Bounded concurrent storage requests across a batch run (`--jobs` is separate).
@@ -71,7 +95,7 @@ impl BatchStorageRuntime {
             #[cfg(test)]
             RemoteBackend::Memory(m) => RepairBackend::Memory(m.clone()),
             #[cfg(feature = "s3")]
-            RemoteBackend::S3(s) => RepairBackend::S3(Arc::clone(s)),
+            RemoteBackend::S3(_) => RepairBackend::S3(Arc::clone(self.remote.get_or_init_s3())),
             #[cfg(all(not(feature = "s3"), not(test)))]
             RemoteBackend::Unconfigured => {
                 panic!("s3:// locations require the orchestrator `s3` feature")
@@ -91,7 +115,7 @@ impl BatchStorageRuntime {
             #[cfg(test)]
             RemoteBackend::Memory(m) => m,
             #[cfg(feature = "s3")]
-            RemoteBackend::S3(s) => s.as_ref(),
+            RemoteBackend::S3(_) => self.remote.get_or_init_s3().as_ref(),
             #[cfg(all(not(feature = "s3"), not(test)))]
             RemoteBackend::Unconfigured => {
                 panic!("s3:// locations require the orchestrator `s3` feature")
@@ -119,9 +143,7 @@ impl RemoteBackend {
     fn production() -> Self {
         #[cfg(feature = "s3")]
         {
-            let config = S3Config::from_env();
-            let backend = block_on_async(S3StorageBackend::new(config));
-            Self::S3(Arc::new(backend))
+            Self::S3(std::sync::OnceLock::new())
         }
         #[cfg(all(not(feature = "s3"), test))]
         {

@@ -64,13 +64,22 @@ jobs:
           echo "PARQONAUT_PLUGIN_PYTHON=$(uv run which python)" >> "${GITHUB_ENV}"
           echo "PARQONAUT_PLUGIN_ROOTS=${{ github.workspace }}/fixtures/plugins" >> "${GITHUB_ENV}"
           echo "PARQONAUT_PLUGIN_SDK_PATH=${{ github.workspace }}/python/parqonaut_plugins/src" >> "${GITHUB_ENV}"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
       - name: API tests and smoke
         run: |
           set -euo pipefail
           cargo build -p parqonaut-cli --bin prqnt
           cargo test -p parqonaut-service --tests
           cargo test -p parqonaut-store --test auth_tokens
+          cargo test -p parqonaut-store --test job_events_and_idempotency
+          cargo test -p parqonaut-client --tests
+          cargo test -p parqonaut-tui --tests
+          node --test scripts/ui-test.mjs
           bash scripts/api-test/smoke.sh --start
+          UI_BROWSER_REQUIRED=1 bash scripts/console-demo.sh
+          bash scripts/tui-demo.sh
 
   postgres-integration:
     name: Postgres integration
@@ -186,4 +195,5 @@ jobs:
           export PARQONAUT_PLUGIN_ROOTS="${{ github.workspace }}/fixtures/plugins"
           export PARQONAUT_PLUGIN_SDK_PATH="${{ github.workspace }}/python/parqonaut_plugins/src"
           cargo test -p parqonaut-transform --features s3 --test plugin_storage_matrix --test plugin_s3_cancellation -- --nocapture --test-threads=1
+          cargo test -p parqonaut-service --features s3 --test s3_operator_e2e -- --nocapture --test-threads=1
           bash scripts/plugin-s3-demo.sh

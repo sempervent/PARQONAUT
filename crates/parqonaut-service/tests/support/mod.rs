@@ -1,4 +1,5 @@
 //! Shared helpers for HTTP integration tests (`http_api`, `api_integration`, …).
+#![allow(dead_code)]
 
 use std::path::PathBuf;
 

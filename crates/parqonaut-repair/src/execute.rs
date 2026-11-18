@@ -7,6 +7,9 @@ use parqonaut_transform::{
     merge_parquet_files, rewrite_parquet_file, rewrite_parquet_with_cast,
     rewrite_parquet_with_rename, split_parquet_file,
 };
+use parqonaut_workflow::{
+    NoOpProgressObserver, ProgressEvent, ProgressEventKind, ProgressMetrics, ProgressObserver,
+};
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 use uuid::Uuid;
@@ -56,10 +59,31 @@ impl RepairExecutor {
         output: &Utf8Path,
         scan: &parqonaut_types::ScanReport,
     ) -> Result<ExecutionReport, RepairError> {
+        self.execute_with_progress(plan, output, scan, &NoOpProgressObserver)
+    }
+
+    #[instrument(skip(self, plan, scan, progress), fields(plan_id = %plan.plan_id))]
+    pub fn execute_with_progress(
+        &self,
+        plan: &RepairPlan,
+        output: &Utf8Path,
+        scan: &parqonaut_types::ScanReport,
+        progress: &dyn ProgressObserver,
+    ) -> Result<ExecutionReport, RepairError> {
         plan.validate_version()?;
         let root = Utf8Path::new(&plan.dataset_root);
         let started = Utc::now();
         let execution_id = Uuid::new_v4();
+
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::ExecutionStarted,
+            path: Some(output.as_str().to_string()),
+            metrics: ProgressMetrics {
+                files_total: plan.operations.len() as u64,
+                ..Default::default()
+            },
+            message: Some(format!("repair plan {} started", plan.plan_id)),
+        });
 
         if output.exists() {
             return Err(RepairError::OutputExists(output.as_str().to_string()));
@@ -86,12 +110,35 @@ impl RepairExecutor {
         };
 
         let mut working = seed_work_dir(root, &work, scan)?;
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::InputsDiscovered,
+            path: Some(root.as_str().to_string()),
+            metrics: ProgressMetrics {
+                files_total: plan.operations.len() as u64,
+                ..Default::default()
+            },
+            message: Some(format!("staged {} files for repair", working.len())),
+        });
 
         let RepairOperationOutcome { executed, skipped, audit } =
-            match run_repair_operations(self, plan, root, &work, &mut working, &audit_ctx) {
+            match run_repair_operations_with_progress(
+                self,
+                plan,
+                root,
+                &work,
+                &mut working,
+                &audit_ctx,
+                progress,
+            ) {
                 Ok(outcome) => outcome,
                 Err(err) => {
                     info!(staging = %staging, "repair failed; staging retained");
+                    progress.emit(ProgressEvent {
+                        kind: ProgressEventKind::ExecutionFailed,
+                        path: Some(output.as_str().to_string()),
+                        metrics: ProgressMetrics::default(),
+                        message: Some(format!("repair failed: {err}")),
+                    });
                     return Err(RepairError::PartialExecution {
                         staging: format!("{} ({err})", staging),
                     });
@@ -100,10 +147,33 @@ impl RepairExecutor {
 
         fs::create_dir_all(output)?;
         copy_work_to_output(&work, output)?;
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::OutputCommitted,
+            path: Some(output.as_str().to_string()),
+            metrics: ProgressMetrics {
+                files_total: plan.operations.len() as u64,
+                files_done: plan.operations.len() as u64,
+                ..Default::default()
+            },
+            message: Some(format!("committed repair output to {}", output)),
+        });
 
         let after_scan = scan_directory(output)?;
         let verification = if self.verify_before_publish {
-            Some(verify_repair(scan, &after_scan, root, output, &plan.policy.repair, None)?)
+            progress.emit(ProgressEvent {
+                kind: ProgressEventKind::VerificationStarted,
+                path: Some(output.as_str().to_string()),
+                metrics: ProgressMetrics::default(),
+                message: Some("verifying repaired dataset".into()),
+            });
+            let v = verify_repair(scan, &after_scan, root, output, &plan.policy.repair, None)?;
+            progress.emit(ProgressEvent {
+                kind: ProgressEventKind::VerificationCompleted,
+                path: Some(output.as_str().to_string()),
+                metrics: ProgressMetrics::default(),
+                message: Some(format!("verification outcome={:?}", v.outcome)),
+            });
+            Some(v)
         } else {
             None
         };
@@ -127,6 +197,17 @@ impl RepairExecutor {
 
         let _ = fs::remove_dir_all(&staging);
 
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::ExecutionCompleted,
+            path: Some(output.as_str().to_string()),
+            metrics: ProgressMetrics {
+                files_total: plan.operations.len() as u64,
+                files_done: plan.operations.len() as u64,
+                ..Default::default()
+            },
+            message: Some(format!("repair plan {} completed", plan.plan_id)),
+        });
+
         Ok(ExecutionReport {
             execution_id,
             plan_id: plan.plan_id.clone(),
@@ -148,19 +229,32 @@ pub(crate) struct RepairOperationOutcome {
     pub audit: Vec<OperationAuditRecord>,
 }
 
-pub(crate) fn run_repair_operations(
+pub(crate) fn run_repair_operations_with_progress(
     executor: &RepairExecutor,
     plan: &RepairPlan,
     root: &Utf8Path,
     work: &Utf8Path,
     working: &mut BTreeMap<String, Utf8PathBuf>,
     audit_ctx: &OperationAuditContext,
+    progress: &dyn ProgressObserver,
 ) -> Result<RepairOperationOutcome, RepairError> {
     let mut executed = Vec::new();
     let mut skipped = Vec::new();
     let mut audit = Vec::new();
     let sorted = sort_by_dependencies(&plan.operations)?;
-    for op in sorted {
+    let total = sorted.len() as u64;
+    for (idx, op) in sorted.into_iter().enumerate() {
+        let done_before = idx as u64;
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::OperationStarted,
+            path: Some(op.operation_id.clone()),
+            metrics: ProgressMetrics {
+                files_total: total,
+                files_done: done_before,
+                ..Default::default()
+            },
+            message: Some(format!("operation {} ({:?})", op.operation_id, op.safety)),
+        });
         let now = Utc::now();
         match op.safety {
             RepairSafety::Safe => {
@@ -218,6 +312,16 @@ pub(crate) fn run_repair_operations(
                 ));
             }
         }
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::OperationCompleted,
+            path: Some(op.operation_id.clone()),
+            metrics: ProgressMetrics {
+                files_total: total,
+                files_done: done_before + 1,
+                ..Default::default()
+            },
+            message: Some(format!("operation {} finished", op.operation_id)),
+        });
     }
     Ok(RepairOperationOutcome { executed, skipped, audit })
 }

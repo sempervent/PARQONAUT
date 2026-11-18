@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use parqonaut_app::location;
 
-#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct LocationPolicyBody {
     /// Dataset location (`/path`, `file://…`, `s3://bucket/prefix`).
     pub location: String,
@@ -25,7 +25,7 @@ pub struct LocationPolicyBody {
     pub policy_toml: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PlanBody {
     pub location: String,
     #[serde(default)]
@@ -35,7 +35,7 @@ pub struct PlanBody {
     pub target_schema_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct RepairJobBody {
     pub source: String,
     pub output: String,
@@ -45,7 +45,7 @@ pub struct RepairJobBody {
     pub authorize: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct VerifyBody {
     pub before: String,
     pub after_local_path: String,
@@ -55,12 +55,12 @@ pub struct VerifyBody {
     pub policy_toml: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BatchConfigBody {
     pub config_path: String,
 }
 
-#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BatchRepairJobBody {
     pub plan_path: String,
     #[serde(default)]
@@ -69,7 +69,7 @@ pub struct BatchRepairJobBody {
     pub dry_run: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BatchResumeBody {
     #[serde(default)]
     pub jobs: Option<u32>,
@@ -77,55 +77,55 @@ pub struct BatchResumeBody {
     pub dry_run: bool,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct DiagnoseResponse {
     #[schema(value_type = Object)]
     pub report: parqonaut_repair::DiagnosisReport,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PlanResponse {
     #[schema(value_type = Object)]
     pub plan: RepairPlan,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 pub struct CheckResponse {
     #[schema(value_type = Object)]
     pub report: parqonaut_repair::CheckReport,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct VerifyResponse {
     #[schema(value_type = Object)]
     pub report: parqonaut_repair::VerificationReport,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BatchCheckResponse {
     #[schema(value_type = Object)]
     pub report: parqonaut_orchestrator::BatchCheckReport,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BatchPlanResponse {
     #[schema(value_type = Object)]
     pub plan: parqonaut_orchestrator::BatchPlan,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BatchStatusResponse {
     #[schema(value_type = Object)]
     pub status: parqonaut_orchestrator::BatchStatusReport,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BatchVerifyResponse {
     #[schema(value_type = Object)]
     pub report: parqonaut_orchestrator::BatchVerifyReport,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct JobCancelResponse {
     pub job_id: uuid::Uuid,
     pub status: parqonaut_types::JobStatus,

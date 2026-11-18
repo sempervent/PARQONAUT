@@ -24,6 +24,7 @@ pub enum ErrorCode {
     ScanFailed,
     StoreError,
     InternalError,
+    Conflict,
     Unauthorized,
     Forbidden,
     LocationNotAllowed,
@@ -75,6 +76,8 @@ pub enum AppError {
     Store(String),
     #[error("internal error: {0}")]
     Internal(String),
+    #[error("conflict: {0}")]
+    Conflict(String),
     #[error("{0}")]
     Unauthorized(String),
     #[error("{0}")]
@@ -107,6 +110,7 @@ impl AppError {
             AppError::ScanFailed(_) => ErrorCode::ScanFailed,
             AppError::Store(_) => ErrorCode::StoreError,
             AppError::Internal(_) => ErrorCode::InternalError,
+            AppError::Conflict(_) => ErrorCode::Conflict,
             AppError::Unauthorized(_) => ErrorCode::Unauthorized,
             AppError::Forbidden(_) => ErrorCode::Forbidden,
             AppError::LocationNotAllowed(_) => ErrorCode::LocationNotAllowed,
@@ -130,6 +134,7 @@ impl AppError {
             AppError::ScanFailed(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::LocationNotAllowed(_) => StatusCode::FORBIDDEN,
@@ -182,6 +187,7 @@ impl From<StoreError> for AppError {
             {
                 AppError::InvalidRequest(msg)
             }
+            StoreError::IdempotencyConflict(msg) => AppError::Conflict(msg),
             other => AppError::Store(other.to_string()),
         }
     }
@@ -197,6 +203,7 @@ fn store_error_kind(e: &StoreError) -> &'static str {
         StoreError::JobNotFound(_) => "job_not_found",
         StoreError::AuthToken(_) => "auth_token",
         StoreError::AuthTokenNotFound(_) => "auth_token_not_found",
+        StoreError::IdempotencyConflict(_) => "idempotency_conflict",
     }
 }
 

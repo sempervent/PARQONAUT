@@ -136,6 +136,24 @@ async fn plugin_scan_job_on_postgres() {
         let j = svc.store().get_scan_job(JobId(job_id)).await.unwrap();
         if j.status == "succeeded" {
             assert!(j.run_id.is_some());
+            // Verify durable job events also persisted on Postgres.
+            let ev_res = app
+                .clone()
+                .oneshot(
+                    Request::get(format!("/api/v1/jobs/{job_id}/events?after_seq=0&limit=50"))
+                        .header(AUTHORIZATION, format!("Bearer {bearer}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(ev_res.status(), StatusCode::OK);
+            let ev_json: serde_json::Value =
+                serde_json::from_slice(&ev_res.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            let items = ev_json["items"].as_array().unwrap();
+            assert!(!items.is_empty(), "expected Postgres job events");
+            assert_eq!(items.last().unwrap()["kind"], "execution_completed");
             return;
         }
         if j.status == "failed" {

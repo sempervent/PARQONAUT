@@ -61,38 +61,119 @@ impl RepairBackend {
         output_backend: &RepairBackend,
         run_id: &str,
     ) -> Result<crate::ExecutionReport, RepairError> {
+        self.execute_plan_with_progress(
+            executor,
+            plan,
+            output,
+            scan,
+            output_backend,
+            run_id,
+            &parqonaut_workflow::NoOpProgressObserver,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn execute_plan_with_progress(
+        &self,
+        executor: &crate::RepairExecutor,
+        plan: &crate::RepairPlan,
+        output: &DatasetLocation,
+        scan: &ScanReport,
+        output_backend: &RepairBackend,
+        run_id: &str,
+        progress: &dyn parqonaut_workflow::ProgressObserver,
+    ) -> Result<crate::ExecutionReport, RepairError> {
         match (self, output_backend) {
             (Self::Local(s), Self::Local(o)) => {
-                executor.execute_storage(plan, output, scan, s, o, run_id).await
+                executor
+                    .execute_storage_with_progress(plan, output, scan, s, o, run_id, progress)
+                    .await
             }
             (Self::Local(s), Self::Memory(o)) => {
-                executor.execute_storage(plan, output, scan, s, o, run_id).await
+                executor
+                    .execute_storage_with_progress(plan, output, scan, s, o, run_id, progress)
+                    .await
             }
             (Self::Memory(s), Self::Local(o)) => {
-                executor.execute_storage(plan, output, scan, s, o, run_id).await
+                executor
+                    .execute_storage_with_progress(plan, output, scan, s, o, run_id, progress)
+                    .await
             }
             (Self::Memory(s), Self::Memory(o)) => {
-                executor.execute_storage(plan, output, scan, s, o, run_id).await
+                executor
+                    .execute_storage_with_progress(plan, output, scan, s, o, run_id, progress)
+                    .await
             }
             #[cfg(feature = "s3")]
             (Self::S3(s), Self::S3(o)) => {
-                executor.execute_storage(plan, output, scan, s.as_ref(), o.as_ref(), run_id).await
+                executor
+                    .execute_storage_with_progress(
+                        plan,
+                        output,
+                        scan,
+                        s.as_ref(),
+                        o.as_ref(),
+                        run_id,
+                        progress,
+                    )
+                    .await
             }
             #[cfg(feature = "s3")]
             (Self::Local(s), Self::S3(o)) => {
-                executor.execute_storage(plan, output, scan, s, o.as_ref(), run_id).await
+                executor
+                    .execute_storage_with_progress(
+                        plan,
+                        output,
+                        scan,
+                        s,
+                        o.as_ref(),
+                        run_id,
+                        progress,
+                    )
+                    .await
             }
             #[cfg(feature = "s3")]
             (Self::S3(s), Self::Local(o)) => {
-                executor.execute_storage(plan, output, scan, s.as_ref(), o, run_id).await
+                executor
+                    .execute_storage_with_progress(
+                        plan,
+                        output,
+                        scan,
+                        s.as_ref(),
+                        o,
+                        run_id,
+                        progress,
+                    )
+                    .await
             }
             #[cfg(feature = "s3")]
             (Self::Memory(s), Self::S3(o)) => {
-                executor.execute_storage(plan, output, scan, s, o.as_ref(), run_id).await
+                executor
+                    .execute_storage_with_progress(
+                        plan,
+                        output,
+                        scan,
+                        s,
+                        o.as_ref(),
+                        run_id,
+                        progress,
+                    )
+                    .await
             }
             #[cfg(feature = "s3")]
             (Self::S3(s), Self::Memory(o)) => {
-                executor.execute_storage(plan, output, scan, s.as_ref(), o, run_id).await
+                executor
+                    .execute_storage_with_progress(
+                        plan,
+                        output,
+                        scan,
+                        s.as_ref(),
+                        o,
+                        run_id,
+                        progress,
+                    )
+                    .await
             }
             #[cfg(not(feature = "s3"))]
             _ => Err(RepairError::Storage("unsupported cross-backend repair pairing".into())),

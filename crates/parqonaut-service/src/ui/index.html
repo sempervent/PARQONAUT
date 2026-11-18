@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PARQONAUT Operator Console</title>
+  <link rel="stylesheet" href="/ui/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-name">PARQONAUT</span>
+      <span class="brand-tag">v0.11 Operator Console</span>
+    </div>
+    <div class="topbar-controls">
+      <span id="conn-badge" class="badge badge-muted" role="status">Disconnected</span>
+      <span id="role-badge" class="badge badge-muted hidden"></span>
+      <button id="theme-toggle" type="button" class="btn btn-secondary" aria-label="Toggle light or dark theme">Theme</button>
+      <button id="disconnect-btn" type="button" class="btn btn-secondary hidden">Disconnect</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="auth-screen" class="card auth-card" aria-labelledby="auth-title">
+      <h1 id="auth-title">Connect to PARQONAUT Server</h1>
+      <p class="muted">
+        Authenticate with a bearer token. Tokens are held strictly in browser memory for this tab
+        and sent only via the <code>Authorization: Bearer</code> header to same-origin <code>/api/v1</code>.
+      </p>
+      <form id="auth-form" class="stack">
+        <label for="token-input">Bearer Token</label>
+        <input id="token-input" type="password" autocomplete="off" spellcheck="false" required placeholder="prqnt_...">
+        <div class="row">
+          <button id="connect-btn" type="submit" class="btn btn-primary">Connect</button>
+        </div>
+        <p id="auth-error" class="alert alert-error hidden" role="alert"></p>
+      </form>
+    </section>
+
+    <div id="console-shell" class="hidden">
+      <nav class="tabs" aria-label="Console sections">
+        <button class="tab-btn active" data-tab="dashboard" type="button">Dashboard</button>
+        <button class="tab-btn" data-tab="jobs" type="button">Jobs</button>
+        <button class="tab-btn" data-tab="runs" type="button">Runs &amp; Findings</button>
+        <button class="tab-btn" data-tab="repair" type="button">Repair Workbench</button>
+        <button class="tab-btn" data-tab="batches" type="button">Batches</button>
+        <button class="tab-btn" data-tab="plugins" type="button">Plugins</button>
+        <button id="refresh-all-btn" class="btn btn-secondary tab-refresh" type="button">Refresh</button>
+      </nav>
+
+      <p id="global-alert" class="alert hidden" role="status"></p>
+
+      <section id="tab-dashboard" class="tab-panel">
+        <div class="grid-cards" id="overview-cards"></div>
+        <div class="grid-2">
+          <div class="card">
+            <h2>Active &amp; Recent Jobs</h2>
+            <div id="dashboard-jobs"></div>
+          </div>
+          <div class="card">
+            <h2>Recent Persisted Runs</h2>
+            <div id="dashboard-runs"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-jobs" class="tab-panel hidden">
+        <div class="card">
+          <div class="toolbar">
+            <input id="job-search" type="search" placeholder="Search target or job id...">
+            <select id="job-status-filter" aria-label="Filter by status">
+              <option value="">All statuses</option>
+              <option value="queued">queued</option>
+              <option value="running">running</option>
+              <option value="succeeded">succeeded</option>
+              <option value="failed">failed</option>
+              <option value="canceled">canceled</option>
+            </select>
+            <select id="job-kind-filter" aria-label="Filter by kind">
+              <option value="">All kinds</option>
+              <option value="scan">scan</option>
+              <option value="repair">repair</option>
+              <option value="batch_repair">batch_repair</option>
+              <option value="batch_resume">batch_resume</option>
+            </select>
+          </div>
+          <div id="new-scan-panel" class="subpanel">
+            <h3>Submit Scan Job</h3>
+            <form id="scan-form" class="inline-form">
+              <input id="scan-path" type="text" placeholder="/path/to/dataset or file.parquet" required>
+              <select id="scan-profile" aria-label="Scan profile">
+                <option value="standard">standard</option>
+                <option value="quick">quick</option>
+                <option value="deep">deep</option>
+                <option value="baseline">baseline</option>
+              </select>
+              <input id="scan-plugins" type="text" placeholder="plugins (optional, comma-separated)">
+              <button id="scan-submit-btn" type="submit" class="btn btn-primary">Queue Scan</button>
+            </form>
+          </div>
+          <div class="grid-2">
+            <div id="jobs-table-wrap"></div>
+            <div id="job-detail-wrap" class="subpanel"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-runs" class="tab-panel hidden">
+        <div class="grid-2">
+          <div class="card">
+            <h2>Persisted Runs</h2>
+            <div id="runs-list-wrap"></div>
+          </div>
+          <div class="card">
+            <h2>Run Summary &amp; Findings</h2>
+            <div class="toolbar">
+              <select id="finding-severity-filter" aria-label="Filter findings by severity">
+                <option value="">All severities</option>
+                <option value="critical">critical</option>
+                <option value="high">high</option>
+                <option value="medium">medium</option>
+                <option value="low">low</option>
+                <option value="info">info</option>
+              </select>
+              <input id="finding-code-filter" type="search" placeholder="Exact finding code...">
+              <button id="finding-filter-btn" type="button" class="btn btn-secondary">Apply</button>
+            </div>
+            <div id="run-summary-wrap"></div>
+            <div id="findings-table-wrap"></div>
+            <h3>Assets</h3>
+            <div id="assets-table-wrap"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-repair" class="tab-panel hidden">
+        <div class="card">
+          <h2>Repair Plan &amp; Explicit Authorization Workbench</h2>
+          <form id="plan-form" class="stack">
+            <div class="inline-form">
+              <input id="plan-location" type="text" placeholder="Source dataset (/path or s3://...)" required>
+              <input id="repair-output" type="text" placeholder="Output path (/path/repaired or s3://...)">
+              <button id="plan-generate-btn" type="submit" class="btn btn-primary">Generate Plan</button>
+            </div>
+            <textarea id="plan-policy-toml" rows="3" placeholder="Optional policy TOML..."></textarea>
+          </form>
+          <div id="repair-plan-wrap"></div>
+        </div>
+      </section>
+
+      <section id="tab-batches" class="tab-panel hidden">
+        <div class="card">
+          <h2>Batch Orchestration</h2>
+          <form id="batch-submit-form" class="inline-form">
+            <input id="batch-plan-path" type="text" placeholder="Batch plan JSON path..." required>
+            <input id="batch-jobs-num" type="number" min="1" placeholder="jobs (optional)">
+            <button id="batch-submit-btn" type="submit" class="btn btn-primary">Queue Batch Repair</button>
+          </form>
+          <div class="grid-2">
+            <div id="batch-jobs-wrap"></div>
+            <div id="batch-detail-wrap" class="subpanel"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-plugins" class="tab-panel hidden">
+        <div class="card">
+          <h2>Server Allowlisted Plugin Catalog (Read-Only)</h2>
+          <p class="muted">
+            Plugins are trusted, operator-configured code. The web dashboard provides read-only
+            visibility into the server allowlist and recorded execution provenance.
+          </p>
+          <div id="plugins-wrap"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card">
+      <h2 id="modal-title">Confirm Action</h2>
+      <div id="modal-body" class="stack"></div>
+      <div class="row modal-actions">
+        <button id="modal-cancel-btn" type="button" class="btn btn-secondary">Cancel</button>
+        <button id="modal-confirm-btn" type="button" class="btn btn-danger">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/ui/app.js"></script>
+</body>
+</html>

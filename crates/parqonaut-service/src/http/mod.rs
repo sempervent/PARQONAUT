@@ -11,12 +11,14 @@ use axum::middleware::{from_fn, from_fn_with_state};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use metrics_exporter_prometheus::PrometheusHandle;
-use tower_http::compression::CompressionLayer;
+use tower_http::compression::predicate::{NotForContentType, Predicate, SizeAbove};
+use tower_http::compression::{CompressionLayer, DefaultPredicate};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 use crate::observability;
 use crate::service::ParqonautService;
+use crate::ui;
 use crate::worker::spawn_scan_job_workers;
 
 #[derive(Clone)]
@@ -46,13 +48,18 @@ pub fn build_router_with_workers(service: ParqonautService, workers: usize) -> R
 
     let protected = Router::new()
         .route("/openapi.json", get(openapi_json))
+        .route("/overview", get(handlers::get_overview))
         .route("/plugins", get(handlers::list_plugins))
         .route("/plugins/{name}", get(handlers::get_plugin))
         .route("/scans", post(handlers::post_async_scan))
         .route("/scans/sync", post(handlers::post_scan_sync))
         .route("/jobs/scans", post(handlers::post_async_scan))
         .route("/jobs/{job_id}", get(handlers::get_job))
+        .route("/jobs/{job_id}/events", get(handlers::get_job_events))
+        .route("/jobs/{job_id}/events/stream", get(handlers::stream_job_events))
+        .route("/jobs/{job_id}/batch", get(handlers::get_job_batch))
         .route("/jobs", get(handlers::list_jobs))
+        .route("/runs", get(handlers::list_runs))
         .route("/runs/{run_id}", get(handlers::get_run))
         .route("/runs/{run_id}/report", get(handlers::get_report))
         .route("/runs/{run_id}/assets", get(handlers::get_assets))
@@ -83,11 +90,23 @@ pub fn build_router_with_workers(service: ParqonautService, workers: usize) -> R
 
     Router::new()
         .route("/metrics", get(handlers::prometheus_metrics))
+        .route("/ui", get(ui::redirect_to_ui))
+        .route("/ui/", get(ui::index_html))
+        .route("/ui/styles.css", get(ui::styles_css))
+        .route("/ui/app.js", get(ui::app_js))
+        .route("/ui/api.js", get(ui::api_js))
+        .route("/ui/sse.js", get(ui::sse_js))
         .route("/api/v1/health", get(handlers::health))
         .route("/api/v1/health/live", get(handlers::health_live))
         .route("/api/v1/health/ready", get(handlers::health_ready))
         .nest("/api/v1", protected)
-        .layer(CompressionLayer::new())
+        .layer(
+            CompressionLayer::new().compress_when(
+                DefaultPredicate::new()
+                    .and(SizeAbove::new(32))
+                    .and(NotForContentType::new("text/event-stream")),
+            ),
+        )
         .layer(TraceLayer::new_for_http())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,

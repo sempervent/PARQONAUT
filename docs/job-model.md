@@ -1,30 +1,30 @@
-# Durable jobs
+# Durable jobs & operational events
 
-`prqnt serve` persists long-running work in **`application_jobs`** (SQLite or Postgres via `parqonaut-store`).
+`prqnt serve` persists long-running work in **`application_jobs`** and ordered operational history in **`application_job_events`** (SQLite or Postgres via `parqonaut-store`).
 
 ## Job kinds (durable async)
 
-| Kind | Trigger (examples) |
-|------|---------------------|
-| **scan** | `POST /api/v1/scans` |
+| Kind | Trigger |
+|------|---------|
+| **scan** | `POST /api/v1/scans` / `POST /api/v1/jobs/scans` |
 | **repair** | `POST /api/v1/repairs` |
 | **batch_repair** | `POST /api/v1/batches/repairs` |
-| **batch_resume** | `POST /api/v1/batches/{run_id}/resume` |
+| **batch_resume** | `POST /api/v1/batches/{run_dir}/resume` |
 
-## States
+## Authoritative state & event journal
 
 ```text
 queued → running → succeeded | failed | canceled
 ```
 
-Workers claim jobs with leases and heartbeats. Expired leases are recovered on server startup (requeue or fail with attempt limits).
+`application_jobs.status` is the single authoritative state machine. `application_job_events` records monotonic per-job `seq` events (`job_queued`, `job_claimed`, `job_recovered`, `cancel_requested`, `job_cancelled`, `execution_started`, `inputs_discovered`, `operation_started`, `operation_completed`, `output_committed`, `verification_started`, `verification_completed`, `plugin_*`, `execution_completed`, `execution_failed`).
 
-## Cancellation
+- **Indeterminate vs finite progress:** Completion percentage is reported only when `datasets_total > 0` or `files_total > 0`. Unknown totals report an indeterminate stage rather than fabricating progress from elapsed time.
+- **Retention & backpressure:** High-frequency non-critical progress updates flow through a bounded channel (`PARQONAUT_EVENT_CHANNEL_CAPACITY`) and coalesce when full; oldest non-terminal progress rows are pruned past `PARQONAUT_MAX_EVENTS_PER_JOB` while lifecycle/terminal events are preserved.
+- **Reconnection:** Clients reconnect to `GET /api/v1/jobs/{job_id}/events/stream` with `Last-Event-ID` or `?after_seq=` (or poll `GET /api/v1/jobs/{job_id}/events`) without duplicate application.
 
-`POST /api/v1/jobs/{job_id}/cancel` — queued jobs cancel immediately; running jobs set a cooperative cancel flag.
+## Cancellation & recovery
 
-## Synchronous API operations
-
-Diagnose, plan, check, verify, and batch status/check/plan/verify remain synchronous in v0.7 unless deliberately promoted later.
+`POST /api/v1/jobs/{job_id}/cancel` cancels `queued` jobs immediately and sets a cooperative cancel flag on `running` jobs. Workers renew leases with heartbeats; expired leases are recovered on startup (`job_recovered` / `job_retries_exhausted`).
 
 See [HTTP API](./api.md) and [prqnt serve](./server.md).

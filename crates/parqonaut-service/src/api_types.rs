@@ -1,9 +1,12 @@
 //! HTTP-facing DTOs (transport shapes, not storage rows).
 
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, Utc};
+pub use parqonaut_store::{StoredAssetRow, StoredFindingRow};
 use parqonaut_types::{
-    AuthRole, AuthTokenStatus, JobErrorCode, JobKind, JobStatus, RedactionPolicy, RunOutcome,
-    ScanOptions, ScanProfile, ScanSummary, ScanTarget,
+    AuthRole, AuthTokenStatus, JobErrorCode, JobEvent, JobKind, JobStatus, RedactionPolicy,
+    RunOutcome, ScanOptions, ScanProfile, ScanRunListItem, ScanSummary,
 };
 use serde::{Deserialize, Serialize};
 #[allow(unused_imports)]
@@ -15,14 +18,14 @@ pub const MAX_PAGE_SIZE: u32 = 500;
 /// Default page size when `limit` is omitted.
 pub const DEFAULT_PAGE_SIZE: u32 = 50;
 
-#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct HealthResponse {
     #[schema(example = "ok", value_type = String)]
-    pub status: &'static str,
+    pub status: String,
 }
 
 /// Response for `GET /api/v1/whoami` (authenticated).
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct WhoAmIResponse {
     pub token_id: Uuid,
     pub label: String,
@@ -31,7 +34,7 @@ pub struct WhoAmIResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct StartScanRequest {
-    pub target: ScanTarget,
+    pub target: parqonaut_types::ScanTarget,
     pub profile: ScanProfile,
     #[serde(default)]
     pub options: ScanOptions,
@@ -55,13 +58,13 @@ pub struct PluginCatalogEntryView {
     pub capabilities: serde_json::Value,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct PluginCatalogListResponse {
     pub plugins: Vec<PluginCatalogEntryView>,
     pub plugins_enabled: bool,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct StartScanResponse {
     pub run_id: Uuid,
     pub target_kind: String,
@@ -72,7 +75,7 @@ pub struct StartScanResponse {
     pub report_url: String,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({
     "run_id": "660e8400-e29b-41d4-a716-446655440001",
     "request_scan_id": "770e8400-e29b-41d4-a716-446655440002",
@@ -138,7 +141,7 @@ impl PageQuery {
     }
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({
     "items": [{
         "path": "/data/sample.parquet",
@@ -159,7 +162,7 @@ pub struct PagedAssetsResponse {
     pub offset: u32,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({
     "items": [{
         "fingerprint": "a1b2c3",
@@ -200,7 +203,7 @@ fn default_list_limit() -> i64 {
 }
 
 /// Response for `POST /api/v1/jobs/scans` and async `POST /api/v1/scans` (202 Accepted).
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({
     "job_id": "550e8400-e29b-41d4-a716-446655440000",
     "status": "queued",
@@ -218,13 +221,13 @@ pub struct ScanJobSubmissionResponse {
     pub job_url: String,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct JobFailureBody {
     pub code: JobErrorCode,
     pub message: String,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({
     "job_id": "550e8400-e29b-41d4-a716-446655440000",
     "status": "succeeded",
@@ -267,7 +270,7 @@ pub struct ScanJobView {
     pub job_url: String,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ScanJobListResponse {
     pub items: Vec<ScanJobView>,
     pub total: u64,
@@ -275,14 +278,66 @@ pub struct ScanJobListResponse {
     pub offset: u32,
 }
 
-#[derive(Debug, Deserialize, utoipa::IntoParams, utoipa::ToSchema)]
+#[derive(Debug, Clone, Deserialize, utoipa::IntoParams, utoipa::ToSchema)]
 #[into_params(parameter_in = Query)]
 pub struct JobListQuery {
     pub status: Option<String>,
+    pub kind: Option<String>,
     #[serde(default = "default_limit")]
     pub limit: u32,
     #[serde(default)]
     pub offset: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, utoipa::IntoParams, utoipa::ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct JobEventListQuery {
+    #[serde(default)]
+    pub after_seq: i64,
+    #[serde(default = "default_events_limit")]
+    pub limit: u32,
+    pub kind: Option<String>,
+    pub stage: Option<String>,
+}
+
+fn default_events_limit() -> u32 {
+    100
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct JobEventListResponse {
+    pub job_id: Uuid,
+    pub items: Vec<JobEvent>,
+    pub next_after_seq: i64,
+    pub has_more: bool,
+    pub retention_max_per_job: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, utoipa::IntoParams, utoipa::ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct RunListQuery {
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    #[serde(default)]
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct RunListResponse {
+    pub items: Vec<ScanRunListItem>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct OverviewResponse {
+    pub status: String,
+    pub job_counts: BTreeMap<String, u64>,
+    pub plugins_enabled: bool,
+    pub allowed_plugins_count: usize,
+    pub recent_jobs: Vec<ScanJobView>,
+    pub recent_runs: Vec<ScanRunListItem>,
 }
 
 // --- Token administration (future HTTP admin; admin role only) ---
@@ -295,7 +350,7 @@ pub struct AuthTokenCreateRequest {
     pub note: Option<String>,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({
     "token_id": "880e8400-e29b-41d4-a716-446655440003",
     "label": "ci-deploy",
@@ -340,7 +395,7 @@ pub struct AuthTokenSummaryView {
 }
 
 /// Response for `POST /api/v1/admin/tokens/{token_id}/rotate` (admin only; new secret once).
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({
     "token_id": "880e8400-e29b-41d4-a716-446655440099",
     "previous_token_id": "880e8400-e29b-41d4-a716-446655440001",

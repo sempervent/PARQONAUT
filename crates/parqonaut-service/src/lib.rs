@@ -6,12 +6,14 @@
 #![forbid(unsafe_code)]
 
 pub mod api_types;
-mod application_http;
+pub mod application_http;
 pub mod error;
+pub mod events;
 pub mod http;
 pub mod observability;
 pub mod openapi;
 pub mod service;
+pub mod ui;
 mod worker;
 
 pub use error::{AppError, ErrorBody, ErrorCode, ErrorEnvelope};

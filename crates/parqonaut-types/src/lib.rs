@@ -15,6 +15,7 @@ pub mod finding_code;
 mod fingerprint;
 mod format;
 mod job;
+mod job_events;
 mod job_recovery;
 mod plugin;
 mod report;
@@ -40,6 +41,11 @@ pub use finding_code::{system, FindingCode, FindingCodeError};
 pub use fingerprint::sort_json_value;
 pub use format::{DataFormat, FormatSupportTier};
 pub use job::{JobErrorCode, JobId, JobKind, JobResultRef, JobStatus};
+pub use job_events::{
+    sanitize_event_message, JobEvent, JobEventRetentionPolicy, JobStage,
+    DEFAULT_EVENT_CHANNEL_CAPACITY, DEFAULT_IDEMPOTENCY_TTL_SECS, DEFAULT_MAX_EVENTS_PER_JOB,
+    JOB_EVENT_SCHEMA_VERSION,
+};
 pub use job_recovery::JobRecoveryPolicy;
 pub use plugin::{PluginExecutionRecord, ResolvedPluginSelection, ScanPluginMetadata};
 pub use report::{DatasetSummary, FormatSummary, ReportMetadata, ScanReport, ScanSummary};

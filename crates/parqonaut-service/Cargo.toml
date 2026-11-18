@@ -19,6 +19,7 @@ parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
 parqonaut-repair = { path = "../parqonaut-repair" }
 parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
 parqonaut-storage = { path = "../parqonaut-storage" }
+parqonaut-workflow = { path = "../parqonaut-workflow" }
 axum.workspace = true
 tokio.workspace = true
 serde.workspace = true
@@ -26,6 +27,8 @@ serde_json.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 camino.workspace = true
+sha2.workspace = true
+hex.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 thiserror.workspace = true
@@ -37,6 +40,7 @@ futures-util = "0.3"
 urlencoding.workspace = true
 
 [dev-dependencies]
+aws-sdk-s3 = { version = "1", features = ["rustls", "rt-tokio"] }
 http-body-util.workspace = true
 serial_test = "3.4.0"
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }

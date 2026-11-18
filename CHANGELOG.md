@@ -2,6 +2,39 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.11.0] - 2026-11-18
+
+Operator Console and Interactive Operations: shared operational events, `prqnt tui`, bundled `/ui/` web dashboard, and idempotent operator workflows.
+
+### Added
+
+- **Durable job-event journal** (`application_job_events`, SQLite + Postgres migrations) with per-job monotonic sequence cursors, bounded recording channel (`PARQONAUT_EVENT_CHANNEL_CAPACITY`), coalescing under backpressure, and configurable retention (`PARQONAUT_MAX_EVENTS_PER_JOB`) preserving lifecycle/terminal events
+- **Progress instrumentation** across scan, repair (`RepairExecutor::execute_with_progress`), batch (`BatchExecutor::run_with_progress`), and worker recovery/cancellation without fabricated percentages
+- **HTTP event & console endpoints:** `GET /api/v1/jobs/{job_id}/events`, `GET /api/v1/jobs/{job_id}/events/stream` (SSE with `Last-Event-ID` resume and non-compressed streaming), `GET /api/v1/jobs/{job_id}/batch`, `GET /api/v1/overview`, `GET /api/v1/runs`, and `kind` filtering on `GET /api/v1/jobs`
+- **`Idempotency-Key` safety** (`idempotency_keys` table, `409 Conflict` on payload mismatch) on scan, repair, batch repair, and batch resume submissions
+- **`parqonaut-client`**: shared typed HTTP/SSE client and transport-neutral console/repair-review state model
+- **`prqnt tui`** (`parqonaut-tui`): interactive Ratatui/Crossterm terminal console with Overview, Jobs, Findings, Repair Review, Batches, and Activity views, RBAC-gated mutations, and panic-safe RAII terminal restoration
+- **Bundled `/ui/` web dashboard** in `parqonaut-service`: strict CSP (`script-src 'self'`), in-memory bearer auth only, XSS-safe DOM rendering, authenticated `fetch` SSE with polling fallback, light/dark themes, and explicit repair confirmation modal
+- **Headless browser & E2E verification:** `just console-demo`, `just tui-demo`, `just ui-test`, `scripts/ui-browser-smoke.mjs`, `operator_console_e2e`, and `s3_operator_e2e`
+
+## [0.10.0] - 2026-11-17
+
+Plugin execution bridge, `parqonaut-*` namespace migration, and server/S3 execution hardening ([PR #12](https://github.com/sempervent/PARQONAUT/pull/12), merge commit `1631a3c`).
+
+### Added
+
+- Versioned plugin protocol v1 (`parqonaut-plugin-protocol`) and Python SDK (`python/parqonaut_plugins`)
+- Subprocess plugin host (`parqonaut-plugin-host`) for scan analyzers and schema-preserving Arrow IPC batch transforms
+- CLI plugin management (`prqnt plugin list|inspect|validate`, `prqnt scan --plugin`, `prqnt transform --spec` plugin steps)
+- Opt-in server plugin policy, catalog API (`/api/v1/plugins`), digest-pinned durable scan jobs, and recovery revalidation
+- Four-leg Local/S3 batch plugin topology matrix and S3 multipart cancellation/abort guarantees
+- Complete active `parqonaut-*` crate namespace migration and `just naming-check`
+
+### Fixed
+
+- PATH-aware `PARQONAUT_PLUGIN_PYTHON` resolution, bounded stderr draining without EOF spin, RAII child/worker cleanup, and abort-before-commit guarantees on local and S3 batch failures
+- See [v0.10.0 release notes](docs/history/v0.10.0/release-notes.md) and [acceptance record](docs/history/v0.10.0/acceptance.md)
+
 ## [0.9.2] - 2026-09-21
 
 S3 multipart correctness at the default 5 MiB part boundary.

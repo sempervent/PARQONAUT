@@ -22,6 +22,7 @@ parqonaut-store = { path = "../parqonaut-store" }
 parqonaut-app = { path = "../parqonaut-app", features = ["s3"] }
 parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
 parqonaut-plugin-protocol = { workspace = true }
+parqonaut-tui = { path = "../parqonaut-tui" }
 dirs = "6"
 toml = "0.8"
 url = "2"

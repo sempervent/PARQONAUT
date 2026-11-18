@@ -105,7 +105,21 @@ api-test:
     set -euo pipefail
     cargo test -p parqonaut-service --tests
     cargo test -p parqonaut-store --test auth_tokens
+    cargo test -p parqonaut-store --test job_events_and_idempotency
     scripts/api-test/smoke.sh --start
+
+console-demo:
+    bash scripts/console-demo.sh
+
+tui-demo:
+    bash scripts/tui-demo.sh
+
+ui-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo test -p parqonaut-service --test ui_dashboard
+    node --test scripts/ui-test.mjs
+    bash scripts/console-demo.sh
 
 repair-fixtures:
     cargo xtask fixtures repair

@@ -6,6 +6,7 @@ mod scan;
 mod serve;
 mod stream;
 mod transform;
+mod tui;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -170,6 +171,11 @@ enum Command {
     Serve {
         #[command(flatten)]
         args: serve::ServeArgs,
+    },
+    /// Interactive terminal operator console connected to `prqnt serve`
+    Tui {
+        #[command(flatten)]
+        args: tui::TuiArgs,
     },
     /// Stream-convert CSV/Parquet inputs
     Convert {
@@ -378,6 +384,7 @@ async fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             .await?;
         }
         Command::Serve { args } => serve::run(args).await?,
+        Command::Tui { args } => tui::run(args).await?,
     }
     Ok(())
 }

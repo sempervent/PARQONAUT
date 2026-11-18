@@ -12,6 +12,7 @@ parqonaut-types = { path = "../parqonaut-types" }
 parqonaut-transform = { path = "../parqonaut-transform" }
 parqonaut-columnar = { path = "../parqonaut-columnar" }
 parqonaut-storage = { path = "../parqonaut-storage" }
+parqonaut-workflow = { path = "../parqonaut-workflow" }
 async-trait = "0.1"
 bytes = "1.9"
 url = { workspace = true }

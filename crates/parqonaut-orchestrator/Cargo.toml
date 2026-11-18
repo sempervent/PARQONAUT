@@ -9,6 +9,7 @@ description = "Multi-dataset batch orchestration: planning, scheduling, journal,
 [dependencies]
 parqonaut-repair = { path = "../parqonaut-repair" }
 parqonaut-storage = { path = "../parqonaut-storage" }
+parqonaut-workflow = { path = "../parqonaut-workflow" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

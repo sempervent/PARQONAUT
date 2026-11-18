@@ -2,15 +2,16 @@
 
 use chrono::{DateTime, Utc};
 use parqonaut_types::{
-    AuthPrincipal, AuthRole, AuthTokenId, JobId, JobKind, JobRecoveryPolicy, RedactionPolicy,
-    RunId, ScanReport, ScanRun, ScanRunListItem, ScanSummary, TargetIdentity,
+    AuthPrincipal, AuthRole, AuthTokenId, JobEvent, JobId, JobKind, JobRecoveryPolicy,
+    RedactionPolicy, RunId, ScanReport, ScanRun, ScanRunListItem, ScanSummary, TargetIdentity,
 };
+use std::collections::BTreeMap;
 
 use crate::auth_store::AuthTokenSummary;
 use crate::error::StoreError;
 use crate::models::{
-    JobCancelOutcome, RunPublicMeta, ScanJobRow, StaleRecoveryStats, StoredAssetRow,
-    StoredFindingRow,
+    AppendJobEvent, IdempotencyInsertResult, JobCancelOutcome, RunPublicMeta, ScanJobRow,
+    StaleRecoveryStats, StoredAssetRow, StoredFindingRow,
 };
 use crate::postgres_store::PostgresScanStore;
 use crate::sqlite_store::SqliteScanStore;
@@ -425,6 +426,109 @@ impl StoreBackend {
         match self {
             StoreBackend::Sqlite(s) => s.ping().await,
             StoreBackend::Postgres(p) => p.ping().await,
+        }
+    }
+
+    pub async fn append_job_event(
+        &self,
+        input: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<JobEvent, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => s.append_job_event(input, max_events_per_job).await,
+            StoreBackend::Postgres(p) => p.append_job_event(input, max_events_per_job).await,
+        }
+    }
+
+    pub async fn list_job_events(
+        &self,
+        job_id: JobId,
+        after_seq: i64,
+        limit: u64,
+        kind: Option<&str>,
+        stage: Option<&str>,
+    ) -> Result<Vec<JobEvent>, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.list_job_events(job_id, after_seq, limit, kind, stage).await
+            }
+            StoreBackend::Postgres(p) => {
+                p.list_job_events(job_id, after_seq, limit, kind, stage).await
+            }
+        }
+    }
+
+    pub async fn count_job_events(&self, job_id: JobId) -> Result<u64, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => s.count_job_events(job_id).await,
+            StoreBackend::Postgres(p) => p.count_job_events(job_id).await,
+        }
+    }
+
+    pub async fn insert_application_job_with_idempotency(
+        &self,
+        job_id: JobId,
+        kind: JobKind,
+        identity: &TargetIdentity,
+        request_json: &str,
+        idempotency: Option<(&str, &str, &str, DateTime<Utc>)>,
+    ) -> Result<IdempotencyInsertResult, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.insert_application_job_with_idempotency(
+                    job_id,
+                    kind,
+                    identity,
+                    request_json,
+                    idempotency,
+                )
+                .await
+            }
+            StoreBackend::Postgres(p) => {
+                p.insert_application_job_with_idempotency(
+                    job_id,
+                    kind,
+                    identity,
+                    request_json,
+                    idempotency,
+                )
+                .await
+            }
+        }
+    }
+
+    pub async fn list_application_jobs_filtered(
+        &self,
+        kind: Option<&str>,
+        status: Option<&str>,
+        offset: u64,
+        limit: u64,
+    ) -> Result<(Vec<ScanJobRow>, u64), StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.list_application_jobs_filtered(kind, status, offset, limit).await
+            }
+            StoreBackend::Postgres(p) => {
+                p.list_application_jobs_filtered(kind, status, offset, limit).await
+            }
+        }
+    }
+
+    pub async fn job_status_counts(&self) -> Result<BTreeMap<String, u64>, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => s.job_status_counts().await,
+            StoreBackend::Postgres(p) => p.job_status_counts().await,
+        }
+    }
+
+    pub async fn list_scan_runs_page(
+        &self,
+        offset: u64,
+        limit: u64,
+    ) -> Result<(Vec<ScanRunListItem>, u64), StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => s.list_scan_runs_page(offset, limit).await,
+            StoreBackend::Postgres(p) => p.list_scan_runs_page(offset, limit).await,
         }
     }
 }

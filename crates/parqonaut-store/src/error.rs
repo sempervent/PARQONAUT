@@ -19,4 +19,6 @@ pub enum StoreError {
     AuthToken(String),
     #[error("auth token not found: {0}")]
     AuthTokenNotFound(uuid::Uuid),
+    #[error("idempotency conflict: {0}")]
+    IdempotencyConflict(String),
 }
