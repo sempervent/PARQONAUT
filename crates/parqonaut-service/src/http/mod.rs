@@ -17,6 +17,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::observability;
 use crate::service::ParqonautService;
+use crate::ui;
 use crate::worker::spawn_scan_job_workers;
 
 #[derive(Clone)]
@@ -88,6 +89,12 @@ pub fn build_router_with_workers(service: ParqonautService, workers: usize) -> R
 
     Router::new()
         .route("/metrics", get(handlers::prometheus_metrics))
+        .route("/ui", get(ui::redirect_to_ui))
+        .route("/ui/", get(ui::index_html))
+        .route("/ui/styles.css", get(ui::styles_css))
+        .route("/ui/app.js", get(ui::app_js))
+        .route("/ui/api.js", get(ui::api_js))
+        .route("/ui/sse.js", get(ui::sse_js))
         .route("/api/v1/health", get(handlers::health))
         .route("/api/v1/health/live", get(handlers::health_live))
         .route("/api/v1/health/ready", get(handlers::health_ready))

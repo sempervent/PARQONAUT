@@ -13,6 +13,7 @@ pub mod http;
 pub mod observability;
 pub mod openapi;
 pub mod service;
+pub mod ui;
 mod worker;
 
 pub use error::{AppError, ErrorBody, ErrorCode, ErrorEnvelope};
