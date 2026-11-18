@@ -20,7 +20,9 @@ use crate::plan::{build_batch_plan, BatchPlan};
 use crate::report::{
     build_aggregate_report, BatchVerificationSummary, BATCH_REPORT_SCHEMA_VERSION,
 };
-use crate::verify::{verify_batch_with_run, verify_results_map, BatchVerifyReport};
+use crate::verify::{
+    verify_batch_with_run, verify_batch_with_run_async, verify_results_map, BatchVerifyReport,
+};
 
 pub const RUNS_DIR: &str = ".parqonaut/runs";
 pub const JOURNAL_FILE: &str = "journal.sqlite";
@@ -294,7 +296,7 @@ async fn execute_with_journal(
         journal.mark_run_completed(Utc::now())?;
     }
 
-    let verify = verify_batch_with_run(&plan, &records, Some(&run_id)).ok();
+    let verify = verify_batch_with_run_async(&plan, &records, Some(&run_id)).await.ok();
     let verify_map = verify.as_ref().map(verify_results_map).unwrap_or_default();
     let identity = journal.run_identity()?.unwrap_or(identity);
     let verification_summary = verify.as_ref().map(|v| BatchVerificationSummary {

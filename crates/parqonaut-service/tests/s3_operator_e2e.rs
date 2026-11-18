@@ -10,9 +10,10 @@ use axum::http::{header::AUTHORIZATION, Request, StatusCode};
 use http_body_util::BodyExt;
 use parqonaut_app::StoragePolicy;
 use parqonaut_service::{build_router_with_workers, ParqonautService};
-use parqonaut_storage::backend::StorageBackend;
+use parqonaut_storage::backend::{ListOptions, StorageBackend};
 use parqonaut_storage::conditional::ConditionalCreate;
-use parqonaut_storage::location::ObjectLocation;
+use parqonaut_storage::location::{DatasetLocation, ObjectLocation};
+use parqonaut_storage::publication::read_current_version;
 use parqonaut_storage::{S3Config, S3StorageBackend};
 use parqonaut_types::{AuthRole, JobId, JobStatus};
 use parqonaut_workflow::ProgressEventKind;
@@ -32,7 +33,11 @@ async fn s3_repair_job_persists_progress_events_and_publishes_to_rustfs() {
         .or_else(|_| std::env::var("PARQONAUT_S3_BUCKET"))
         .unwrap_or_else(|_| "parqonaut-test".into());
 
-    let s3 = S3StorageBackend::new(S3Config::minio(endpoint)).await;
+    let cfg = S3Config::minio(endpoint);
+    if let Err(e) = cfg.build_client().await.create_bucket().bucket(&bucket).send().await {
+        eprintln!("create_bucket({bucket}) result: {e:?}");
+    }
+    let s3 = S3StorageBackend::new(cfg).await;
     let id = Uuid::new_v4();
     let src_key = format!("operator-e2e/{id}/in/data.parquet");
     let src_bytes = std::fs::read(
@@ -108,12 +113,20 @@ async fn s3_repair_job_persists_progress_events_and_publishes_to_rustfs() {
             let events = svc.store().list_job_events(jid, 0, 100, None, None).await.unwrap();
             assert!(events.iter().any(|e| e.kind == ProgressEventKind::OutputCommitted));
             assert_eq!(events.last().unwrap().kind, ProgressEventKind::ExecutionCompleted);
-            let out_obj = ObjectLocation::S3 {
-                bucket: bucket.clone(),
-                key: format!("operator-e2e/{id}/out/data.parquet"),
-            };
-            let head = s3.head(&out_obj).await.expect("S3 output visible");
-            assert!(head.size > 0);
+            let out_loc = DatasetLocation::parse(&out_uri).unwrap();
+            let current = read_current_version(&s3, &out_loc).await.expect("CURRENT version");
+            assert!(current.is_some(), "expected committed publication CURRENT pointer");
+            let page = s3
+                .list(&out_loc, ListOptions { recursive: true, max_keys: Some(50) }, None)
+                .await
+                .expect("list S3 output");
+            assert!(
+                page.objects
+                    .iter()
+                    .any(|o| o.location.display_uri().ends_with("data.parquet") && o.size > 0),
+                "expected committed parquet object under {out_uri}: {:?}",
+                page.objects
+            );
             return;
         }
         if v.status == JobStatus::Failed {

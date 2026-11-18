@@ -61,7 +61,9 @@ pub use storage::{
     block_on_async, remote_current_version, remote_output_committed, remote_publication_state,
     BatchStorageRuntime,
 };
-pub use verify::{verify_batch, BatchVerifyReport, DatasetVerifyResult};
+pub use verify::{
+    verify_batch, verify_batch_with_run_async, BatchVerifyReport, DatasetVerifyResult,
+};
 
 pub const BATCH_CONFIG_SCHEMA_VERSION: u32 = 1;
 pub const BATCH_PLAN_SCHEMA_VERSION: u32 = 1;

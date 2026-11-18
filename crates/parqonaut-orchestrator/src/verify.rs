@@ -46,6 +46,15 @@ pub fn verify_batch_with_run(
     block_on_async(verify_batch_async(plan, records, &storage, batch_run_id))
 }
 
+pub async fn verify_batch_with_run_async(
+    plan: &BatchPlan,
+    records: &[DatasetRunRecord],
+    batch_run_id: Option<&RunId>,
+) -> Result<BatchVerifyReport, OrchestratorError> {
+    let storage = BatchStorageRuntime::new(plan.max_storage_requests);
+    verify_batch_async(plan, records, &storage, batch_run_id).await
+}
+
 async fn verify_batch_async(
     plan: &BatchPlan,
     records: &[DatasetRunRecord],
