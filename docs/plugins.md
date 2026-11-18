@@ -31,4 +31,12 @@ Catalog: `GET /api/v1/plugins`, `GET /api/v1/plugins/{name}` (allowlisted entrie
 
 Durable scan jobs store **digest-pinned** plugin identities. Recovery revalidates digests; changed plugin code fails with `plugin_stale` before spawn.
 
+## Python runtime & digest boundary
+
+Plugin packages require a Python interpreter (`>=3.12`) with `parqonaut_plugins` SDK dependencies (`pydantic`, `pyarrow`) installed from `python/parqonaut_plugins/uv.lock`.
+
+- Set `PARQONAUT_PLUGIN_PYTHON` to an explicit interpreter path (recommended in production/CI, e.g. `python/parqonaut_plugins/.venv/bin/python`) or a `PATH`-resolvable executable name (`python3`).
+- Set `PARQONAUT_PLUGIN_SDK_PATH` to `python/parqonaut_plugins/src` when running outside an installed wheel.
+- **Digest boundary:** A plugin's SHA-256 digest pins `parqonaut-plugin.json` and the non-excluded files inside that plugin's package directory (rejecting unexpected symlinks). The Python interpreter binary and external site-packages (`pyarrow`, `pydantic`) are operator-provisioned runtime dependencies **outside** the plugin package digest.
+
 See [Plugin authoring](plugin-authoring.md) and [Server](server.md).
