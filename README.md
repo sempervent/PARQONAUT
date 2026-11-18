@@ -8,7 +8,7 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 
 Use **`prqnt`** for local and S3-backed workflows: forensic scans, repair planning, batch fleet operations, streaming conversion, declarative transforms, and batch Python plugins in the transform pipeline. For lineage and source provenance, see [docs/provenance.md](docs/provenance.md).
 
-**Current release:** [v0.9.2](https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.2) — bounded streaming Parquet publication to S3, complete local/S3 routing for transform and convert, and the 6×4 remote capability matrix. See [release notes](docs/history/v0.9.2/release-notes.md).
+**Current release:** [v0.10.0](docs/history/v0.10.0/release-notes.md) — Python plugin execution bridge (protocol v1, scan analyzers, Arrow IPC batch transforms), digest-pinned durable server jobs, and `parqonaut-*` namespace migration (latest published GitHub tag: [v0.9.2](https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.2)).
 
 **Documentation:** [PARQONAUT docs](https://sempervent.github.io/PARQONAUT/) (GitHub Pages)
 

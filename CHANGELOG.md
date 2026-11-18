@@ -2,6 +2,24 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.10.0] - 2026-11-17
+
+Plugin execution bridge, `parqonaut-*` namespace migration, and server/S3 execution hardening ([PR #12](https://github.com/sempervent/PARQONAUT/pull/12), merge commit `1631a3c`).
+
+### Added
+
+- Versioned plugin protocol v1 (`parqonaut-plugin-protocol`) and Python SDK (`python/parqonaut_plugins`)
+- Subprocess plugin host (`parqonaut-plugin-host`) for scan analyzers and schema-preserving Arrow IPC batch transforms
+- CLI plugin management (`prqnt plugin list|inspect|validate`, `prqnt scan --plugin`, `prqnt transform --spec` plugin steps)
+- Opt-in server plugin policy, catalog API (`/api/v1/plugins`), digest-pinned durable scan jobs, and recovery revalidation
+- Four-leg Local/S3 batch plugin topology matrix and S3 multipart cancellation/abort guarantees
+- Complete active `parqonaut-*` crate namespace migration and `just naming-check`
+
+### Fixed
+
+- PATH-aware `PARQONAUT_PLUGIN_PYTHON` resolution, bounded stderr draining without EOF spin, RAII child/worker cleanup, and abort-before-commit guarantees on local and S3 batch failures
+- See [v0.10.0 release notes](docs/history/v0.10.0/release-notes.md) and [acceptance record](docs/history/v0.10.0/acceptance.md)
+
 ## [0.9.2] - 2026-09-21
 
 S3 multipart correctness at the default 5 MiB part boundary.

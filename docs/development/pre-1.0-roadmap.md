@@ -18,14 +18,16 @@ Planned capability sequence before **v1.0.0**. Each item must ship as **implemen
 - Eliminate arrow2/parquet2 split where practical
 - In-memory cross-engine pipelines; remove unnecessary disk handoffs
 
-## v0.10.0 — Plugin execution bridge
+## v0.10.0 — Plugin execution bridge (shipped, commit `1631a3c`)
 
-- Activate plugin protocol, lifecycle, sandbox/resource policy
-- CLI + server integration, discovery/manifest execution
+- Plugin protocol v1 (`parqonaut-plugin-protocol`), Python SDK (`parqonaut_plugins`), subprocess host (`parqonaut-plugin-host`)
+- CLI + opt-in server integration, digest-pinned durable scan jobs, Local/S3 batch plugin matrix, `parqonaut-*` namespace migration
 
-## v0.11.0 — Interactive interfaces
+## v0.11.0 — Interactive interfaces (current)
 
-- TUI and web dashboard: live jobs, findings, repair review, authorization, batch monitoring, progress/events
+- Durable job-event journal, SSE + polling progress stream, `Idempotency-Key` submission safety
+- Shared operator client (`parqonaut-client`), interactive TUI (`prqnt tui`), and bundled Axum web dashboard (`/ui/`)
+- Live jobs, findings, explicit repair review & authorization, batch monitoring, and read-only plugin catalog
 
 ## v0.12.x — 1.0 hardening
 
