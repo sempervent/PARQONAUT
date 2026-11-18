@@ -93,7 +93,7 @@ fn plugin_progress_lifecycle_success() {
     assert!(!report.plugin_executions.is_empty());
     assert_eq!(report.plugin_executions[0].status, "completed");
 
-    let kinds: Vec<_> = collector.take_events().iter().map(|e| e.kind.clone()).collect();
+    let kinds: Vec<_> = collector.take_events().iter().map(|e| e.kind).collect();
     assert!(!kinds.is_empty());
     assert_eq!(kinds[0], ProgressEventKind::PluginStarted);
     assert!(kinds.contains(&ProgressEventKind::PluginCompleted));
@@ -123,7 +123,7 @@ fn plugin_progress_lifecycle_failure() {
     let run = TransformRunContext::new(Arc::clone(&collector) as Arc<dyn ProgressObserver>);
     let plan = compile_plan(&spec).expect("compile");
     assert!(execute_plan_with_run(&plan, &run).is_err());
-    let kinds: Vec<_> = collector.take_events().iter().map(|e| e.kind.clone()).collect();
+    let kinds: Vec<_> = collector.take_events().iter().map(|e| e.kind).collect();
     if kinds.contains(&ProgressEventKind::PluginStarted) {
         assert!(kinds.contains(&ProgressEventKind::PluginFailed));
         assert!(!kinds.contains(&ProgressEventKind::PluginCompleted));
@@ -163,7 +163,7 @@ fn plugin_progress_lifecycle_cancellation() {
     thread::sleep(Duration::from_millis(400));
     run.request_cancel();
     assert!(handle.join().expect("join").is_err());
-    let kinds: Vec<_> = collector.take_events().iter().map(|e| e.kind.clone()).collect();
+    let kinds: Vec<_> = collector.take_events().iter().map(|e| e.kind).collect();
     if kinds.contains(&ProgressEventKind::PluginStarted) {
         assert!(kinds.contains(&ProgressEventKind::PluginFailed));
         assert_single_terminal_plugin_events(&kinds);

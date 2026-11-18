@@ -64,9 +64,21 @@ impl ParqonautApp {
         req: ScanRequest,
         bridge: Option<&ScanPluginBridge>,
     ) -> Result<ScanResult, ApplicationError> {
+        self.scan_with_bridge_and_progress(req, bridge, &parqonaut_workflow::NoOpProgressObserver)
+            .await
+    }
+
+    pub async fn scan_with_bridge_and_progress(
+        &self,
+        req: ScanRequest,
+        bridge: Option<&ScanPluginBridge>,
+        progress: &dyn parqonaut_workflow::ProgressObserver,
+    ) -> Result<ScanResult, ApplicationError> {
         let app_req =
             AppScanRequest { location: req.location, profile: req.profile, plugins: req.plugins };
-        let report = scan::run_scan_with_bridge(&app_req, &self.policy, bridge).await?;
+        let report =
+            scan::run_scan_with_bridge_and_progress(&app_req, &self.policy, bridge, progress)
+                .await?;
         Ok(ScanResult { report })
     }
 
@@ -84,6 +96,14 @@ impl ParqonautApp {
 
     pub async fn repair(&self, req: RepairRequest) -> Result<RepairResult, ApplicationError> {
         repair::repair(&req, &self.policy).await
+    }
+
+    pub async fn repair_with_progress(
+        &self,
+        req: RepairRequest,
+        progress: &dyn parqonaut_workflow::ProgressObserver,
+    ) -> Result<RepairResult, ApplicationError> {
+        repair::repair_with_progress(&req, &self.policy, progress).await
     }
 
     pub async fn verify(&self, req: VerifyRequest) -> Result<VerifyResult, ApplicationError> {
@@ -107,6 +127,15 @@ impl ParqonautApp {
         batch::batch_repair(&req, cancel).await
     }
 
+    pub async fn batch_repair_with_progress(
+        &self,
+        req: BatchRepairRequest,
+        cancel: parqonaut_orchestrator::CancelFlag,
+        progress: std::sync::Arc<dyn parqonaut_workflow::ProgressObserver>,
+    ) -> Result<BatchRepairResult, ApplicationError> {
+        batch::batch_repair_with_progress(&req, cancel, progress).await
+    }
+
     pub fn batch_status(
         &self,
         req: BatchStatusRequest,
@@ -120,6 +149,15 @@ impl ParqonautApp {
         cancel: parqonaut_orchestrator::CancelFlag,
     ) -> Result<BatchRepairResult, ApplicationError> {
         batch::batch_resume(&req, cancel).await
+    }
+
+    pub async fn batch_resume_with_progress(
+        &self,
+        req: BatchResumeRequest,
+        cancel: parqonaut_orchestrator::CancelFlag,
+        progress: std::sync::Arc<dyn parqonaut_workflow::ProgressObserver>,
+    ) -> Result<BatchRepairResult, ApplicationError> {
+        batch::batch_resume_with_progress(&req, cancel, progress).await
     }
 
     pub fn batch_verify(

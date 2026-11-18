@@ -216,7 +216,7 @@ fn local_plugin_cancellation_during_pipeline() {
     }
     let result = handle.join().expect("join");
     assert!(result.is_err(), "cancelled pipeline must fail");
-    let kinds: Vec<_> = observer.take_events().iter().map(|e| e.kind.clone()).collect();
+    let kinds: Vec<_> = observer.take_events().iter().map(|e| e.kind).collect();
     if kinds.contains(&ProgressEventKind::PluginStarted) {
         assert!(kinds.contains(&ProgressEventKind::PluginFailed));
         assert_eq!(kinds[0], ProgressEventKind::PluginStarted);
@@ -248,7 +248,7 @@ fn progress_throttling_many_batches() {
     let observer = Arc::new(CollectingProgressObserver::new());
     let run = TransformRunContext::new(Arc::clone(&observer) as Arc<dyn ProgressObserver>);
     execute_plan_with_run(&plan, &run).expect("execute");
-    let kinds: Vec<_> = observer.take_events().iter().map(|e| e.kind.clone()).collect();
+    let kinds: Vec<_> = observer.take_events().iter().map(|e| e.kind).collect();
     let progress_count = kinds.iter().filter(|k| **k == ProgressEventKind::PluginProgress).count();
     assert!(progress_count < 80, "progress must be throttled, got {progress_count}");
     assert!(kinds.contains(&ProgressEventKind::PluginStarted));

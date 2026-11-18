@@ -8,6 +8,7 @@
 pub mod api_types;
 mod application_http;
 pub mod error;
+pub mod events;
 pub mod http;
 pub mod observability;
 pub mod openapi;

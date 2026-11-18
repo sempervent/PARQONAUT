@@ -37,6 +37,7 @@ pub struct ScanJobRow {
 pub struct StaleRecoveryStats {
     pub requeued: u64,
     pub failed_retries_exhausted: u64,
+    pub recovered_events: Vec<parqonaut_types::JobEvent>,
 }
 
 /// Outcome of a client cancel request against a durable job.
@@ -88,4 +89,26 @@ pub struct StoredFindingRow {
     pub category: String,
     pub asset_path: Option<String>,
     pub dataset_id: Option<String>,
+}
+
+/// Input payload to append an ordered event to `application_job_events`.
+#[derive(Debug, Clone)]
+pub struct AppendJobEvent {
+    pub job_id: parqonaut_types::JobId,
+    pub occurred_at: DateTime<Utc>,
+    pub kind: parqonaut_workflow::ProgressEventKind,
+    pub stage: parqonaut_types::JobStage,
+    pub is_terminal: bool,
+    pub metrics: parqonaut_workflow::ProgressMetrics,
+    pub message: Option<String>,
+    pub run_id: Option<Uuid>,
+    pub plugin_name: Option<String>,
+    pub plugin_digest: Option<String>,
+}
+
+/// Result of an idempotent job submission insert.
+#[derive(Debug, Clone)]
+pub enum IdempotencyInsertResult {
+    Created { job_id: parqonaut_types::JobId, submitted_at: DateTime<Utc> },
+    Replayed { existing: Box<ScanJobRow> },
 }

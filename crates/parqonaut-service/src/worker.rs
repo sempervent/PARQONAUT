@@ -1,18 +1,21 @@
 //! In-process background worker: claims queued application jobs and delegates to [`ParqonautService`].
 
 use std::panic::AssertUnwindSafe;
+use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{Duration as ChronoDuration, Utc};
 use futures_util::FutureExt;
 use parqonaut_orchestrator::CancelFlag;
-use parqonaut_types::{JobId, JobKind, JobRecoveryPolicy, RunId};
+use parqonaut_types::{JobId, JobKind, JobRecoveryPolicy, JobStage, RunId};
+use parqonaut_workflow::{ProgressEventKind, ProgressMetrics, ProgressObserver};
 use tracing::Instrument;
 use uuid::Uuid;
 
 use parqonaut_plugin_host::CancelToken;
 
 use crate::error::AppError;
+use crate::events::lifecycle_event;
 use crate::observability::audit;
 use crate::scan_job::parse_scan_job_payload;
 use crate::service::ParqonautService;
@@ -34,6 +37,9 @@ fn spawn_application_job_worker(service: ParqonautService) -> tokio::task::JoinH
             let now = Utc::now();
             match service.store().recover_stale_scan_jobs(now, policy).await {
                 Ok(stats) => {
+                    for ev in stats.recovered_events {
+                        service.events().broadcast_existing(ev);
+                    }
                     if stats.requeued > 0 {
                         metrics::counter!("parqonaut_jobs_requeued_total")
                             .increment(stats.requeued);
@@ -79,6 +85,16 @@ fn spawn_application_job_worker(service: ParqonautService) -> tokio::task::JoinH
             let kind = JobKind::parse(&job.job_kind).unwrap_or(JobKind::Scan);
             metrics::counter!("parqonaut_jobs_claimed_total", "kind" => kind.as_str()).increment(1);
             audit::job_claimed(job_uuid, job.attempt_count, &worker_id);
+            let _ = service
+                .events()
+                .record_lifecycle(lifecycle_event(
+                    jid,
+                    ProgressEventKind::JobClaimed,
+                    JobStage::Worker,
+                    ProgressMetrics::default(),
+                    format!("claimed by worker {} (attempt {})", worker_id, job.attempt_count),
+                ))
+                .await;
 
             let job_span = tracing::info_span!(
                 "parqonaut.job",
@@ -138,6 +154,16 @@ fn spawn_application_job_worker(service: ParqonautService) -> tokio::task::JoinH
                         let _ = service
                             .store()
                             .complete_scan_job_failure(jid, "internal_error", &msg)
+                            .await;
+                        let _ = service
+                            .events()
+                            .record_lifecycle(lifecycle_event(
+                                jid,
+                                ProgressEventKind::ExecutionFailed,
+                                JobStage::Worker,
+                                ProgressMetrics::default(),
+                                &msg,
+                            ))
                             .await;
                         metrics::counter!("parqonaut_jobs_failed_total", "code" => "internal_error")
                             .increment(1);
@@ -207,14 +233,21 @@ async fn run_scan_job(
         }
     });
     let service_exec = service.clone();
+    let observer = service.events().observer(jid, JobStage::Scan);
     let resp = tokio::task::spawn_blocking(move || {
-        tokio::runtime::Handle::current()
-            .block_on(service_exec.execute_scan_job_payload(payload, Some(token)))
+        tokio::runtime::Handle::current().block_on(
+            service_exec.execute_scan_job_payload_with_progress(
+                payload,
+                Some(token),
+                Some(observer.as_ref()),
+            ),
+        )
     })
     .await
     .map_err(|e| AppError::Internal(format!("scan worker join: {e}")))?;
     poll_task.abort();
     bridge_task.abort();
+    service.events().flush().await;
     if cancel.is_cancelled() {
         return cancel_running_job(service, jid).await;
     }
@@ -224,6 +257,19 @@ async fn run_scan_job(
         Err(e) => return Err(e),
     };
     service.store().complete_scan_job_success(jid, RunId(resp.run_id)).await?;
+    let mut done_ev = lifecycle_event(
+        jid,
+        ProgressEventKind::ExecutionCompleted,
+        JobStage::Scan,
+        ProgressMetrics {
+            files_total: resp.summary.discovered_assets,
+            files_done: resp.summary.inspected_assets,
+            ..Default::default()
+        },
+        format!("scan completed (run={})", resp.run_id),
+    );
+    done_ev.run_id = Some(resp.run_id);
+    let _ = service.events().record_lifecycle(done_ev).await;
     metrics::counter!("parqonaut_jobs_succeeded_total", "kind" => "scan").increment(1);
     audit::job_completed(jid.0, resp.run_id);
     Ok(())
@@ -238,7 +284,9 @@ async fn run_repair_job(
     if cancel.is_cancelled() {
         return cancel_running_job(service, jid).await;
     }
-    let result_ref = service.run_repair_job(request_json).await?;
+    let observer = service.events().observer(jid, JobStage::Repair);
+    let result_ref = service.run_repair_job(request_json, Some(observer.as_ref())).await?;
+    service.events().flush().await;
     if cancel.is_cancelled() {
         return cancel_running_job(service, jid).await;
     }
@@ -254,7 +302,10 @@ async fn run_batch_repair_job(
     if cancel.is_cancelled() {
         return cancel_running_job(service, jid).await;
     }
-    let result_ref = service.run_batch_repair_job(request_json, cancel.clone()).await?;
+    let observer: Arc<dyn ProgressObserver> = service.events().observer(jid, JobStage::Batch);
+    let result_ref =
+        service.run_batch_repair_job(request_json, cancel.clone(), Some(observer)).await?;
+    service.events().flush().await;
     if cancel.is_cancelled() {
         return cancel_running_job(service, jid).await;
     }
@@ -270,7 +321,10 @@ async fn run_batch_resume_job(
     if cancel.is_cancelled() {
         return cancel_running_job(service, jid).await;
     }
-    let result_ref = service.run_batch_resume_job(request_json, cancel.clone()).await?;
+    let observer: Arc<dyn ProgressObserver> = service.events().observer(jid, JobStage::Batch);
+    let result_ref =
+        service.run_batch_resume_job(request_json, cancel.clone(), Some(observer)).await?;
+    service.events().flush().await;
     if cancel.is_cancelled() {
         return cancel_running_job(service, jid).await;
     }
@@ -285,6 +339,16 @@ async fn complete_with_result_ref(
 ) -> Result<(), AppError> {
     let json = serde_json::to_string(result_ref)?;
     service.store().complete_application_job_success(jid, run_id, Some(&json)).await?;
+    let _ = service
+        .events()
+        .record_lifecycle(lifecycle_event(
+            jid,
+            ProgressEventKind::ExecutionCompleted,
+            JobStage::Worker,
+            ProgressMetrics::default(),
+            "job completed",
+        ))
+        .await;
     metrics::counter!("parqonaut_jobs_succeeded_total").increment(1);
     if let parqonaut_app::JobResultReference::ScanRun { run_id } = result_ref {
         audit::job_completed(jid.0, *run_id);
@@ -296,6 +360,16 @@ async fn complete_with_result_ref(
 
 async fn cancel_running_job(service: &ParqonautService, jid: JobId) -> Result<(), AppError> {
     service.store().complete_application_job_canceled(jid).await?;
+    let _ = service
+        .events()
+        .record_lifecycle(lifecycle_event(
+            jid,
+            ProgressEventKind::JobCancelled,
+            JobStage::Cancel,
+            ProgressMetrics::default(),
+            "job canceled",
+        ))
+        .await;
     metrics::counter!("parqonaut_jobs_cancel_total").increment(1);
     audit::job_failed(jid.0, "canceled");
     Ok(())
@@ -304,6 +378,16 @@ async fn cancel_running_job(service: &ParqonautService, jid: JobId) -> Result<()
 async fn fail_job(service: &ParqonautService, jid: JobId, e: &AppError) {
     let code = app_error_to_job_failure_label(e);
     let _ = service.store().complete_scan_job_failure(jid, code, &e.to_string()).await;
+    let _ = service
+        .events()
+        .record_lifecycle(lifecycle_event(
+            jid,
+            ProgressEventKind::ExecutionFailed,
+            JobStage::Worker,
+            ProgressMetrics::default(),
+            format!("{code}: {e}"),
+        ))
+        .await;
     metrics::counter!("parqonaut_jobs_failed_total", "code" => code).increment(1);
     audit::job_failed(jid.0, code);
 }
@@ -326,6 +410,7 @@ fn app_error_to_job_failure_label(e: &AppError) -> &'static str {
         AppError::ScanFailed(_) => "scan_failed",
         AppError::Store(_) => "store_error",
         AppError::Internal(_) => "internal_error",
+        AppError::Conflict(_) => "conflict",
         AppError::JobNotFound => "internal_error",
         AppError::TokenNotFound => "internal_error",
         AppError::Unauthorized(_) | AppError::Forbidden(_) | AppError::LocationNotAllowed(_) => {

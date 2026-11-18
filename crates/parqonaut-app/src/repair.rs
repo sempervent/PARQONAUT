@@ -48,6 +48,14 @@ pub async fn repair(
     req: &RepairRequest,
     policy: &StoragePolicy,
 ) -> Result<RepairResult, ApplicationError> {
+    repair_with_progress(req, policy, &parqonaut_workflow::NoOpProgressObserver).await
+}
+
+pub async fn repair_with_progress(
+    req: &RepairRequest,
+    policy: &StoragePolicy,
+    progress: &dyn parqonaut_workflow::ProgressObserver,
+) -> Result<RepairResult, ApplicationError> {
     policy.validate_dataset(&req.source)?;
     policy.validate_dataset(&req.output)?;
     let source_backend = backend_for_location(&req.source).await?;
@@ -60,11 +68,19 @@ pub async fn repair(
     let execution = if requires_storage_execution(&req.source, &req.output) {
         let output_backend = backend_for_location(&req.output).await?;
         source_backend
-            .execute_plan(&executor, &req.plan, &req.output, &scan, &output_backend, &run_id)
+            .execute_plan_with_progress(
+                &executor,
+                &req.plan,
+                &req.output,
+                &scan,
+                &output_backend,
+                &run_id,
+                progress,
+            )
             .await?
     } else {
         let out = location_root(&req.output);
-        executor.execute(&req.plan, &out, &scan)?
+        executor.execute_with_progress(&req.plan, &out, &scan, progress)?
     };
     Ok(RepairResult { execution })
 }

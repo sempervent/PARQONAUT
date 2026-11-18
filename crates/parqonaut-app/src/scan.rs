@@ -40,7 +40,29 @@ pub async fn run_scan_with_bridge(
     policy: &StoragePolicy,
     bridge: Option<&ScanPluginBridge>,
 ) -> Result<ScanReport, ApplicationError> {
+    run_scan_with_bridge_and_progress(
+        req,
+        policy,
+        bridge,
+        &parqonaut_workflow::NoOpProgressObserver,
+    )
+    .await
+}
+
+pub async fn run_scan_with_bridge_and_progress(
+    req: &AppScanRequest,
+    policy: &StoragePolicy,
+    bridge: Option<&ScanPluginBridge>,
+    progress: &dyn parqonaut_workflow::ProgressObserver,
+) -> Result<ScanReport, ApplicationError> {
+    use parqonaut_workflow::{ProgressEvent, ProgressEventKind, ProgressMetrics};
     policy.validate_dataset(&req.location)?;
+    progress.emit(ProgressEvent {
+        kind: ProgressEventKind::ExecutionStarted,
+        path: Some(req.location.display_uri()),
+        metrics: ProgressMetrics::default(),
+        message: Some(format!("scan started (profile={:?})", req.profile)),
+    });
     match &req.location {
         DatasetLocation::Local(l) => {
             if !req.plugins.is_empty() {
@@ -59,7 +81,9 @@ pub async fn run_scan_with_bridge(
                 };
                 let mut scan_req = ScanRequest::new(target, req.profile);
                 scan_req.options.requested_plugins = req.plugins.clone();
-                Ok(ScanEngine::run_with_plugins(&scan_req, Some(bridge))?)
+                let report = ScanEngine::run_with_plugins(&scan_req, Some(bridge))?;
+                emit_scan_completion_events(progress, &report);
+                Ok(report)
             } else if bridge.is_some() {
                 Err(ApplicationError::InvalidRequest(
                     "plugins requested but selection empty".into(),
@@ -71,7 +95,9 @@ pub async fn run_scan_with_bridge(
                     ScanTarget::LocalDirectory { path: l.path.clone() }
                 };
                 let scan_req = ScanRequest::new(target, req.profile);
-                Ok(ScanEngine::run(&scan_req)?)
+                let report = ScanEngine::run(&scan_req)?;
+                emit_scan_completion_events(progress, &report);
+                Ok(report)
             }
         }
         DatasetLocation::S3(_) => {
@@ -81,7 +107,47 @@ pub async fn run_scan_with_bridge(
                 ));
             }
             let backend = backend_for_location(&req.location).await?;
-            backend.scan(&req.location).await.map_err(ApplicationError::from)
+            let report = backend.scan(&req.location).await.map_err(ApplicationError::from)?;
+            emit_scan_completion_events(progress, &report);
+            Ok(report)
         }
     }
+}
+
+fn emit_scan_completion_events(
+    progress: &dyn parqonaut_workflow::ProgressObserver,
+    report: &ScanReport,
+) {
+    use parqonaut_workflow::{ProgressEvent, ProgressEventKind, ProgressMetrics};
+    if let Some(meta) = &report.plugin_metadata {
+        for exec in &meta.executions {
+            let kind = if exec.status == "succeeded" {
+                ProgressEventKind::PluginCompleted
+            } else {
+                ProgressEventKind::PluginFailed
+            };
+            progress.emit(ProgressEvent {
+                kind,
+                path: Some(exec.name.clone()),
+                metrics: ProgressMetrics { elapsed_ms: exec.duration_ms, ..Default::default() },
+                message: Some(format!(
+                    "plugin {} ({}) phase={} findings={}",
+                    exec.name, exec.digest, exec.phase, exec.findings_contributed
+                )),
+            });
+        }
+    }
+    progress.emit(ProgressEvent {
+        kind: ProgressEventKind::InputsDiscovered,
+        path: None,
+        metrics: ProgressMetrics {
+            files_total: report.summary.discovered_assets,
+            files_done: report.summary.inspected_assets,
+            ..Default::default()
+        },
+        message: Some(format!(
+            "discovered {} assets, {} findings",
+            report.summary.discovered_assets, report.summary.findings_total
+        )),
+    });
 }

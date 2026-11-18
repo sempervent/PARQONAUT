@@ -1,9 +1,11 @@
 //! HTTP-facing DTOs (transport shapes, not storage rows).
 
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, Utc};
 use parqonaut_types::{
-    AuthRole, AuthTokenStatus, JobErrorCode, JobKind, JobStatus, RedactionPolicy, RunOutcome,
-    ScanOptions, ScanProfile, ScanSummary, ScanTarget,
+    AuthRole, AuthTokenStatus, JobErrorCode, JobEvent, JobKind, JobStatus, RedactionPolicy,
+    RunOutcome, ScanOptions, ScanProfile, ScanRunListItem, ScanSummary,
 };
 use serde::{Deserialize, Serialize};
 #[allow(unused_imports)]
@@ -31,7 +33,7 @@ pub struct WhoAmIResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct StartScanRequest {
-    pub target: ScanTarget,
+    pub target: parqonaut_types::ScanTarget,
     pub profile: ScanProfile,
     #[serde(default)]
     pub options: ScanOptions,
@@ -279,10 +281,62 @@ pub struct ScanJobListResponse {
 #[into_params(parameter_in = Query)]
 pub struct JobListQuery {
     pub status: Option<String>,
+    pub kind: Option<String>,
     #[serde(default = "default_limit")]
     pub limit: u32,
     #[serde(default)]
     pub offset: u32,
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams, utoipa::ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct JobEventListQuery {
+    #[serde(default)]
+    pub after_seq: i64,
+    #[serde(default = "default_events_limit")]
+    pub limit: u32,
+    pub kind: Option<String>,
+    pub stage: Option<String>,
+}
+
+fn default_events_limit() -> u32 {
+    100
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct JobEventListResponse {
+    pub job_id: Uuid,
+    pub items: Vec<JobEvent>,
+    pub next_after_seq: i64,
+    pub has_more: bool,
+    pub retention_max_per_job: u64,
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams, utoipa::ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct RunListQuery {
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    #[serde(default)]
+    pub offset: u32,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct RunListResponse {
+    pub items: Vec<ScanRunListItem>,
+    pub total: u64,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct OverviewResponse {
+    pub status: &'static str,
+    pub job_counts: BTreeMap<String, u64>,
+    pub plugins_enabled: bool,
+    pub allowed_plugins_count: usize,
+    pub recent_jobs: Vec<ScanJobView>,
+    pub recent_runs: Vec<ScanRunListItem>,
 }
 
 // --- Token administration (future HTTP admin; admin role only) ---

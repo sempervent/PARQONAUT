@@ -8,6 +8,7 @@ description = "SQLite and Postgres persistence for PARQONAUT scan runs, reports,
 
 [dependencies]
 parqonaut-types.workspace = true
+parqonaut-workflow = { path = "../parqonaut-workflow" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

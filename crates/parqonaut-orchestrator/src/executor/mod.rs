@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -10,6 +10,9 @@ use parqonaut_repair::{
 };
 use parqonaut_storage::location::DatasetLocation;
 use parqonaut_storage::publication::PublicationState;
+use parqonaut_workflow::{
+    NoOpProgressObserver, ProgressEvent, ProgressEventKind, ProgressMetrics, ProgressObserver,
+};
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
 
@@ -134,6 +137,29 @@ impl BatchExecutor {
         cancel: CancelFlag,
         dry_run: bool,
     ) -> Result<BatchRunOutcome, OrchestratorError> {
+        self.run_with_progress(
+            plan,
+            run_id,
+            journal,
+            mode,
+            cancel,
+            dry_run,
+            Arc::new(NoOpProgressObserver),
+        )
+        .await
+    }
+
+    #[instrument(skip(self, plan, journal, progress), fields(run_id = %run_id.0, datasets = plan.datasets.len()))]
+    pub async fn run_with_progress(
+        &self,
+        plan: &BatchPlan,
+        run_id: &RunId,
+        journal: Arc<dyn RunJournal>,
+        mode: ExecutionMode,
+        cancel: CancelFlag,
+        dry_run: bool,
+        progress: Arc<dyn ProgressObserver>,
+    ) -> Result<BatchRunOutcome, OrchestratorError> {
         if dry_run {
             return Ok(BatchRunOutcome {
                 peak_concurrent_datasets: 0,
@@ -152,6 +178,19 @@ impl BatchExecutor {
         let config = self.config.clone();
         let repair = clone_repair_executor(&self.repair);
         let completed_counter = Arc::new(AtomicUsize::new(0));
+        let datasets_total = plan.datasets.len() as u64;
+        let datasets_done = Arc::new(AtomicU64::new(0));
+        let datasets_failed = Arc::new(AtomicU64::new(0));
+
+        progress.emit(ProgressEvent {
+            kind: ProgressEventKind::InputsDiscovered,
+            path: Some(plan.output_root.clone()),
+            metrics: ProgressMetrics { datasets_total, ..Default::default() },
+            message: Some(format!(
+                "batch {} discovered {datasets_total} datasets",
+                plan.batch_name
+            )),
+        });
 
         let mut tasks = Vec::new();
         for dataset in &plan.datasets {
@@ -162,9 +201,11 @@ impl BatchExecutor {
             if mode == ExecutionMode::Resume {
                 if let Some(record) = prior {
                     if record.state == DatasetState::Succeeded {
+                        datasets_done.fetch_add(1, Ordering::SeqCst);
                         continue;
                     }
                     if !record.state.is_runnable() && record.state.is_terminal() {
+                        datasets_done.fetch_add(1, Ordering::SeqCst);
                         continue;
                     }
                 }
@@ -178,12 +219,26 @@ impl BatchExecutor {
             let cancel = cancel.clone();
             let completed_counter = Arc::clone(&completed_counter);
             let prior_state = prior.map(|r| r.state);
+            let progress = Arc::clone(&progress);
+            let datasets_done = Arc::clone(&datasets_done);
+            let datasets_failed = Arc::clone(&datasets_failed);
 
             tasks.push(move || async move {
                 if cancel.is_cancelled() {
                     return skipped_outcome(&dataset.dataset_id, prior_state);
                 }
-                execute_dataset_with_retries(
+                progress.emit(ProgressEvent {
+                    kind: ProgressEventKind::OperationStarted,
+                    path: Some(dataset.dataset_id.0.clone()),
+                    metrics: ProgressMetrics {
+                        datasets_total,
+                        datasets_done: datasets_done.load(Ordering::SeqCst),
+                        datasets_failed: datasets_failed.load(Ordering::SeqCst),
+                        ..Default::default()
+                    },
+                    message: Some(format!("dataset {} started", dataset.dataset_id.0)),
+                });
+                let outcome = execute_dataset_with_retries(
                     &dataset,
                     &run_id,
                     journal,
@@ -193,7 +248,40 @@ impl BatchExecutor {
                     cancel,
                     completed_counter,
                 )
-                .await
+                .await;
+                let done = datasets_done.fetch_add(1, Ordering::SeqCst) + 1;
+                if outcome.state == DatasetState::Succeeded {
+                    progress.emit(ProgressEvent {
+                        kind: ProgressEventKind::OperationCompleted,
+                        path: Some(dataset.dataset_id.0.clone()),
+                        metrics: ProgressMetrics {
+                            datasets_total,
+                            datasets_done: done,
+                            datasets_failed: datasets_failed.load(Ordering::SeqCst),
+                            ..Default::default()
+                        },
+                        message: Some(format!("dataset {} succeeded", dataset.dataset_id.0)),
+                    });
+                } else {
+                    let failed = datasets_failed.fetch_add(1, Ordering::SeqCst) + 1;
+                    progress.emit(ProgressEvent {
+                        kind: ProgressEventKind::Failed,
+                        path: Some(dataset.dataset_id.0.clone()),
+                        metrics: ProgressMetrics {
+                            datasets_total,
+                            datasets_done: done,
+                            datasets_failed: failed,
+                            ..Default::default()
+                        },
+                        message: outcome.error_message.clone().or_else(|| {
+                            Some(format!(
+                                "dataset {} state {:?}",
+                                dataset.dataset_id.0, outcome.state
+                            ))
+                        }),
+                    });
+                }
+                outcome
             });
         }
 

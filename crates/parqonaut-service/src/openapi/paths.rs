@@ -3,10 +3,11 @@
 
 use crate::api_types::{
     AuthTokenCreateRequest, AuthTokenCreateResponse, AuthTokenListResponse,
-    AuthTokenRotateResponse, AuthTokenSummaryView, DiffQuery, HealthResponse, JobListQuery,
-    PageQuery, PagedAssetsResponse, PagedFindingsResponse, PluginCatalogEntryView,
-    PluginCatalogListResponse, RunSummaryView, ScanJobListResponse, ScanJobSubmissionResponse,
-    ScanJobView, StartScanRequest, StartScanResponse, TargetRunsQuery, WhoAmIResponse,
+    AuthTokenRotateResponse, AuthTokenSummaryView, DiffQuery, HealthResponse, JobEventListQuery,
+    JobEventListResponse, JobListQuery, OverviewResponse, PageQuery, PagedAssetsResponse,
+    PagedFindingsResponse, PluginCatalogEntryView, PluginCatalogListResponse, RunListQuery,
+    RunListResponse, RunSummaryView, ScanJobListResponse, ScanJobSubmissionResponse, ScanJobView,
+    StartScanRequest, StartScanResponse, TargetRunsQuery, WhoAmIResponse,
 };
 use crate::application_http::{
     BatchCheckResponse, BatchConfigBody, BatchPlanResponse, BatchRepairJobBody, BatchResumeBody,
@@ -47,6 +48,18 @@ pub fn get_health() {}
     security(("bearerAuth" = []))
 )]
 pub fn get_openapi_json() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/overview",
+    tag = "health",
+    responses(
+        (status = 200, description = "Service overview (job status counts, recent jobs/runs, plugin summary)", body = OverviewResponse),
+        (status = 401, description = "Missing or invalid bearer token", body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn get_overview() {}
 
 #[utoipa::path(
     get,
@@ -162,6 +175,55 @@ pub fn get_job_by_id() {}
 
 #[utoipa::path(
     get,
+    path = "/api/v1/jobs/{job_id}/events",
+    tag = "jobs",
+    params(
+        ("job_id" = Uuid, Path, description = "Job id"),
+        JobEventListQuery
+    ),
+    responses(
+        (status = 200, description = "Ordered durable operational events for a job", body = JobEventListResponse),
+        (status = 401, description = "Missing or invalid bearer token", body = ErrorBody),
+        (status = 404, description = "Unknown job id", body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn get_job_events() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/jobs/{job_id}/events/stream",
+    tag = "jobs",
+    params(
+        ("job_id" = Uuid, Path, description = "Job id"),
+        ("after_seq" = Option<i64>, Query, description = "Replay events strictly after this sequence cursor")
+    ),
+    responses(
+        (status = 200, description = "Server-Sent Events stream (`text/event-stream`) of ordered job events"),
+        (status = 401, description = "Missing or invalid bearer token", body = ErrorBody),
+        (status = 404, description = "Unknown job id", body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn stream_job_events() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/jobs/{job_id}/batch",
+    tag = "batch",
+    params(("job_id" = Uuid, Path, description = "Batch job id")),
+    responses(
+        (status = 200, description = "Live or completed batch run status for a batch job", body = BatchStatusResponse),
+        (status = 401, body = ErrorBody),
+        (status = 404, body = ErrorBody),
+        (status = 409, description = "Batch run journal not initialized yet", body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn get_job_batch() {}
+
+#[utoipa::path(
+    get,
     path = "/api/v1/jobs",
     tag = "jobs",
     params(JobListQuery),
@@ -173,6 +235,19 @@ pub fn get_job_by_id() {}
     security(("bearerAuth" = []))
 )]
 pub fn list_jobs() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/runs",
+    tag = "runs",
+    params(RunListQuery),
+    responses(
+        (status = 200, description = "Persisted scan runs (newest first)", body = RunListResponse),
+        (status = 401, description = "Missing or invalid bearer token", body = ErrorBody)
+    ),
+    security(("bearerAuth" = []))
+)]
+pub fn list_runs() {}
 
 #[utoipa::path(
     get,

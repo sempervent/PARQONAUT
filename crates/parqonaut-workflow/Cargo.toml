@@ -13,3 +13,5 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
+schemars = { workspace = true }
+utoipa = { workspace = true }

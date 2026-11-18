@@ -50,7 +50,8 @@ pub use report::{
     StateCounts, BATCH_REPORT_SCHEMA_VERSION,
 };
 pub use run::{
-    check_config, execute_batch, execute_batch_plan, plan_batch, read_status, resume_batch,
+    check_config, execute_batch, execute_batch_plan, execute_batch_plan_with_progress,
+    execute_batch_with_progress, plan_batch, read_status, resume_batch, resume_batch_with_progress,
     verify_run, write_plan, BatchExecutionResult, BatchRunOptions, BatchStatusReport, JOURNAL_FILE,
     PLAN_SNAPSHOT, REPORT_FILE, RUNS_DIR,
 };
