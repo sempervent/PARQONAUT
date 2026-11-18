@@ -803,3 +803,5 @@ document.getElementById("modal-confirm-btn").addEventListener("click", async () 
   closeConfirmModal();
   if (fn) await fn();
 });
+
+document.documentElement.dataset.uiReady = "1";

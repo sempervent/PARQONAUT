@@ -143,7 +143,13 @@ class CdpClient {
       if (val) return;
       await new Promise((r) => setTimeout(r, 100));
     }
-    throw new Error(`Timed out waiting for: ${fnExpr}`);
+    const diag = await this.evalJs(`({
+      ready: document.documentElement.dataset.uiReady || null,
+      authErr: document.getElementById("auth-error")?.textContent || "",
+      globalAlert: document.getElementById("global-alert")?.textContent || "",
+      url: location.href
+    })`).catch(() => ({}));
+    throw new Error(`Timed out waiting for: ${fnExpr} (diag=${JSON.stringify(diag)}, errors=${JSON.stringify(this.errors)})`);
   }
 
   close() {
@@ -156,6 +162,7 @@ try {
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");
   await cdp.send("Page.navigate", { url: `${BASE_URL}/ui/` });
+  await cdp.waitFor('document.documentElement.dataset.uiReady === "1"');
   await cdp.waitFor('document.getElementById("auth-form") !== null');
 
   // Verify auth screen visible and console shell hidden before login.
