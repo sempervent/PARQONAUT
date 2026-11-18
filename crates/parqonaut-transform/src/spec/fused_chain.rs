@@ -99,14 +99,30 @@ impl FusedTransformChain {
     }
 
     pub fn finish(&mut self) -> Result<()> {
+        let mut first_err: Option<TransformError> = None;
         for (idx, bridge) in self.bridges.iter_mut().enumerate() {
             self.run.record_bridge_metrics(bridge.metrics().snapshot());
-            if bridge.finish().map_err(map_plugin_err).is_ok() {
-                self.run.complete_plugin(self.plugin_stage_ids[idx]);
+            match bridge.finish() {
+                Ok(()) => self.run.complete_plugin(self.plugin_stage_ids[idx]),
+                Err(e @ PluginHostError::Cancelled) => {
+                    self.run.cancel_plugin(self.plugin_stage_ids[idx]);
+                    if first_err.is_none() {
+                        first_err = Some(map_plugin_err(e));
+                    }
+                }
+                Err(e) => {
+                    self.run.fail_plugin(self.plugin_stage_ids[idx], "plugin_error");
+                    if first_err.is_none() {
+                        first_err = Some(map_plugin_err(e));
+                    }
+                }
             }
         }
         self.bridges.clear();
         self.plugin_stage_ids.clear();
+        if let Some(err) = first_err {
+            return Err(err);
+        }
         Ok(())
     }
 

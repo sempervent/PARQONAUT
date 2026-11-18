@@ -132,6 +132,7 @@ async fn write_stream_async<B: StorageBackend + ?Sized>(
 ) -> Result<WriteSummary, ColumnarError> {
     let (batch_tx, batch_rx) = mpsc::sync_channel::<RecordBatch>(BATCH_QUEUE);
     let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(BYTE_CHUNK_QUEUE);
+    let (commit_tx, commit_rx) = tokio::sync::oneshot::channel::<()>();
 
     let schema_enc = schema.clone();
     let encode = tokio::task::spawn_blocking(move || {
@@ -156,12 +157,18 @@ async fn write_stream_async<B: StorageBackend + ?Sized>(
 
     let upload = tokio::spawn(async move {
         while let Some(chunk) = chunk_rx.recv().await {
-            object_stream
-                .write_all(&chunk)
-                .await
-                .map_err(|e| ColumnarError::Other(e.to_string()))?;
+            if let Err(e) = object_stream.write_all(&chunk).await {
+                object_stream.abort().await;
+                return Err(ColumnarError::Other(e.to_string()));
+            }
         }
-        object_stream.finish().await.map_err(map_storage_err)
+        match commit_rx.await {
+            Ok(()) => object_stream.finish().await.map_err(map_storage_err),
+            Err(_) => {
+                object_stream.abort().await;
+                Err(ColumnarError::Other("upload aborted before commit".into()))
+            }
+        }
     });
 
     let sink_batch_delay_ms = std::env::var("PARQONAUT_TEST_SINK_BATCH_DELAY_MS")
@@ -171,25 +178,50 @@ async fn write_stream_async<B: StorageBackend + ?Sized>(
         .map(std::time::Duration::from_millis);
 
     let mut rows_written = 0u64;
-    while let Some(item) = stream.next().await {
-        let batch: RecordBatch = item?;
-        validate_batch(&schema, &batch)?;
-        let rows = batch.num_rows() as u64;
-        rows_written += rows;
-        emit_batch_written(progress, rows);
-        tokio::task::block_in_place(|| batch_tx.send(batch))
-            .map_err(|_| ColumnarError::Other("parquet encoder task stopped".into()))?;
-        if let Some(delay) = sink_batch_delay_ms {
-            tokio::time::sleep(delay).await;
+    let stream_res: Result<(), ColumnarError> = async {
+        while let Some(item) = stream.next().await {
+            let batch: RecordBatch = item?;
+            validate_batch(&schema, &batch)?;
+            let rows = batch.num_rows() as u64;
+            rows_written += rows;
+            emit_batch_written(progress, rows);
+            tokio::task::block_in_place(|| batch_tx.send(batch))
+                .map_err(|_| ColumnarError::Other("parquet encoder task stopped".into()))?;
+            if let Some(delay) = sink_batch_delay_ms {
+                tokio::time::sleep(delay).await;
+            }
+        }
+        Ok(())
+    }
+    .await;
+
+    drop(batch_tx);
+    let encode_res = encode.await.map_err(|e| ColumnarError::Other(format!("encode join: {e}")));
+
+    match (stream_res, encode_res) {
+        (Ok(()), Ok(Ok(()))) => {
+            let _ = commit_tx.send(());
+            let bytes_written =
+                upload.await.map_err(|e| ColumnarError::Other(format!("upload join: {e}")))??
+                    as u64;
+            Ok(WriteSummary { rows_written, bytes_written, files_written: 1 })
+        }
+        (Err(e), _) => {
+            drop(commit_tx);
+            let _ = upload.await;
+            Err(e)
+        }
+        (Ok(()), Ok(Err(e))) => {
+            drop(commit_tx);
+            let _ = upload.await;
+            Err(e)
+        }
+        (Ok(()), Err(e)) => {
+            drop(commit_tx);
+            let _ = upload.await;
+            Err(e)
         }
     }
-    drop(batch_tx);
-
-    encode.await.map_err(|e| ColumnarError::Other(format!("encode join: {e}")))??;
-    let bytes_written =
-        upload.await.map_err(|e| ColumnarError::Other(format!("upload join: {e}")))?? as u64;
-
-    Ok(WriteSummary { rows_written, bytes_written, files_written: 1 })
 }
 
 fn map_storage_err(err: StorageError) -> ColumnarError {

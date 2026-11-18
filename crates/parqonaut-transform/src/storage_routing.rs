@@ -454,6 +454,7 @@ fn fused_input_stream(
         pipeline,
         chain,
         pending_transform: None,
+        pending_finish: None,
         run: run.clone(),
     })
 }
@@ -466,6 +467,7 @@ struct FusedInputStream {
     pipeline: Option<Pipeline>,
     chain: Option<std::sync::Arc<std::sync::Mutex<FusedTransformChain>>>,
     pending_transform: Option<tokio::task::JoinHandle<std::result::Result<RecordBatch, String>>>,
+    pending_finish: Option<tokio::task::JoinHandle<std::result::Result<(), String>>>,
     run: TransformRunContext,
 }
 
@@ -493,6 +495,26 @@ impl futures::Stream for FusedInputStream {
                 ))));
             }
 
+            if let Some(handle) = self.pending_finish.as_mut() {
+                match std::future::Future::poll(std::pin::Pin::new(handle), cx) {
+                    std::task::Poll::Ready(Ok(Ok(()))) => {
+                        self.pending_finish = None;
+                        return std::task::Poll::Ready(None);
+                    }
+                    std::task::Poll::Ready(Ok(Err(e))) => {
+                        self.pending_finish = None;
+                        return std::task::Poll::Ready(Some(Err(ColumnarError::Other(e))));
+                    }
+                    std::task::Poll::Ready(Err(e)) => {
+                        self.pending_finish = None;
+                        return std::task::Poll::Ready(Some(Err(ColumnarError::Other(format!(
+                            "plugin finish join: {e}"
+                        )))));
+                    }
+                    std::task::Poll::Pending => return std::task::Poll::Pending,
+                }
+            }
+
             if let Some(handle) = self.pending_transform.as_mut() {
                 match std::future::Future::poll(std::pin::Pin::new(handle), cx) {
                     std::task::Poll::Ready(Ok(Ok(batch))) => {
@@ -515,6 +537,15 @@ impl futures::Stream for FusedInputStream {
 
             if self.current.is_none() {
                 if self.input_idx >= self.inputs.len() {
+                    if let Some(chain) = self.chain.take() {
+                        self.pending_finish = Some(tokio::task::spawn_blocking(move || {
+                            chain
+                                .lock()
+                                .map_err(|e| e.to_string())
+                                .and_then(|mut guard| guard.finish().map_err(|e| e.to_string()))
+                        }));
+                        continue;
+                    }
                     return std::task::Poll::Ready(None);
                 }
                 let uri = self.inputs[self.input_idx].clone();

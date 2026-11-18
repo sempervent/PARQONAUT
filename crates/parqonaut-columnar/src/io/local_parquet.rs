@@ -104,6 +104,18 @@ fn next_batch(stream: &mut BatchStream) -> Option<crate::stream::BatchResult> {
     }
 }
 
+static TEMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+struct TempFileGuard(Option<PathBuf>);
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 impl BatchSink for LocalParquetBatchSink {
     fn write_stream(
         &mut self,
@@ -114,7 +126,11 @@ impl BatchSink for LocalParquetBatchSink {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let file = File::create(&self.path)?;
+        let seq = TEMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temp_path =
+            self.path.with_extension(format!("parqonaut-tmp-{}-{}", std::process::id(), seq));
+        let mut temp_guard = TempFileGuard(Some(temp_path.clone()));
+        let file = File::create(&temp_path)?;
         let props = WriterProperties::builder()
             .set_compression(self.options.compression)
             .set_max_row_group_size(self.options.max_row_group_size_bytes)
@@ -131,6 +147,8 @@ impl BatchSink for LocalParquetBatchSink {
             emit_batch_written(progress, rows);
         }
         writer.close()?;
+        std::fs::rename(&temp_path, &self.path)?;
+        temp_guard.0 = None;
         let bytes_written = std::fs::metadata(&self.path)?.len();
         Ok(WriteSummary { rows_written, bytes_written, files_written: 1 })
     }

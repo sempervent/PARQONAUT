@@ -79,10 +79,14 @@ impl AsyncRead for BytesReader {
     }
 }
 
+pub type AbortWriteHook =
+    Box<dyn FnOnce() -> Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send>;
+
 /// Bounded write sink for streaming uploads.
 pub struct ObjectWriteStream {
     inner: Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
     bytes_written: u64,
+    on_abort: Option<AbortWriteHook>,
     #[cfg(any(test, feature = "test-util"))]
     before_write: Option<std::sync::Arc<dyn Fn() -> Result<(), StorageError> + Send + Sync>>,
 }
@@ -92,6 +96,20 @@ impl ObjectWriteStream {
         Self {
             inner: Box::pin(inner),
             bytes_written: 0,
+            on_abort: None,
+            #[cfg(any(test, feature = "test-util"))]
+            before_write: None,
+        }
+    }
+
+    pub fn with_abort(
+        inner: impl tokio::io::AsyncWrite + Send + Unpin + 'static,
+        on_abort: AbortWriteHook,
+    ) -> Self {
+        Self {
+            inner: Box::pin(inner),
+            bytes_written: 0,
+            on_abort: Some(on_abort),
             #[cfg(any(test, feature = "test-util"))]
             before_write: None,
         }
@@ -114,8 +132,18 @@ impl ObjectWriteStream {
 
     pub async fn finish(mut self) -> Result<u64, StorageError> {
         use tokio::io::AsyncWriteExt;
+        self.on_abort = None;
         self.inner.shutdown().await?;
         Ok(self.bytes_written)
+    }
+
+    /// Abort an incomplete write stream (for example, aborting an S3 multipart upload or removing temp files).
+    pub async fn abort(mut self) {
+        let hook = self.on_abort.take();
+        drop(self.inner);
+        if let Some(abort_fn) = hook {
+            abort_fn().await;
+        }
     }
 
     /// Wrap the underlying writer (test-only fault injection).
@@ -131,6 +159,7 @@ impl ObjectWriteStream {
         Self {
             inner: wrap(self.inner),
             bytes_written: self.bytes_written,
+            on_abort: self.on_abort,
             before_write: self.before_write,
         }
     }

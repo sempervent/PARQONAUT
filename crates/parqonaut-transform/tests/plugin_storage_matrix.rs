@@ -4,7 +4,7 @@ mod common;
 
 use std::path::PathBuf;
 
-use arrow::array::Array;
+use arrow::array::{Array, RecordBatchReader};
 use common::matrix_common::{
     count_parquet_rows, partition_fixture, require_s3_endpoint, s3_io, Leg,
 };
@@ -45,26 +45,37 @@ fn plugin_spec(input: &str, output: &str) -> Spec {
     }
 }
 
-fn email_fingerprint(path: &str) -> String {
+fn email_fingerprint(path: &str) -> (arrow::datatypes::SchemaRef, Vec<Option<String>>, usize) {
     let file = File::open(path).expect("open parquet");
-    let mut reader =
+    let reader =
         ParquetRecordBatchReaderBuilder::try_new(file).expect("reader").build().expect("build");
-    let batch = reader.next().expect("batch").expect("batch ok");
-    let col = batch.column_by_name("email").expect("email");
-    let arr = col.as_any().downcast_ref::<arrow::array::StringArray>().expect("utf8");
-    let mut out = String::new();
-    for i in 0..arr.len().min(8) {
-        if arr.is_null(i) {
-            out.push('|');
-        } else {
-            out.push_str(arr.value(i));
-            out.push('|');
+    let schema = reader.schema().clone();
+    let mut values = Vec::new();
+    let mut total_rows = 0usize;
+    for batch_res in reader {
+        let batch = batch_res.expect("batch ok");
+        total_rows += batch.num_rows();
+        let col = batch.column_by_name("email").expect("email");
+        let arr = col.as_any().downcast_ref::<arrow::array::StringArray>().expect("utf8");
+        for i in 0..arr.len() {
+            let v = if arr.is_null(i) { None } else { Some(arr.value(i).to_string()) };
+            if let Some(s) = &v {
+                assert_eq!(s, s.trim(), "expected normalized email without surrounding whitespace");
+            }
+            values.push(v);
         }
     }
-    out
+    (schema, values, total_rows)
 }
 
-fn run_leg(leg: Leg, bytes: &[u8]) -> Result<(String, String, u64), String> {
+struct LegOutcome {
+    schema: arrow::datatypes::SchemaRef,
+    values: Vec<Option<String>>,
+    digest: String,
+    rows: u64,
+}
+
+fn run_leg(leg: Leg, bytes: &[u8]) -> Result<LegOutcome, String> {
     let work = tempfile::tempdir().expect("tempdir");
     let work_path = work.path().to_path_buf();
     let bytes_owned = bytes.to_vec();
@@ -96,33 +107,38 @@ fn run_leg(leg: Leg, bytes: &[u8]) -> Result<(String, String, u64), String> {
     // Same sync entry as CLI: no nested tokio runtime around execute_plan.
     let report = execute_plan(&plan).map_err(|e| e.to_string())?;
     assert_eq!(report.intermediate_files_created, 0);
+    assert_eq!(report.plugin_executions.len(), 1);
+    assert_eq!(report.plugin_executions[0].digest, pinned);
+    assert_eq!(report.plugin_executions[0].status, "completed");
     let out_path = paths.output.clone();
     let verify_work = work.path().to_path_buf();
     let out_path_owned = out_path.clone();
-    let (rows, fp) = parqonaut_transform::remote::run_io_runtime(move |handle| {
-        handle.block_on(async move {
-            let (_io, s3) = s3_io().await;
-            let rows = count_parquet_rows(&s3, &out_path_owned).await as u64;
-            let fp = if out_path_owned.starts_with("s3://") {
-                let local = verify_work.join("dl.parquet");
-                let loc =
-                    parqonaut_storage::location::ObjectLocation::parse(&out_path_owned).unwrap();
-                use parqonaut_storage::backend::{ByteRange, StorageBackend};
-                let meta = s3.head(&loc).await.expect("head output");
-                let end = meta.size.saturating_sub(1);
-                let data = s3
-                    .read_range(&loc, ByteRange::new(0, end).expect("range"))
-                    .await
-                    .expect("read s3 output");
-                std::fs::write(&local, &data).expect("write");
-                email_fingerprint(local.to_str().unwrap())
-            } else {
-                email_fingerprint(&out_path_owned)
-            };
-            (rows, fp)
-        })
-    });
-    Ok((fp, pinned, rows))
+    let (rows, schema, values, batch_rows) =
+        parqonaut_transform::remote::run_io_runtime(move |handle| {
+            handle.block_on(async move {
+                let (_io, s3) = s3_io().await;
+                let rows = count_parquet_rows(&s3, &out_path_owned).await as u64;
+                let (schema, values, batch_rows) = if out_path_owned.starts_with("s3://") {
+                    let local = verify_work.join("dl.parquet");
+                    let loc = parqonaut_storage::location::ObjectLocation::parse(&out_path_owned)
+                        .unwrap();
+                    use parqonaut_storage::backend::{ByteRange, StorageBackend};
+                    let meta = s3.head(&loc).await.expect("head output");
+                    let end = meta.size.saturating_sub(1);
+                    let data = s3
+                        .read_range(&loc, ByteRange::new(0, end).expect("range"))
+                        .await
+                        .expect("read s3 output");
+                    std::fs::write(&local, &data).expect("write");
+                    email_fingerprint(local.to_str().unwrap())
+                } else {
+                    email_fingerprint(&out_path_owned)
+                };
+                (rows, schema, values, batch_rows)
+            })
+        });
+    assert_eq!(rows as usize, batch_rows);
+    Ok(LegOutcome { schema, values, digest: pinned, rows })
 }
 
 #[test]
@@ -132,16 +148,18 @@ fn batch_plugin_storage_topology_matrix() {
     }
     setup_plugins_env();
     let bytes = partition_fixture();
-    let mut baseline: Option<(String, String, u64)> = None;
+    let mut baseline: Option<LegOutcome> = None;
     for leg in Leg::ALL {
-        let (fp, digest, rows) =
+        let out =
             run_leg(leg, &bytes).unwrap_or_else(|e| panic!("matrix leg {:?} failed: {e}", leg));
-        if let Some((bfp, bdig, brows)) = &baseline {
-            assert_eq!(&fp, bfp, "fingerprint mismatch");
-            assert_eq!(&digest, bdig, "digest mismatch");
-            assert_eq!(rows, *brows, "row count mismatch");
+        assert!(out.rows > 0, "leg {:?} produced zero rows", leg);
+        if let Some(base) = &baseline {
+            assert_eq!(out.schema, base.schema, "schema mismatch on leg {:?}", leg);
+            assert_eq!(out.values, base.values, "transformed values mismatch on leg {:?}", leg);
+            assert_eq!(out.digest, base.digest, "digest mismatch on leg {:?}", leg);
+            assert_eq!(out.rows, base.rows, "row count mismatch on leg {:?}", leg);
         } else {
-            baseline = Some((fp, digest, rows));
+            baseline = Some(out);
         }
     }
 }

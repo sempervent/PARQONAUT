@@ -247,3 +247,49 @@ fn progress_throttling_many_batches() {
     assert!(kinds.contains(&ProgressEventKind::PluginStarted));
     assert!(kinds.contains(&ProgressEventKind::PluginCompleted));
 }
+
+#[test]
+fn mid_stream_plugin_failure_leaves_no_committed_output() {
+    let work = tempdir().expect("tempdir");
+    let extra_root = work.path().join("plugins");
+    let fail_dir = extra_root.join("fail-second-batch");
+    std::fs::create_dir_all(&fail_dir).unwrap();
+    std::fs::write(
+        fail_dir.join("parqonaut-plugin.json"),
+        r#"{
+          "protocol_version": 1,
+          "name": "fail-second-batch",
+          "version": "0.1.0",
+          "entrypoint": "fail_second:transform",
+          "capabilities": { "batch_transform": {} }
+        }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        fail_dir.join("fail_second.py"),
+        "import sys\n_seen = 0\ndef transform(batch, _cfg):\n    global _seen\n    _seen += 1\n    if _seen >= 2:\n        sys.exit(3)\n    return batch\n",
+    )
+    .unwrap();
+
+    setup_plugins_env(Some(&extra_root));
+    let input = work.path().join("in.parquet");
+    write_many_batch_parquet(&input, 4);
+    let output = work.path().join("out.parquet");
+    let spec = Spec {
+        schema_version: 1,
+        input: Some(input.to_string_lossy().into_owned()),
+        output: Some(output.to_string_lossy().into_owned()),
+        steps: vec![Step {
+            operation: Operation::Plugin {
+                plugin: "fail-second-batch".into(),
+                config: serde_json::json!({}),
+            },
+            options: Default::default(),
+        }],
+        options: parqonaut_transform::Options { overwrite: true, ..Default::default() },
+    };
+    let plan = compile_plan(&spec).expect("compile");
+    let res = execute_plan_with_run(&plan, &TransformRunContext::noop());
+    assert!(res.is_err(), "mid-stream crash must fail pipeline");
+    assert!(!output.exists(), "failed pipeline must not commit partial output file");
+}
