@@ -3,9 +3,11 @@
 mod common;
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 use common::matrix_common::{require_s3_endpoint, s3_io, test_bucket, Leg};
 use parqonaut_plugin_host::CancelToken;
@@ -31,6 +33,7 @@ fn setup_plugins_env() {
 
 #[test]
 fn s3_plugin_pipeline_cancellation_aborts_upload() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !require_s3_endpoint() {
         return;
     }
@@ -100,6 +103,7 @@ fn s3_plugin_pipeline_cancellation_aborts_upload() {
 
 #[test]
 fn s3_mid_stream_plugin_failure_does_not_commit_partial_object() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if !require_s3_endpoint() {
         return;
     }

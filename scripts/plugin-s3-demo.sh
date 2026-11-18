@@ -8,13 +8,13 @@ fi
 
 cleanup() {
   if [[ -n "${SPEC_TMP:-}" && -f "${SPEC_TMP:-}" ]]; then rm -f "$SPEC_TMP"; fi
-  if [[ "${STARTED_S3:-0}" == "1" ]]; then just s3-down || true; fi
+  if [[ "${STARTED_S3:-0}" == "1" ]]; then bash scripts/s3-test/down.sh || true; fi
 }
 trap cleanup EXIT
 
 STARTED_S3=0
 if [[ -z "${PARQONAUT_S3_ENDPOINT:-}" ]]; then
-  just s3-up
+  bash scripts/s3-test/up.sh
   STARTED_S3=1
 fi
 source scripts/s3-test/env.sh
@@ -22,7 +22,7 @@ export FOGBANK_ENDPOINT="${FOGBANK_ENDPOINT:-${PARQONAUT_S3_ENDPOINT:-http://127
 export FOGBANK_BUCKET="${FOGBANK_BUCKET:-${PARQONAUT_S3_BUCKET:-fogbank}}"
 export PARQONAUT_S3_ENDPOINT="${PARQONAUT_S3_ENDPOINT:-$FOGBANK_ENDPOINT}"
 export PARQONAUT_S3_BUCKET="${PARQONAUT_S3_BUCKET:-$FOGBANK_BUCKET}"
-just s3-fixtures
+bash scripts/s3-test/fixtures.sh
 
 input="s3://${FOGBANK_BUCKET}/datasets/transform/partition-basic/input.parquet"
 output="s3://${FOGBANK_BUCKET}/datasets/transform/plugin-normalize-output.parquet"

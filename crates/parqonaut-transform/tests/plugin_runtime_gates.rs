@@ -1,7 +1,9 @@
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 use arrow::array::Int32Array;
 use arrow::datatypes::{DataType, Field, Schema};
@@ -49,6 +51,7 @@ fn write_many_batch_parquet(path: &std::path::Path, batches: usize) {
 
 #[test]
 fn plugin_config_same_digest_different_execution_identity() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     setup_plugins_env(None);
     let input = repo_root().join("fixtures/transform/partition-basic/input.parquet");
     let spec_a = Spec {
@@ -99,6 +102,7 @@ fn plugin_config_same_digest_different_execution_identity() {
 
 #[test]
 fn two_plugin_transform_report_provenance() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     setup_plugins_env(None);
     let work = tempdir().expect("tempdir");
     let input = repo_root().join("fixtures/transform/partition-basic/input.parquet");
@@ -138,6 +142,7 @@ fn two_plugin_transform_report_provenance() {
 
 #[test]
 fn slow_sink_backpressure_e2e_pipeline() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     setup_plugins_env(None);
     std::env::set_var("PARQONAUT_TEST_SINK_BATCH_DELAY_MS", "60");
     let work = tempdir().expect("tempdir");
@@ -171,6 +176,7 @@ fn slow_sink_backpressure_e2e_pipeline() {
 
 #[test]
 fn local_plugin_cancellation_during_pipeline() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     setup_plugins_env(None);
     let work = tempdir().expect("tempdir");
     let input = work.path().join("in.parquet");
@@ -219,6 +225,7 @@ fn local_plugin_cancellation_during_pipeline() {
 
 #[test]
 fn progress_throttling_many_batches() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     setup_plugins_env(None);
     let work = tempdir().expect("tempdir");
     let input = work.path().join("in.parquet");
@@ -250,6 +257,7 @@ fn progress_throttling_many_batches() {
 
 #[test]
 fn mid_stream_plugin_failure_leaves_no_committed_output() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let work = tempdir().expect("tempdir");
     let extra_root = work.path().join("plugins");
     let fail_dir = extra_root.join("fail-second-batch");
