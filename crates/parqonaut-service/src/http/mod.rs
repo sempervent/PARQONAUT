@@ -11,7 +11,8 @@ use axum::middleware::{from_fn, from_fn_with_state};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use metrics_exporter_prometheus::PrometheusHandle;
-use tower_http::compression::CompressionLayer;
+use tower_http::compression::predicate::{NotForContentType, Predicate, SizeAbove};
+use tower_http::compression::{CompressionLayer, DefaultPredicate};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
@@ -99,7 +100,13 @@ pub fn build_router_with_workers(service: ParqonautService, workers: usize) -> R
         .route("/api/v1/health/live", get(handlers::health_live))
         .route("/api/v1/health/ready", get(handlers::health_ready))
         .nest("/api/v1", protected)
-        .layer(CompressionLayer::new())
+        .layer(
+            CompressionLayer::new().compress_when(
+                DefaultPredicate::new()
+                    .and(SizeAbove::new(32))
+                    .and(NotForContentType::new("text/event-stream")),
+            ),
+        )
         .layer(TraceLayer::new_for_http())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,

@@ -25,7 +25,10 @@ urlencoding.workspace = true
 
 [dev-dependencies]
 axum.workspace = true
+arrow.workspace = true
+parquet.workspace = true
 parqonaut-app = { path = "../parqonaut-app" }
+parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
 parqonaut-store = { path = "../parqonaut-store" }
 tempfile = "3"
 camino.workspace = true

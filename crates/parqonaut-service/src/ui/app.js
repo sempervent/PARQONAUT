@@ -312,8 +312,11 @@ async function selectJob(jobId) {
         }
       },
       onTerminal: async () => {
-        await refreshJobs();
-        renderJobs();
+        if (state.selectedJobId === jobId) {
+          const full = await api.getJobEvents(jobId, 0, 200);
+          state.selectedJobEvents = full.items || [];
+        }
+        await refreshAll();
       },
     });
   } catch (e) {
@@ -715,7 +718,12 @@ document.getElementById("theme-toggle").addEventListener("click", () => {
 document.getElementById("refresh-all-btn").addEventListener("click", refreshAll);
 
 document.querySelectorAll(".tab-btn").forEach((btn) => {
-  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+  btn.addEventListener("click", () => {
+    switchTab(btn.dataset.tab);
+    if (btn.dataset.tab === "runs" || btn.dataset.tab === "dashboard") {
+      refreshAll();
+    }
+  });
 });
 
 document.getElementById("job-search").addEventListener("input", renderJobs);
