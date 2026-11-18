@@ -25,7 +25,8 @@ Exact behavior is covered by CLI integration tests; do not rely on undocumented 
 | **`inspect`**, **`rewrite`**, **`convert`** | Direct Parquet/CSV utilities (not routed through `parqonaut-app`) |
 | **`diagnose`**, **`plan`**, **`plan-diff`**, **`check`**, **`repair`**, **`verify`**, **`doctor`** | Repair and schema workflows via **`parqonaut-app`** |
 | **`batch *`** | Multi-dataset orchestration via **`parqonaut-app`** |
-| **`serve`** | HTTP application server and durable jobs |
+| **`serve`** | HTTP application server, `/api/v1`, and `/ui/` dashboard |
+| **`tui`** | Interactive terminal operator console connected to `prqnt serve` |
 
 ## When to use which command
 

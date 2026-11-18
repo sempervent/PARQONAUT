@@ -277,4 +277,11 @@ async fn postgres_job_events_retention_and_idempotency_parity() {
     assert_eq!(events.first().unwrap().kind, ProgressEventKind::JobQueued);
     assert_eq!(events.last().unwrap().kind, ProgressEventKind::ExecutionCompleted);
     assert!(events.windows(2).all(|w| w[0].seq < w[1].seq));
+
+    // Clean up test job row so queued job tests in the same DB remain isolated.
+    sqlx::query("DELETE FROM application_jobs WHERE job_id = $1")
+        .bind(jid.0.to_string())
+        .execute(store.pool())
+        .await
+        .unwrap();
 }

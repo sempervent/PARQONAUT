@@ -40,6 +40,7 @@ futures-util = "0.3"
 urlencoding.workspace = true
 
 [dev-dependencies]
+aws-sdk-s3 = { version = "1", features = ["rustls", "rt-tokio"] }
 http-body-util.workspace = true
 serial_test = "3.4.0"
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }

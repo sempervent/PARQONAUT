@@ -27,6 +27,7 @@ Commands:
   doctor     Integrated scan → diagnose → plan (optional safe repair)
   batch      Multi-dataset batch orchestration
   serve      Run the PARQONAUT HTTP application server (`/api/v1`)
+  tui        Interactive terminal operator console connected to `prqnt serve`
   convert    Stream-convert CSV/Parquet inputs
   help       Print this message or the help of the given subcommand(s)
 
