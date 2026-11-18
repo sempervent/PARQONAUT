@@ -1,0 +1,21 @@
+[package]
+name = "parqonaut-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Interactive terminal operator console (`prqnt tui`) backed by parqonaut-client."
+
+[dependencies]
+parqonaut-client = { path = "../parqonaut-client" }
+parqonaut-types.workspace = true
+parqonaut-workflow = { path = "../parqonaut-workflow" }
+parqonaut-service = { path = "../parqonaut-service" }
+parqonaut-repair = { path = "../parqonaut-repair" }
+parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
+ratatui = "0.29"
+crossterm = "0.28"
+tokio.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
