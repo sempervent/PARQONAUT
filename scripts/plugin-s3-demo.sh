@@ -2,6 +2,9 @@
 set -euo pipefail
 export PARQONAUT_PLUGIN_ROOTS="${PARQONAUT_PLUGIN_ROOTS:-$PWD/fixtures/plugins}"
 export PARQONAUT_PLUGIN_SDK_PATH="${PARQONAUT_PLUGIN_SDK_PATH:-$PWD/python/parqonaut_plugins/src}"
+if [[ -z "${PARQONAUT_PLUGIN_PYTHON:-}" && -x "$PWD/python/parqonaut_plugins/.venv/bin/python" ]]; then
+  export PARQONAUT_PLUGIN_PYTHON="$PWD/python/parqonaut_plugins/.venv/bin/python"
+fi
 
 cleanup() {
   if [[ -n "${SPEC_TMP:-}" && -f "${SPEC_TMP:-}" ]]; then rm -f "$SPEC_TMP"; fi

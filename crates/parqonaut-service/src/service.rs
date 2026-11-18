@@ -156,9 +156,16 @@ impl ParqonautService {
             plugins: req.plugins.clone(),
         };
 
-        let bridge = if resolved_plugins.is_empty() {
+        let bridge = if req.plugins.is_empty() && resolved_plugins.is_empty() {
             None
         } else {
+            if resolved_plugins.len() != req.plugins.len()
+                || resolved_plugins.iter().zip(req.plugins.iter()).any(|(p, n)| &p.name != n)
+            {
+                return Err(AppError::InvalidRequest(
+                    "pinned plugin selections do not match requested plugins".into(),
+                ));
+            }
             let resolved = pinned_to_resolved(&self.server_plugins, &resolved_plugins)?;
             let token = cancel.unwrap_or_default();
             Some(ScanPluginBridge::from_pinned_resolved(

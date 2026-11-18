@@ -18,8 +18,12 @@ use parqonaut_store::StoreBackend;
 use parqonaut_types::{AuthRole, JobId};
 use serde_json::json;
 use tower::ServiceExt;
+use uuid::Uuid;
 
-const TEST_BEARER: &str = "parqonaut-pg-http-test";
+fn unique_bearer(prefix: &str) -> (String, String) {
+    let id = Uuid::new_v4();
+    (format!("{prefix}-{id}"), format!("parqonaut-pg-http-test-{id}"))
+}
 
 fn pg_url() -> Option<String> {
     std::env::var("PARQONAUT_TEST_PG_URL").ok().filter(|s| !s.trim().is_empty())
@@ -30,7 +34,8 @@ fn pg_url() -> Option<String> {
 async fn health_and_whoami_on_postgres() {
     let url = pg_url().expect("PARQONAUT_TEST_PG_URL");
     let store = StoreBackend::connect(&url).await.expect("connect");
-    store.insert_auth_token("pg-http", TEST_BEARER, AuthRole::Operator).await.unwrap();
+    let (label, bearer) = unique_bearer("pg-http");
+    store.insert_auth_token(&label, &bearer, AuthRole::Operator).await.unwrap();
     let app = build_router(ParqonautService::new(store));
 
     let res = app
@@ -43,7 +48,7 @@ async fn health_and_whoami_on_postgres() {
     let res = app
         .oneshot(
             Request::get("/api/v1/whoami")
-                .header(AUTHORIZATION, format!("Bearer {TEST_BEARER}"))
+                .header(AUTHORIZATION, format!("Bearer {bearer}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -71,7 +76,7 @@ fn set_plugin_env() {
     let venv_py = root.join(".venv/bin/python");
     if venv_py.is_file() {
         std::env::set_var("PARQONAUT_PLUGIN_PYTHON", venv_py);
-    } else {
+    } else if std::env::var_os("PARQONAUT_PLUGIN_PYTHON").is_none() {
         std::env::set_var("PARQONAUT_PLUGIN_PYTHON", "python3");
     }
 }
@@ -82,7 +87,8 @@ async fn plugin_scan_job_on_postgres() {
     set_plugin_env();
     let url = pg_url().expect("PARQONAUT_TEST_PG_URL");
     let store = StoreBackend::connect(&url).await.expect("connect");
-    store.insert_auth_token("pg-plugin", TEST_BEARER, AuthRole::Operator).await.unwrap();
+    let (label, bearer) = unique_bearer("pg-plugin");
+    store.insert_auth_token(&label, &bearer, AuthRole::Operator).await.unwrap();
 
     let fixture_root = scan_fixture().parent().unwrap().parent().unwrap().to_path_buf();
     let policy = StoragePolicy {
@@ -110,7 +116,7 @@ async fn plugin_scan_job_on_postgres() {
         .clone()
         .oneshot(
             Request::post("/api/v1/jobs/scans")
-                .header(AUTHORIZATION, format!("Bearer {TEST_BEARER}"))
+                .header(AUTHORIZATION, format!("Bearer {bearer}"))
                 .header("content-type", "application/json")
                 .body(Body::from(body.to_string()))
                 .unwrap(),

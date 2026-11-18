@@ -241,7 +241,7 @@ impl From<ApplicationError> for AppError {
                 AppError::ScanFailed(m)
             }
             ApplicationError::Internal(m) => AppError::Internal(m),
-            ApplicationError::PluginHost(m) => AppError::InvalidRequest(m),
+            ApplicationError::PluginHost(m) => AppError::ScanFailed(sanitize_plugin_message(&m)),
             ApplicationError::PluginExecutionDisabled => AppError::PluginExecutionDisabled,
             ApplicationError::PluginNotAllowed(n) => AppError::PluginNotAllowed(n),
             ApplicationError::PluginNotFound(n) => AppError::PluginNotFound(n),
@@ -252,4 +252,35 @@ impl From<ApplicationError> for AppError {
             ApplicationError::PluginCancelled => AppError::PluginCancelled,
         }
     }
+}
+
+fn sanitize_plugin_message(msg: &str) -> String {
+    if msg.contains("configured python")
+        || msg.contains("no python interpreter found")
+        || msg.contains("missing required SDK dependencies")
+    {
+        return "plugin Python runtime is unavailable".into();
+    }
+    // Redact credentialed URLs and absolute filesystem paths from HTTP error messages.
+    let mut out = String::with_capacity(msg.len());
+    for token in msg.split_whitespace() {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        if token.contains("://") && token.contains('@') {
+            out.push_str("<redacted-url>");
+        } else if token.starts_with('/') && token.len() > 1 {
+            out.push_str("<path>");
+        } else {
+            out.push_str(token);
+        }
+    }
+    if out.len() > 512 {
+        let mut end = 512;
+        while !out.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.truncate(end);
+    }
+    out
 }

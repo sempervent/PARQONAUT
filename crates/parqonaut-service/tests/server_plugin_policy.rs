@@ -46,7 +46,7 @@ fn set_plugin_sdk_env() {
     let venv_py = root.join(".venv/bin/python");
     if venv_py.is_file() {
         std::env::set_var("PARQONAUT_PLUGIN_PYTHON", venv_py);
-    } else {
+    } else if std::env::var_os("PARQONAUT_PLUGIN_PYTHON").is_none() {
         std::env::set_var("PARQONAUT_PLUGIN_PYTHON", "python3");
     }
 }

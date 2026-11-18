@@ -173,7 +173,9 @@ impl ServerPluginState {
                     actual: entry.digest.clone(),
                 });
             }
-            if entry.compatibility != PluginCompatibility::Compatible {
+            if entry.compatibility != PluginCompatibility::Compatible
+                || entry.manifest.capabilities.scan.is_none()
+            {
                 return Err(ApplicationError::PluginIncompatible(pin.name.clone()));
             }
             out.push(ResolvedPlugin { entry: entry.clone() });

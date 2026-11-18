@@ -53,7 +53,7 @@ fn set_plugin_env() {
     let venv_py = root.join(".venv/bin/python");
     if venv_py.is_file() {
         std::env::set_var("PARQONAUT_PLUGIN_PYTHON", venv_py);
-    } else {
+    } else if std::env::var_os("PARQONAUT_PLUGIN_PYTHON").is_none() {
         std::env::set_var("PARQONAUT_PLUGIN_PYTHON", "python3");
     }
 }
@@ -420,4 +420,39 @@ async fn catalog_response_has_no_filesystem_paths() {
     assert!(!s.contains("/fixtures/"));
     assert!(!s.contains("python"));
     assert!(!s.contains("entrypoint"));
+}
+
+#[tokio::test]
+async fn plugin_failure_http_error_sanitizes_paths_and_secrets() {
+    let (_dir, store) = support::connect_store_with_token(AuthRole::Operator, "op").await;
+    let secret_py = PathBuf::from("/opt/secret-operator-path/venv/bin/python");
+    let plugins = ServerPluginState::bootstrap(ServerPluginPolicy {
+        enabled: true,
+        roots: vec![plugins_root()],
+        allowed: BTreeSet::from(["example-rules".to_string()]),
+        runtime: parqonaut_plugin_host::PluginRuntimeConfig {
+            python_executable: Some(secret_py),
+            ..Default::default()
+        },
+    })
+    .unwrap();
+    let svc = ParqonautService::with_storage_policy_and_plugins(
+        store,
+        storage_policy_for_scan(),
+        plugins,
+    );
+    let app = build_router_with_workers(svc.clone(), 1);
+    let job_id = submit_scan(&app, &["example-rules"]).await;
+
+    for _ in 0..200 {
+        let j = poll_job_status(&app, job_id).await;
+        if j["status"] == "failed" {
+            let msg = j["failure"]["message"].as_str().unwrap_or_default();
+            assert!(!msg.contains("/opt/secret-operator-path"), "leaked path: {msg}");
+            assert!(!msg.contains("venv/bin/python"), "leaked interpreter path: {msg}");
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    panic!("expected job to fail on missing interpreter");
 }

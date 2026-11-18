@@ -52,8 +52,10 @@ columnar-check:
 plugin-test:
     #!/usr/bin/env bash
     set -euo pipefail
+    (cd python/parqonaut_plugins && uv sync --frozen && uv run ruff check . && uv run ruff format --check . && uv run python -m pytest)
     export PARQONAUT_PLUGIN_ROOTS="${PARQONAUT_PLUGIN_ROOTS:-$PWD/fixtures/plugins}"
     export PARQONAUT_PLUGIN_SDK_PATH="${PARQONAUT_PLUGIN_SDK_PATH:-$PWD/python/parqonaut_plugins/src}"
+    export PARQONAUT_PLUGIN_PYTHON="${PARQONAUT_PLUGIN_PYTHON:-$PWD/python/parqonaut_plugins/.venv/bin/python}"
     cargo test -p parqonaut-plugin-protocol
     cargo test -p parqonaut-plugin-host
     cargo test -p parqonaut-transform --test plugin_transform --test plugin_zero_intermediate --test plugin_progress --test plugin_runtime_gates
@@ -68,9 +70,6 @@ plugin-test:
     aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://${PARQONAUT_S3_BUCKET}" >/dev/null 2>&1 || true
     aws --endpoint-url "$PARQONAUT_S3_ENDPOINT" s3 mb "s3://${FOGBANK_BUCKET}" >/dev/null 2>&1 || true
     cargo test -p parqonaut-transform --features s3 --test plugin_storage_matrix --test plugin_s3_cancellation
-    cd python/parqonaut_plugins
-    uv sync --frozen
-    uv run python -m pytest
 
 plugin-s3-demo:
     bash scripts/plugin-s3-demo.sh
