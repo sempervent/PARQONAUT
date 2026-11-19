@@ -39,6 +39,27 @@ pub fn get_health() {}
 
 #[utoipa::path(
     get,
+    path = "/api/v1/health/live",
+    tag = "health",
+    responses(
+        (status = 200, description = "Liveness probe (process alive)", body = HealthResponse)
+    )
+)]
+pub fn get_health_live() {}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/health/ready",
+    tag = "health",
+    responses(
+        (status = 200, description = "Readiness probe (store connectivity verified)", body = HealthResponse),
+        (status = 500, description = "Store dependency unavailable", body = ErrorBody)
+    )
+)]
+pub fn get_health_ready() {}
+
+#[utoipa::path(
+    get,
     path = "/api/v1/openapi.json",
     tag = "meta",
     responses(

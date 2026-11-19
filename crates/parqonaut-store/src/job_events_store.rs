@@ -519,6 +519,402 @@ impl SqliteScanStore {
         }
         Ok((out, total as u64))
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_application_job_with_idempotency_and_event(
+        &self,
+        job_id: JobId,
+        kind: JobKind,
+        identity: &TargetIdentity,
+        request_json: &str,
+        idempotency: Option<(&str, &str, &str, DateTime<Utc>)>,
+        initial_event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<(IdempotencyInsertResult, Option<JobEvent>), StoreError> {
+        let now = Utc::now();
+        let now_str = now.to_rfc3339();
+        let _ = sqlx::query(
+            "DELETE FROM idempotency_keys WHERE rowid IN (SELECT rowid FROM idempotency_keys WHERE expires_at <= ? LIMIT 100)",
+        )
+        .bind(&now_str)
+        .execute(self.pool())
+        .await;
+
+        let mut tx = self.pool().begin().await?;
+        if let Some((scope, key, req_sha, expires_at)) = idempotency {
+            sqlx::query(
+                "DELETE FROM idempotency_keys WHERE scope = ? AND idempotency_key = ? AND expires_at <= ?",
+            )
+            .bind(scope)
+            .bind(key)
+            .bind(&now_str)
+            .execute(&mut *tx)
+            .await?;
+
+            if let Some((existing_sha, existing_job_id)) = sqlx::query_as::<_, (String, String)>(
+                "SELECT request_sha256, job_id FROM idempotency_keys WHERE scope = ? AND idempotency_key = ?",
+            )
+            .bind(scope)
+            .bind(key)
+            .fetch_optional(&mut *tx)
+            .await?
+            {
+                if existing_sha != req_sha {
+                    return Err(StoreError::IdempotencyConflict(
+                        "idempotency key already used with a different request payload".into(),
+                    ));
+                }
+                let row = sqlx::query_as::<_, ScanJobRow>(
+                    r#"SELECT job_id, submitted_at, started_at, completed_at, status,
+                              target_kind, normalized_target_key, request_json,
+                              failure_code, failure_message, run_id,
+                              worker_id, attempt_count, heartbeat_at, leased_until, recovery_note,
+                              job_kind, payload_schema_version, cancel_requested, result_ref_json
+                       FROM application_jobs WHERE job_id = ?"#,
+                )
+                .bind(&existing_job_id)
+                .fetch_one(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                return Ok((IdempotencyInsertResult::Replayed { existing: Box::new(row) }, None));
+            }
+
+            sqlx::query(
+                r#"INSERT INTO application_jobs (
+                    job_id, submitted_at, status, target_kind, normalized_target_key, request_json,
+                    attempt_count, job_kind, payload_schema_version
+                ) VALUES (?, ?, 'queued', ?, ?, ?, 0, ?, 1)"#,
+            )
+            .bind(job_id.0.to_string())
+            .bind(&now_str)
+            .bind(&identity.target_kind)
+            .bind(&identity.normalized_key)
+            .bind(request_json)
+            .bind(kind.as_str())
+            .execute(&mut *tx)
+            .await?;
+
+            let insert_res = sqlx::query(
+                r#"INSERT INTO idempotency_keys (scope, idempotency_key, request_sha256, job_id, created_at, expires_at)
+                   VALUES (?, ?, ?, ?, ?, ?)"#,
+            )
+            .bind(scope)
+            .bind(key)
+            .bind(req_sha)
+            .bind(job_id.0.to_string())
+            .bind(&now_str)
+            .bind(expires_at.to_rfc3339())
+            .execute(&mut *tx)
+            .await;
+
+            match insert_res {
+                Ok(_) => {
+                    let ev =
+                        append_event_sqlite_tx(&mut tx, &initial_event, max_events_per_job).await?;
+                    tx.commit().await?;
+                    return Ok((
+                        IdempotencyInsertResult::Created { job_id, submitted_at: now },
+                        Some(ev),
+                    ));
+                }
+                Err(e) if is_unique_violation(&e) => {
+                    tx.rollback().await?;
+                    let (existing_sha, existing_job_id): (String, String) = sqlx::query_as(
+                        "SELECT request_sha256, job_id FROM idempotency_keys WHERE scope = ? AND idempotency_key = ?",
+                    )
+                    .bind(scope)
+                    .bind(key)
+                    .fetch_one(self.pool())
+                    .await?;
+                    if existing_sha != req_sha {
+                        return Err(StoreError::IdempotencyConflict(
+                            "idempotency key already used with a different request payload".into(),
+                        ));
+                    }
+                    let existing_uuid = Uuid::parse_str(&existing_job_id)
+                        .map_err(|_| StoreError::ReportValidation("invalid job_id".into()))?;
+                    let row = self.get_scan_job(JobId(existing_uuid)).await?;
+                    return Ok((
+                        IdempotencyInsertResult::Replayed { existing: Box::new(row) },
+                        None,
+                    ));
+                }
+                Err(e) => return Err(StoreError::Sql(e)),
+            }
+        }
+
+        sqlx::query(
+            r#"INSERT INTO application_jobs (
+                job_id, submitted_at, status, target_kind, normalized_target_key, request_json,
+                attempt_count, job_kind, payload_schema_version
+            ) VALUES (?, ?, 'queued', ?, ?, ?, 0, ?, 1)"#,
+        )
+        .bind(job_id.0.to_string())
+        .bind(&now_str)
+        .bind(&identity.target_kind)
+        .bind(&identity.normalized_key)
+        .bind(request_json)
+        .bind(kind.as_str())
+        .execute(&mut *tx)
+        .await?;
+        let ev = append_event_sqlite_tx(&mut tx, &initial_event, max_events_per_job).await?;
+        tx.commit().await?;
+        Ok((IdempotencyInsertResult::Created { job_id, submitted_at: now }, Some(ev)))
+    }
+
+    pub async fn claim_next_queued_scan_job_with_event(
+        &self,
+        worker_id: &str,
+        heartbeat_at: DateTime<Utc>,
+        leased_until: DateTime<Utc>,
+        max_events_per_job: usize,
+    ) -> Result<Option<(ScanJobRow, JobEvent)>, StoreError> {
+        let started = Utc::now().to_rfc3339();
+        let hb = heartbeat_at.to_rfc3339();
+        let lu = leased_until.to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        let row = sqlx::query_as::<_, ScanJobRow>(
+            r#"UPDATE application_jobs
+               SET status = 'running',
+                   started_at = ?,
+                   worker_id = ?,
+                   heartbeat_at = ?,
+                   leased_until = ?,
+                   attempt_count = attempt_count + 1
+               WHERE job_id = (
+                 SELECT job_id FROM application_jobs
+                 WHERE status = 'queued'
+                 ORDER BY submitted_at ASC
+                 LIMIT 1
+               )
+               RETURNING job_id, submitted_at, started_at, completed_at, status,
+                         target_kind, normalized_target_key, request_json,
+                         failure_code, failure_message, run_id,
+                         worker_id, attempt_count, heartbeat_at, leased_until, recovery_note,
+                         job_kind, payload_schema_version, cancel_requested, result_ref_json"#,
+        )
+        .bind(&started)
+        .bind(worker_id)
+        .bind(&hb)
+        .bind(&lu)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(row) = row else {
+            tx.commit().await?;
+            return Ok(None);
+        };
+        let jid = Uuid::parse_str(&row.job_id)
+            .map(JobId)
+            .map_err(|_| StoreError::ReportValidation("invalid job_id".into()))?;
+        let ev = append_event_sqlite_tx(
+            &mut tx,
+            &AppendJobEvent {
+                job_id: jid,
+                occurred_at: Utc::now(),
+                kind: ProgressEventKind::JobClaimed,
+                stage: JobStage::Worker,
+                is_terminal: false,
+                metrics: ProgressMetrics::default(),
+                message: Some(format!(
+                    "claimed by worker {} (attempt {})",
+                    worker_id, row.attempt_count
+                )),
+                run_id: None,
+                plugin_name: None,
+                plugin_digest: None,
+            },
+            max_events_per_job,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(Some((row, ev)))
+    }
+
+    pub async fn complete_application_job_success_with_event(
+        &self,
+        job_id: JobId,
+        run_id: Option<RunId>,
+        result_ref_json: Option<&str>,
+        event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<JobEvent, StoreError> {
+        let completed = Utc::now().to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        let res = sqlx::query(
+            r#"UPDATE application_jobs SET status = 'succeeded', completed_at = ?, run_id = ?,
+               result_ref_json = ?, worker_id = NULL, heartbeat_at = NULL, leased_until = NULL,
+               cancel_requested = 0
+               WHERE job_id = ? AND status = 'running'"#,
+        )
+        .bind(&completed)
+        .bind(run_id.map(|r| r.0.to_string()))
+        .bind(result_ref_json)
+        .bind(job_id.0.to_string())
+        .execute(&mut *tx)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(StoreError::ReportValidation(
+                "application job not running or missing when completing success".into(),
+            ));
+        }
+        let ev = append_event_sqlite_tx(&mut tx, &event, max_events_per_job).await?;
+        tx.commit().await?;
+        Ok(ev)
+    }
+
+    pub async fn complete_application_job_canceled_with_event(
+        &self,
+        job_id: JobId,
+        event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<JobEvent, StoreError> {
+        let completed = Utc::now().to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        let res = sqlx::query(
+            r#"UPDATE application_jobs SET status = 'canceled', completed_at = ?,
+               failure_code = 'canceled', failure_message = 'job canceled by client request',
+               worker_id = NULL, heartbeat_at = NULL, leased_until = NULL, cancel_requested = 0
+               WHERE job_id = ? AND status = 'running'"#,
+        )
+        .bind(&completed)
+        .bind(job_id.0.to_string())
+        .execute(&mut *tx)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(StoreError::ReportValidation(
+                "application job not running or missing when completing cancel".into(),
+            ));
+        }
+        let ev = append_event_sqlite_tx(&mut tx, &event, max_events_per_job).await?;
+        tx.commit().await?;
+        Ok(ev)
+    }
+
+    pub async fn complete_scan_job_failure_with_event(
+        &self,
+        job_id: JobId,
+        failure_code: &str,
+        failure_message: &str,
+        event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<JobEvent, StoreError> {
+        let completed = Utc::now().to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        let res = sqlx::query(
+            r#"UPDATE application_jobs SET status = 'failed', completed_at = ?, failure_code = ?, failure_message = ?,
+               worker_id = NULL, heartbeat_at = NULL, leased_until = NULL
+               WHERE job_id = ? AND status = 'running'"#,
+        )
+        .bind(&completed)
+        .bind(failure_code)
+        .bind(failure_message)
+        .bind(job_id.0.to_string())
+        .execute(&mut *tx)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(StoreError::ReportValidation(
+                "scan job not running or missing when completing failure".into(),
+            ));
+        }
+        let ev = append_event_sqlite_tx(&mut tx, &event, max_events_per_job).await?;
+        tx.commit().await?;
+        Ok(ev)
+    }
+
+    pub async fn request_cancel_job_with_event(
+        &self,
+        job_id: JobId,
+        max_events_per_job: usize,
+    ) -> Result<(crate::models::JobCancelOutcome, Option<JobEvent>), StoreError> {
+        let mut tx = self.pool().begin().await?;
+        let status: Option<String> =
+            sqlx::query_scalar("SELECT status FROM application_jobs WHERE job_id = ?")
+                .bind(job_id.0.to_string())
+                .fetch_optional(&mut *tx)
+                .await?;
+        let Some(status) = status else {
+            return Err(StoreError::JobNotFound(job_id.0));
+        };
+        let now = Utc::now();
+        match status.as_str() {
+            "queued" => {
+                let res = sqlx::query(
+                    r#"UPDATE application_jobs SET status = 'canceled', completed_at = ?,
+                       failure_code = 'canceled', failure_message = 'job canceled before start'
+                       WHERE job_id = ? AND status = 'queued'"#,
+                )
+                .bind(now.to_rfc3339())
+                .bind(job_id.0.to_string())
+                .execute(&mut *tx)
+                .await?;
+                if res.rows_affected() == 0 {
+                    return Err(StoreError::ReportValidation(
+                        "job left queued before cancel could apply".into(),
+                    ));
+                }
+                let ev = append_event_sqlite_tx(
+                    &mut tx,
+                    &AppendJobEvent {
+                        job_id,
+                        occurred_at: now,
+                        kind: ProgressEventKind::JobCancelled,
+                        stage: JobStage::Cancel,
+                        is_terminal: true,
+                        metrics: ProgressMetrics::default(),
+                        message: Some("job canceled before worker execution".into()),
+                        run_id: None,
+                        plugin_name: None,
+                        plugin_digest: None,
+                    },
+                    max_events_per_job,
+                )
+                .await?;
+                tx.commit().await?;
+                Ok((crate::models::JobCancelOutcome::CanceledFromQueued, Some(ev)))
+            }
+            "running" => {
+                let res = sqlx::query(
+                    r#"UPDATE application_jobs SET cancel_requested = 1
+                       WHERE job_id = ? AND status = 'running'"#,
+                )
+                .bind(job_id.0.to_string())
+                .execute(&mut *tx)
+                .await?;
+                if res.rows_affected() == 0 {
+                    return Err(StoreError::ReportValidation(
+                        "job left running before cancel could apply".into(),
+                    ));
+                }
+                let ev = append_event_sqlite_tx(
+                    &mut tx,
+                    &AppendJobEvent {
+                        job_id,
+                        occurred_at: now,
+                        kind: ProgressEventKind::CancelRequested,
+                        stage: JobStage::Cancel,
+                        is_terminal: false,
+                        metrics: ProgressMetrics::default(),
+                        message: Some(
+                            "cancel requested; worker stopping at next safe boundary".into(),
+                        ),
+                        run_id: None,
+                        plugin_name: None,
+                        plugin_digest: None,
+                    },
+                    max_events_per_job,
+                )
+                .await?;
+                tx.commit().await?;
+                Ok((crate::models::JobCancelOutcome::CancelRequestedForRunning, Some(ev)))
+            }
+            "canceled" => Ok((crate::models::JobCancelOutcome::AlreadyCanceled, None)),
+            "succeeded" | "failed" => Err(StoreError::ReportValidation(format!(
+                "job {} is already terminal ({})",
+                job_id.0, status
+            ))),
+            other => Err(StoreError::ReportValidation(format!("unknown job status `{other}`"))),
+        }
+    }
 }
 
 impl PostgresScanStore {
@@ -782,6 +1178,405 @@ impl PostgresScanStore {
             out.push(parse_run_list_item(&rid, &rsid, &comp, &outcome, tk, nk)?);
         }
         Ok((out, total as u64))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_application_job_with_idempotency_and_event(
+        &self,
+        job_id: JobId,
+        kind: JobKind,
+        identity: &TargetIdentity,
+        request_json: &str,
+        idempotency: Option<(&str, &str, &str, DateTime<Utc>)>,
+        initial_event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<(IdempotencyInsertResult, Option<JobEvent>), StoreError> {
+        let now = Utc::now();
+        let now_str = now.to_rfc3339();
+        let _ = sqlx::query(
+            "DELETE FROM idempotency_keys WHERE ctid IN (SELECT ctid FROM idempotency_keys WHERE expires_at <= $1 LIMIT 100)",
+        )
+        .bind(&now_str)
+        .execute(self.pool())
+        .await;
+
+        let mut tx = self.pool().begin().await?;
+        if let Some((scope, key, req_sha, expires_at)) = idempotency {
+            sqlx::query(
+                "DELETE FROM idempotency_keys WHERE scope = $1 AND idempotency_key = $2 AND expires_at <= $3",
+            )
+            .bind(scope)
+            .bind(key)
+            .bind(&now_str)
+            .execute(&mut *tx)
+            .await?;
+
+            if let Some((existing_sha, existing_job_id)) = sqlx::query_as::<_, (String, String)>(
+                "SELECT request_sha256, job_id FROM idempotency_keys WHERE scope = $1 AND idempotency_key = $2",
+            )
+            .bind(scope)
+            .bind(key)
+            .fetch_optional(&mut *tx)
+            .await?
+            {
+                if existing_sha != req_sha {
+                    return Err(StoreError::IdempotencyConflict(
+                        "idempotency key already used with a different request payload".into(),
+                    ));
+                }
+                let row = sqlx::query_as::<_, ScanJobRow>(
+                    r#"SELECT job_id, submitted_at, started_at, completed_at, status,
+                              target_kind, normalized_target_key, request_json,
+                              failure_code, failure_message, run_id,
+                              worker_id, attempt_count, heartbeat_at, leased_until, recovery_note,
+                              job_kind, payload_schema_version, cancel_requested, result_ref_json
+                       FROM application_jobs WHERE job_id = $1"#,
+                )
+                .bind(&existing_job_id)
+                .fetch_one(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                return Ok((IdempotencyInsertResult::Replayed { existing: Box::new(row) }, None));
+            }
+
+            sqlx::query(
+                r#"INSERT INTO application_jobs (
+                    job_id, submitted_at, status, target_kind, normalized_target_key, request_json,
+                    attempt_count, job_kind, payload_schema_version
+                ) VALUES ($1, $2, 'queued', $3, $4, $5, 0, $6, 1)"#,
+            )
+            .bind(job_id.0.to_string())
+            .bind(&now_str)
+            .bind(&identity.target_kind)
+            .bind(&identity.normalized_key)
+            .bind(request_json)
+            .bind(kind.as_str())
+            .execute(&mut *tx)
+            .await?;
+
+            let insert_res = sqlx::query(
+                r#"INSERT INTO idempotency_keys (scope, idempotency_key, request_sha256, job_id, created_at, expires_at)
+                   VALUES ($1, $2, $3, $4, $5, $6)"#,
+            )
+            .bind(scope)
+            .bind(key)
+            .bind(req_sha)
+            .bind(job_id.0.to_string())
+            .bind(&now_str)
+            .bind(expires_at.to_rfc3339())
+            .execute(&mut *tx)
+            .await;
+
+            match insert_res {
+                Ok(_) => {
+                    let ev = append_event_postgres_tx(&mut tx, &initial_event, max_events_per_job)
+                        .await?;
+                    tx.commit().await?;
+                    return Ok((
+                        IdempotencyInsertResult::Created { job_id, submitted_at: now },
+                        Some(ev),
+                    ));
+                }
+                Err(e) if is_unique_violation(&e) => {
+                    tx.rollback().await?;
+                    let (existing_sha, existing_job_id): (String, String) = sqlx::query_as(
+                        "SELECT request_sha256, job_id FROM idempotency_keys WHERE scope = $1 AND idempotency_key = $2",
+                    )
+                    .bind(scope)
+                    .bind(key)
+                    .fetch_one(self.pool())
+                    .await?;
+                    if existing_sha != req_sha {
+                        return Err(StoreError::IdempotencyConflict(
+                            "idempotency key already used with a different request payload".into(),
+                        ));
+                    }
+                    let existing_uuid = Uuid::parse_str(&existing_job_id)
+                        .map_err(|_| StoreError::ReportValidation("invalid job_id".into()))?;
+                    let row = self.get_scan_job(JobId(existing_uuid)).await?;
+                    return Ok((
+                        IdempotencyInsertResult::Replayed { existing: Box::new(row) },
+                        None,
+                    ));
+                }
+                Err(e) => return Err(StoreError::Sql(e)),
+            }
+        }
+
+        sqlx::query(
+            r#"INSERT INTO application_jobs (
+                job_id, submitted_at, status, target_kind, normalized_target_key, request_json,
+                attempt_count, job_kind, payload_schema_version
+            ) VALUES ($1, $2, 'queued', $3, $4, $5, 0, $6, 1)"#,
+        )
+        .bind(job_id.0.to_string())
+        .bind(&now_str)
+        .bind(&identity.target_kind)
+        .bind(&identity.normalized_key)
+        .bind(request_json)
+        .bind(kind.as_str())
+        .execute(&mut *tx)
+        .await?;
+        let ev = append_event_postgres_tx(&mut tx, &initial_event, max_events_per_job).await?;
+        tx.commit().await?;
+        Ok((IdempotencyInsertResult::Created { job_id, submitted_at: now }, Some(ev)))
+    }
+
+    pub async fn claim_next_queued_scan_job_with_event(
+        &self,
+        worker_id: &str,
+        heartbeat_at: DateTime<Utc>,
+        leased_until: DateTime<Utc>,
+        max_events_per_job: usize,
+    ) -> Result<Option<(ScanJobRow, JobEvent)>, StoreError> {
+        let started = Utc::now().to_rfc3339();
+        let hb = heartbeat_at.to_rfc3339();
+        let lu = leased_until.to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        let row = sqlx::query_as::<_, ScanJobRow>(
+            r#"WITH picked AS (
+                 SELECT job_id FROM application_jobs
+                 WHERE status = 'queued'
+                 ORDER BY submitted_at ASC
+                 LIMIT 1
+                 FOR UPDATE SKIP LOCKED
+               )
+               UPDATE application_jobs AS j
+               SET status = 'running',
+                   started_at = $1,
+                   worker_id = $2,
+                   heartbeat_at = $3,
+                   leased_until = $4,
+                   attempt_count = j.attempt_count + 1
+               FROM picked
+               WHERE j.job_id = picked.job_id
+               RETURNING j.job_id, j.submitted_at, j.started_at, j.completed_at, j.status,
+                         j.target_kind, j.normalized_target_key, j.request_json,
+                         j.failure_code, j.failure_message, j.run_id,
+                         j.worker_id, j.attempt_count, j.heartbeat_at, j.leased_until, j.recovery_note,
+                         j.job_kind, j.payload_schema_version, j.cancel_requested, j.result_ref_json"#,
+        )
+        .bind(&started)
+        .bind(worker_id)
+        .bind(&hb)
+        .bind(&lu)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(row) = row else {
+            tx.commit().await?;
+            return Ok(None);
+        };
+        let jid = Uuid::parse_str(&row.job_id)
+            .map(JobId)
+            .map_err(|_| StoreError::ReportValidation("invalid job_id".into()))?;
+        let ev = append_event_postgres_tx(
+            &mut tx,
+            &AppendJobEvent {
+                job_id: jid,
+                occurred_at: Utc::now(),
+                kind: ProgressEventKind::JobClaimed,
+                stage: JobStage::Worker,
+                is_terminal: false,
+                metrics: ProgressMetrics::default(),
+                message: Some(format!(
+                    "claimed by worker {} (attempt {})",
+                    worker_id, row.attempt_count
+                )),
+                run_id: None,
+                plugin_name: None,
+                plugin_digest: None,
+            },
+            max_events_per_job,
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(Some((row, ev)))
+    }
+
+    pub async fn complete_application_job_success_with_event(
+        &self,
+        job_id: JobId,
+        run_id: Option<RunId>,
+        result_ref_json: Option<&str>,
+        event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<JobEvent, StoreError> {
+        let completed = Utc::now().to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        let res = sqlx::query(
+            r#"UPDATE application_jobs SET status = 'succeeded', completed_at = $1, run_id = $2,
+               result_ref_json = $3, worker_id = NULL, heartbeat_at = NULL, leased_until = NULL,
+               cancel_requested = 0
+               WHERE job_id = $4 AND status = 'running'"#,
+        )
+        .bind(&completed)
+        .bind(run_id.map(|r| r.0.to_string()))
+        .bind(result_ref_json)
+        .bind(job_id.0.to_string())
+        .execute(&mut *tx)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(StoreError::ReportValidation(
+                "application job not running or missing when completing success".into(),
+            ));
+        }
+        let ev = append_event_postgres_tx(&mut tx, &event, max_events_per_job).await?;
+        tx.commit().await?;
+        Ok(ev)
+    }
+
+    pub async fn complete_application_job_canceled_with_event(
+        &self,
+        job_id: JobId,
+        event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<JobEvent, StoreError> {
+        let completed = Utc::now().to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        let res = sqlx::query(
+            r#"UPDATE application_jobs SET status = 'canceled', completed_at = $1,
+               failure_code = 'canceled', failure_message = 'job canceled by client request',
+               worker_id = NULL, heartbeat_at = NULL, leased_until = NULL, cancel_requested = 0
+               WHERE job_id = $2 AND status = 'running'"#,
+        )
+        .bind(&completed)
+        .bind(job_id.0.to_string())
+        .execute(&mut *tx)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(StoreError::ReportValidation(
+                "application job not running or missing when completing cancel".into(),
+            ));
+        }
+        let ev = append_event_postgres_tx(&mut tx, &event, max_events_per_job).await?;
+        tx.commit().await?;
+        Ok(ev)
+    }
+
+    pub async fn complete_scan_job_failure_with_event(
+        &self,
+        job_id: JobId,
+        failure_code: &str,
+        failure_message: &str,
+        event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<JobEvent, StoreError> {
+        let completed = Utc::now().to_rfc3339();
+        let mut tx = self.pool().begin().await?;
+        let res = sqlx::query(
+            r#"UPDATE application_jobs SET status = 'failed', completed_at = $1, failure_code = $2, failure_message = $3,
+               worker_id = NULL, heartbeat_at = NULL, leased_until = NULL
+               WHERE job_id = $4 AND status = 'running'"#,
+        )
+        .bind(&completed)
+        .bind(failure_code)
+        .bind(failure_message)
+        .bind(job_id.0.to_string())
+        .execute(&mut *tx)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(StoreError::ReportValidation(
+                "scan job not running or missing when completing failure".into(),
+            ));
+        }
+        let ev = append_event_postgres_tx(&mut tx, &event, max_events_per_job).await?;
+        tx.commit().await?;
+        Ok(ev)
+    }
+
+    pub async fn request_cancel_job_with_event(
+        &self,
+        job_id: JobId,
+        max_events_per_job: usize,
+    ) -> Result<(crate::models::JobCancelOutcome, Option<JobEvent>), StoreError> {
+        let mut tx = self.pool().begin().await?;
+        let status: Option<String> =
+            sqlx::query_scalar("SELECT status FROM application_jobs WHERE job_id = $1")
+                .bind(job_id.0.to_string())
+                .fetch_optional(&mut *tx)
+                .await?;
+        let Some(status) = status else {
+            return Err(StoreError::JobNotFound(job_id.0));
+        };
+        let now = Utc::now();
+        match status.as_str() {
+            "queued" => {
+                let res = sqlx::query(
+                    r#"UPDATE application_jobs SET status = 'canceled', completed_at = $1,
+                       failure_code = 'canceled', failure_message = 'job canceled before start'
+                       WHERE job_id = $2 AND status = 'queued'"#,
+                )
+                .bind(now.to_rfc3339())
+                .bind(job_id.0.to_string())
+                .execute(&mut *tx)
+                .await?;
+                if res.rows_affected() == 0 {
+                    return Err(StoreError::ReportValidation(
+                        "job left queued before cancel could apply".into(),
+                    ));
+                }
+                let ev = append_event_postgres_tx(
+                    &mut tx,
+                    &AppendJobEvent {
+                        job_id,
+                        occurred_at: now,
+                        kind: ProgressEventKind::JobCancelled,
+                        stage: JobStage::Cancel,
+                        is_terminal: true,
+                        metrics: ProgressMetrics::default(),
+                        message: Some("job canceled before worker execution".into()),
+                        run_id: None,
+                        plugin_name: None,
+                        plugin_digest: None,
+                    },
+                    max_events_per_job,
+                )
+                .await?;
+                tx.commit().await?;
+                Ok((crate::models::JobCancelOutcome::CanceledFromQueued, Some(ev)))
+            }
+            "running" => {
+                let res = sqlx::query(
+                    r#"UPDATE application_jobs SET cancel_requested = 1
+                       WHERE job_id = $1 AND status = 'running'"#,
+                )
+                .bind(job_id.0.to_string())
+                .execute(&mut *tx)
+                .await?;
+                if res.rows_affected() == 0 {
+                    return Err(StoreError::ReportValidation(
+                        "job left running before cancel could apply".into(),
+                    ));
+                }
+                let ev = append_event_postgres_tx(
+                    &mut tx,
+                    &AppendJobEvent {
+                        job_id,
+                        occurred_at: now,
+                        kind: ProgressEventKind::CancelRequested,
+                        stage: JobStage::Cancel,
+                        is_terminal: false,
+                        metrics: ProgressMetrics::default(),
+                        message: Some(
+                            "cancel requested; worker stopping at next safe boundary".into(),
+                        ),
+                        run_id: None,
+                        plugin_name: None,
+                        plugin_digest: None,
+                    },
+                    max_events_per_job,
+                )
+                .await?;
+                tx.commit().await?;
+                Ok((crate::models::JobCancelOutcome::CancelRequestedForRunning, Some(ev)))
+            }
+            "canceled" => Ok((crate::models::JobCancelOutcome::AlreadyCanceled, None)),
+            "succeeded" | "failed" => Err(StoreError::ReportValidation(format!(
+                "job {} is already terminal ({})",
+                job_id.0, status
+            ))),
+            other => Err(StoreError::ReportValidation(format!("unknown job status `{other}`"))),
+        }
     }
 }
 

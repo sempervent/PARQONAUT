@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
 use parqonaut_app::{ServerPluginPolicy, ServerPluginState, StoragePolicy};
-use parqonaut_service::{build_router_with_workers, serve, ParqonautService};
+use parqonaut_service::{build_router_with_workers, serve_with_service, ParqonautService};
 use parqonaut_store::StoreBackend;
 use tracing::info;
 
@@ -97,8 +97,8 @@ pub async fn run(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let server_plugins = ServerPluginState::bootstrap(plugin_policy)
         .map_err(|e| format!("server plugin configuration: {e}"))?;
     let service = ParqonautService::with_storage_policy_and_plugins(store, policy, server_plugins);
-    let router = build_router_with_workers(service, args.workers);
-    serve(router, listen).await?;
+    let router = build_router_with_workers(service.clone(), args.workers);
+    serve_with_service(router, listen, service).await?;
     Ok(())
 }
 

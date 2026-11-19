@@ -36,3 +36,18 @@ test("ParqonautApi keeps token strictly in memory and attaches Authorization hea
   const k2 = generateIdempotencyKey("ui-repair");
   assert.notEqual(k1, k2);
 });
+
+test("TextDecoder({stream:true}) + SseFrameParser survives split multibyte UTF-8 at every byte offset", () => {
+  const payload =
+    'event: job_event\nid: 7\ndata: {"seq":7,"message":"héllo 🚀 日本語"}\n\n';
+  const bytes = new TextEncoder().encode(payload);
+  for (let split = 0; split <= bytes.length; split++) {
+    const decoder = new TextDecoder();
+    const parser = new SseFrameParser();
+    const t1 = decoder.decode(bytes.subarray(0, split), { stream: true });
+    const t2 = decoder.decode(bytes.subarray(split), { stream: true }) + decoder.decode();
+    const frames = [...parser.pushText(t1), ...parser.pushText(t2)];
+    assert.equal(frames.length, 1, `failed at split=${split}`);
+    assert.equal(JSON.parse(frames[0].data).message, "héllo 🚀 日本語");
+  }
+});

@@ -317,3 +317,108 @@ async fn repair_and_batch_jobs_emit_lifecycle_and_support_rbac_and_cancel() {
     assert_eq!(ov.status(), StatusCode::OK);
     let _ = build_router(svc);
 }
+
+#[tokio::test]
+async fn concurrent_http_idempotent_submissions_create_single_job_and_canonical_json_matches() {
+    let (_dir, svc, _reader_tok, op_tok) = setup_service_with_roles().await;
+    let app = build_router_with_workers(svc.clone(), 1);
+    let fixture = support::fixture("scan/single_parquet/data.parquet");
+
+    let mut tasks = Vec::new();
+    for i in 0..10 {
+        let app_c = app.clone();
+        let tok = op_tok.clone();
+        let f = fixture.clone();
+        tasks.push(tokio::spawn(async move {
+            // Alternate key ordering to verify canonical JSON hashing stability.
+            let body = if i % 2 == 0 {
+                format!(
+                    r#"{{"profile":"standard","target":{{"path":"{}","type":"local_file"}}}}"#,
+                    f
+                )
+            } else {
+                format!(
+                    r#"{{"target":{{"type":"local_file","path":"{}"}},"profile":"standard"}}"#,
+                    f
+                )
+            };
+            let res = app_c
+                .oneshot(
+                    Request::post("/api/v1/jobs/scans")
+                        .header(AUTHORIZATION, support::bearer(&tok))
+                        .header("content-type", "application/json")
+                        .header("Idempotency-Key", "http-conc-idem-1")
+                        .body(Body::from(body))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(res.status(), StatusCode::ACCEPTED);
+            let v: serde_json::Value =
+                serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes())
+                    .unwrap();
+            v["job_id"].as_str().unwrap().to_string()
+        }));
+    }
+
+    let mut job_ids = std::collections::BTreeSet::new();
+    for t in tasks {
+        job_ids.insert(t.await.unwrap());
+    }
+    assert_eq!(job_ids.len(), 1, "expected 1 job across concurrent retries: {job_ids:?}");
+    let total_jobs = svc.store().count_scan_jobs(None).await.unwrap();
+    assert_eq!(total_jobs, 1);
+    svc.graceful_shutdown(Duration::from_secs(5)).await;
+}
+
+#[tokio::test]
+async fn graceful_shutdown_drains_workers_and_flushes_events() {
+    let (_dir, svc, reader_tok, op_tok) = setup_service_with_roles().await;
+    let app = build_router_with_workers(svc.clone(), 1);
+    let scan_body = json!({
+        "target": { "type": "local_file", "path": support::fixture("scan/single_parquet/data.parquet").as_str() },
+        "profile": "quick",
+    });
+    let res = app
+        .clone()
+        .oneshot(
+            Request::post("/api/v1/jobs/scans")
+                .header(AUTHORIZATION, support::bearer(&op_tok))
+                .header("content-type", "application/json")
+                .body(Body::from(scan_body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::ACCEPTED);
+    let submitted: serde_json::Value =
+        serde_json::from_slice(&res.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let job_id: Uuid = submitted["job_id"].as_str().unwrap().parse().unwrap();
+
+    for _ in 0..200 {
+        let j = svc.get_scan_job_view(JobId(job_id)).await.unwrap();
+        if j.status == parqonaut_types::JobStatus::Succeeded {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    svc.graceful_shutdown(Duration::from_secs(5)).await;
+    assert!(svc.is_shutting_down());
+
+    let sse_res = app
+        .oneshot(
+            Request::get(format!("/api/v1/jobs/{job_id}/events/stream?after_seq=0"))
+                .header(AUTHORIZATION, support::bearer(&reader_tok))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(sse_res.status(), StatusCode::OK);
+    let body = String::from_utf8(sse_res.into_body().collect().await.unwrap().to_bytes().to_vec())
+        .unwrap();
+    assert!(body.contains("job_queued"));
+    assert!(body.contains("execution_completed"));
+    assert!(body.contains("event: job_status"));
+}

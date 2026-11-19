@@ -19,6 +19,7 @@ use parqonaut_types::{
     ScanTarget,
 };
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(feature = "s3")]
 use std::sync::Arc;
 use url::Url;
 use uuid::Uuid;
@@ -175,8 +176,6 @@ impl RepairBackend {
                     )
                     .await
             }
-            #[cfg(not(feature = "s3"))]
-            _ => Err(RepairError::Storage("unsupported cross-backend repair pairing".into())),
         }
     }
 }

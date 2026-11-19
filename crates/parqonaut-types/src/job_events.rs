@@ -134,15 +134,39 @@ impl JobEventRetentionPolicy {
     }
 }
 
-/// Sanitizes an event message to a bounded length without secrets or raw URLs.
+/// Sanitizes an event message to a bounded byte length without secrets or raw credentialed URLs.
 pub fn sanitize_event_message(raw: &str, max_bytes: usize) -> String {
     let mut out = String::with_capacity(raw.len().min(max_bytes));
+    let mut redact_next = false;
     for token in raw.split_whitespace() {
         if !out.is_empty() {
             out.push(' ');
         }
-        if token.contains("://") && token.contains('@') {
+        if redact_next {
+            out.push_str("<redacted>");
+            redact_next = false;
+            continue;
+        }
+        if token.eq_ignore_ascii_case("bearer") {
+            out.push_str("Bearer");
+            redact_next = true;
+        } else if token.contains("://") && token.contains('@') {
             out.push_str("<redacted-url>");
+        } else if let Some((k, _v)) = token.split_once('=') {
+            let kl = k.to_ascii_lowercase();
+            if kl.contains("password")
+                || kl.contains("passwd")
+                || kl.contains("secret")
+                || kl.contains("token")
+                || kl.contains("api_key")
+                || kl.contains("access_key")
+                || kl.contains("credential")
+            {
+                out.push_str(k);
+                out.push_str("=<redacted>");
+            } else {
+                out.push_str(token);
+            }
         } else {
             out.push_str(token);
         }
@@ -150,7 +174,15 @@ pub fn sanitize_event_message(raw: &str, max_bytes: usize) -> String {
     if out.len() <= max_bytes {
         return out;
     }
-    let mut end = max_bytes;
+    if max_bytes <= 3 {
+        let mut end = max_bytes;
+        while end > 0 && !out.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.truncate(end);
+        return out;
+    }
+    let mut end = max_bytes - 3;
     while end > 0 && !out.is_char_boundary(end) {
         end -= 1;
     }

@@ -24,4 +24,4 @@ pub use service::ParqonautService;
 
 pub mod scan_job;
 pub mod server;
-pub use server::serve;
+pub use server::{serve, serve_with_service};
