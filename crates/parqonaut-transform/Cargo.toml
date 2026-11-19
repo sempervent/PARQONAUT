@@ -26,7 +26,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 indicatif = "0.17"
 rayon = "1.8"
-nom = "7.1"
+nom = "8.0"
 parqonaut-workflow = { path = "../parqonaut-workflow" }
 parqonaut-columnar = { path = "../parqonaut-columnar" }
 parqonaut-storage = { path = "../parqonaut-storage", features = ["columnar"] }
