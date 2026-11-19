@@ -69,7 +69,7 @@ jobs:
           echo "PARQONAUT_PLUGIN_PYTHON=$(uv run which python)" >> "${GITHUB_ENV}"
           echo "PARQONAUT_PLUGIN_ROOTS=${{ github.workspace }}/fixtures/plugins" >> "${GITHUB_ENV}"
           echo "PARQONAUT_PLUGIN_SDK_PATH=${{ github.workspace }}/python/parqonaut_plugins/src" >> "${GITHUB_ENV}"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: API tests and smoke
