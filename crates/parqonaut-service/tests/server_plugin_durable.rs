@@ -268,6 +268,7 @@ async fn removed_plugin_fails_at_execution() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn policy_change_after_enqueue_rejects_execution() {
     set_plugin_env();
     let (_dir, svc) = service_with_policy(&["example-rules"]).await;
@@ -306,6 +307,7 @@ async fn policy_change_after_enqueue_rejects_execution() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn scan_request_ignores_execution_override_fields() {
     use axum::http::{header::AUTHORIZATION, Request};
     use http_body_util::BodyExt;
@@ -345,6 +347,7 @@ async fn scan_request_ignores_execution_override_fields() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn storage_policy_rejects_before_plugin_spawn() {
     let (_dir, svc) = service_with_policy(&["example-rules"]).await;
     let outside = "/no/such/parqonaut/forbidden/data.parquet";
@@ -413,6 +416,7 @@ async fn server_job_leak_env_plugin_does_not_see_secrets() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn catalog_response_has_no_filesystem_paths() {
     let (_dir, svc) = service_with_policy(&["example-rules"]).await;
     let cat = svc.list_plugin_catalog();
@@ -423,6 +427,7 @@ async fn catalog_response_has_no_filesystem_paths() {
 }
 
 #[tokio::test]
+#[serial_test::serial]
 async fn plugin_failure_http_error_sanitizes_paths_and_secrets() {
     let (_dir, store) = support::connect_store_with_token(AuthRole::Operator, "op").await;
     let secret_py = PathBuf::from("/opt/secret-operator-path/venv/bin/python");

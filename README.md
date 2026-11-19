@@ -8,7 +8,7 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 
 Use **`prqnt`** for local and S3-backed workflows: forensic scans, repair planning, batch fleet operations, streaming conversion, declarative transforms, and batch Python plugins in the transform pipeline. For lineage and source provenance, see [docs/provenance.md](docs/provenance.md).
 
-**Current release:** **v0.11.0** (in PR) — Operator Console (`prqnt tui`, bundled `/ui/` web dashboard), durable job-event journal + SSE stream, and `Idempotency-Key` protection (prior shipped milestone: [v0.10.0](docs/history/v0.10.0/release-notes.md); latest GitHub tag: [v0.9.2](https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.2)).
+**Current release:** **v0.12.0** (in PR) — Reliability, Distribution, and 1.0 Readiness: incremental UTF-8 SSE framing, atomic job/event transitions, historical DB migration & WAL backup/restore validation, Criterion benchmarks, `proptest`/fuzz/fault-injection suites, `Cargo.lock` + `deny.toml`, reproducible binary release packaging, Docker/Compose, and operational runbook (prior shipped milestones: [v0.11.0](CHANGELOG.md#0110---2026-11-18), [v0.10.0](docs/history/v0.10.0/release-notes.md); latest GitHub tag: [v0.9.2](https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.2)).
 
 **Documentation:** [PARQONAUT docs](https://sempervent.github.io/PARQONAUT/) (GitHub Pages)
 

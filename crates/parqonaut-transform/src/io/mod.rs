@@ -25,12 +25,42 @@ pub fn resolve_inputs(pattern: &str) -> Result<Vec<String>> {
         ObjectLocation::parse(pattern).map_err(|e| TransformError::InvalidInput(e.to_string()))?;
         return Ok(vec![pattern.to_string()]);
     }
+    let root = std::path::Path::new(pattern);
+    if root.is_dir() {
+        let mut out = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let entries = std::fs::read_dir(&dir).map_err(|e| {
+                TransformError::InvalidInput(format!(
+                    "unable to read directory {}: {e}",
+                    dir.display()
+                ))
+            })?;
+            for entry in entries {
+                let entry = entry.map_err(|e| TransformError::InvalidInput(e.to_string()))?;
+                let p = entry.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().and_then(|s| s.to_str()) == Some("parquet") {
+                    out.push(p.to_string_lossy().to_string());
+                }
+            }
+        }
+        out.sort();
+        if out.is_empty() {
+            return Err(TransformError::InvalidInput(format!(
+                "no .parquet files found in directory {}",
+                root.display()
+            )));
+        }
+        return Ok(out);
+    }
     let paths: Result<Vec<_>> = glob::glob(pattern)
         .map_err(|e| TransformError::InvalidInput(format!("Invalid glob pattern: {}", e)))?
-        .map(|entry| {
-            entry
-                .map(|p| p.to_string_lossy().to_string())
-                .map_err(|e| TransformError::InvalidInput(e.to_string()))
+        .filter_map(|entry| match entry {
+            Ok(p) if p.is_dir() => None,
+            Ok(p) => Some(Ok(p.to_string_lossy().to_string())),
+            Err(e) => Some(Err(TransformError::InvalidInput(e.to_string()))),
         })
         .collect();
     let mut paths = paths?;

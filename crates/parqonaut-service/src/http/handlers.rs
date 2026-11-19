@@ -208,6 +208,29 @@ pub async fn stream_job_events(
         let current_status =
             svc_bg.get_scan_job_view(jid).await.map(|v| v.status).unwrap_or(initial_view.status);
         if is_terminal_job_status(current_status) {
+            while let Ok(batch) = svc_bg.store().list_job_events(jid, cursor, 200, None, None).await
+            {
+                if batch.is_empty() {
+                    break;
+                }
+                let count = batch.len();
+                for ev in batch {
+                    if ev.seq <= cursor {
+                        continue;
+                    }
+                    cursor = ev.seq;
+                    if let Ok(frame) =
+                        Event::default().id(ev.seq.to_string()).event("job_event").json_data(&ev)
+                    {
+                        if sse_tx.send(frame).await.is_err() {
+                            return;
+                        }
+                    }
+                }
+                if count < 200 {
+                    break;
+                }
+            }
             let status_ev = Event::default().event("job_status").data(
                 serde_json::json!({
                     "job_id": jid.0,

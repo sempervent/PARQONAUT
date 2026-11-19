@@ -1,0 +1,7 @@
+schema_version = 1
+[batch]
+name = "fuzz"
+output_root = "out"
+[[datasets]]
+id = "a"
+path = "ds"

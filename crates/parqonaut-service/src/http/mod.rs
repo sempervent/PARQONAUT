@@ -42,7 +42,8 @@ pub fn build_router(service: ParqonautService) -> Router {
 }
 
 pub fn build_router_with_workers(service: ParqonautService, workers: usize) -> Router {
-    std::mem::drop(spawn_scan_job_workers(service.clone(), workers.max(1)));
+    let handles = spawn_scan_job_workers(service.clone(), workers.max(1));
+    service.register_workers(handles);
     let prometheus = observability::metrics_handle();
     let state = AppState { service, prometheus };
 

@@ -1,0 +1,10 @@
+target/
+.git/
+.tools/
+data/
+docs/
+scripts/
+python/parqonaut_plugins/.venv/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

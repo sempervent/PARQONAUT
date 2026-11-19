@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   CARGO_BUILD_JOBS: 2
   # RustFS 1.0.0 — official GHCR image, linux/amd64 digest pinned for reproducible CI.
@@ -36,16 +39,18 @@ jobs:
       - name: clippy
         run: |
           if command -v cargo-clippy >/dev/null 2>&1; then
-            cargo-clippy --workspace --all-targets --all-features -- -D warnings
+            cargo-clippy --locked --workspace --all-targets --all-features -- -D warnings
           else
-            cargo clippy --workspace --all-targets --all-features -- -D warnings
+            cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
           fi
       - name: naming check
         run: scripts/check-active-naming.sh
       - name: test
         run: |
           cargo xtask fixtures repair
-          cargo test --workspace
+          cargo test --locked --workspace
+          cargo test --locked -p parqonaut-storage --features test-util --test chaos_backend
+          cargo bench --locked -p parqonaut-bench --no-run
 
   api-integration:
     name: API integration (SQLite)
@@ -70,12 +75,12 @@ jobs:
       - name: API tests and smoke
         run: |
           set -euo pipefail
-          cargo build -p parqonaut-cli --bin prqnt
-          cargo test -p parqonaut-service --tests
-          cargo test -p parqonaut-store --test auth_tokens
-          cargo test -p parqonaut-store --test job_events_and_idempotency
-          cargo test -p parqonaut-client --tests
-          cargo test -p parqonaut-tui --tests
+          cargo build --locked -p parqonaut-cli --bin prqnt
+          cargo test --locked -p parqonaut-service --tests
+          cargo test --locked -p parqonaut-store --test auth_tokens --test job_events_and_idempotency --test migration_upgrade
+          cargo test --locked -p parqonaut-client --tests
+          cargo test --locked -p parqonaut-tui --tests
+          cargo test --locked -p parqonaut-cli --test cli_contracts
           node --test scripts/ui-test.mjs
           bash scripts/api-test/smoke.sh --start
           UI_BROWSER_REQUIRED=1 bash scripts/console-demo.sh
@@ -116,10 +121,10 @@ jobs:
           echo "PARQONAUT_PLUGIN_SDK_PATH=${{ github.workspace }}/python/parqonaut_plugins/src" >> "${GITHUB_ENV}"
       - name: Store and job tests (Postgres)
         run: |
-          cargo test -p parqonaut-store --test postgres_store_integration -- --ignored --test-threads=1
+          cargo test --locked -p parqonaut-store --test postgres_store_integration -- --ignored --test-threads=1
       - name: HTTP API smoke (Postgres)
         run: |
-          cargo test -p parqonaut-service --test http_api_postgres -- --ignored
+          cargo test --locked -p parqonaut-service --test http_api_postgres -- --ignored
 
   s3-integration:
     name: S3 integration (RustFS)
@@ -184,16 +189,16 @@ jobs:
           bash scripts/s3-test/fixtures.sh
       - name: Object storage integration tests
         run: |
-          cargo test -p parqonaut-stream --features storage --test remote_convert_s3 -- --nocapture --test-threads=1
-          cargo test -p parqonaut-transform --features s3 --test remote_matrix_s3 --test remote_pipeline_matrix -- --nocapture --test-threads=1
-          cargo test -p parqonaut-storage --features "columnar,s3" --test write_s3_roundtrip --test s3_raw_write -- --nocapture --test-threads=1
-          cargo test -p parqonaut-storage --features "s3,fogbank-fixtures,test-util" --lib -- --nocapture
-          cargo test -p parqonaut-storage --features "s3,fogbank-fixtures,test-util" \
+          cargo test --locked -p parqonaut-stream --features storage --test remote_convert_s3 -- --nocapture --test-threads=1
+          cargo test --locked -p parqonaut-transform --features s3 --test remote_matrix_s3 --test remote_pipeline_matrix -- --nocapture --test-threads=1
+          cargo test --locked -p parqonaut-storage --features "columnar,s3" --test write_s3_roundtrip --test s3_raw_write -- --nocapture --test-threads=1
+          cargo test --locked -p parqonaut-storage --features "s3,fogbank-fixtures,test-util" --lib -- --nocapture
+          cargo test --locked -p parqonaut-storage --features "s3,fogbank-fixtures,test-util" \
             --test chaos_backend --test contract_local --test contract_memory \
             --test fogbank_integration --test s3_integration -- --nocapture
           bash scripts/pipeline-s3-demo.sh
           export PARQONAUT_PLUGIN_ROOTS="${{ github.workspace }}/fixtures/plugins"
           export PARQONAUT_PLUGIN_SDK_PATH="${{ github.workspace }}/python/parqonaut_plugins/src"
-          cargo test -p parqonaut-transform --features s3 --test plugin_storage_matrix --test plugin_s3_cancellation -- --nocapture --test-threads=1
-          cargo test -p parqonaut-service --features s3 --test s3_operator_e2e -- --nocapture --test-threads=1
+          cargo test --locked -p parqonaut-transform --features s3 --test plugin_storage_matrix --test plugin_s3_cancellation -- --nocapture --test-threads=1
+          cargo test --locked -p parqonaut-service --features s3 --test s3_operator_e2e -- --nocapture --test-threads=1
           bash scripts/plugin-s3-demo.sh

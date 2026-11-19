@@ -41,4 +41,5 @@ arrow = { workspace = true }
 parquet = { workspace = true }
 parqonaut-transform = { path = "../parqonaut-transform" }
 parqonaut-storage = { path = "../parqonaut-storage" }
+proptest = "1"
 

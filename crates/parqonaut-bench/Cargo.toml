@@ -1,0 +1,43 @@
+[package]
+name = "parqonaut-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Reproducible performance benchmarks and bounded-memory verification for PARQONAUT."
+publish = false
+
+[dependencies]
+arrow.workspace = true
+bytes = "1.9"
+parquet.workspace = true
+camino.workspace = true
+chrono.workspace = true
+clap.workspace = true
+libc = "0.2"
+parqonaut-app = { path = "../parqonaut-app" }
+parqonaut-client = { path = "../parqonaut-client" }
+parqonaut-core = { path = "../parqonaut-core" }
+parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
+parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
+parqonaut-plugin-protocol = { path = "../parqonaut-plugin-protocol" }
+parqonaut-repair = { path = "../parqonaut-repair" }
+parqonaut-service = { path = "../parqonaut-service" }
+parqonaut-storage = { path = "../parqonaut-storage" }
+parqonaut-store = { path = "../parqonaut-store" }
+parqonaut-stream = { path = "../parqonaut-stream" }
+parqonaut-transform = { path = "../parqonaut-transform" }
+parqonaut-types = { path = "../parqonaut-types" }
+parqonaut-workflow = { path = "../parqonaut-workflow" }
+serde_json.workspace = true
+tempfile = "3"
+tokio.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "throughput"
+path = "../../benches/stream-throughput/throughput.rs"
+harness = false

@@ -66,21 +66,26 @@ export function subscribeJobEvents(api, jobId, afterSeq, callbacks) {
       const parser = new SseFrameParser();
       while (!stopped) {
         const { value, done } = await reader.read();
-        if (done) break;
-        const frames = parser.pushText(decoder.decode(value, { stream: true }));
-        for (const frame of frames) {
-          if (frame.event === "job_event") {
-            const ev = JSON.parse(frame.data);
-            if (ev.seq > cursor) {
-              cursor = ev.seq;
-              callbacks.onEvent(ev);
+        const text = done
+          ? decoder.decode()
+          : decoder.decode(value, { stream: true });
+        if (text) {
+          const frames = parser.pushText(text);
+          for (const frame of frames) {
+            if (frame.event === "job_event") {
+              const ev = JSON.parse(frame.data);
+              if (ev.seq > cursor) {
+                cursor = ev.seq;
+                callbacks.onEvent(ev);
+              }
+            } else if (frame.event === "job_status") {
+              const st = JSON.parse(frame.data);
+              callbacks.onTerminal(st);
+              return;
             }
-          } else if (frame.event === "job_status") {
-            const st = JSON.parse(frame.data);
-            callbacks.onTerminal(st);
-            return;
           }
         }
+        if (done) break;
       }
     } catch (err) {
       if (stopped || controller.signal.aborted) return;

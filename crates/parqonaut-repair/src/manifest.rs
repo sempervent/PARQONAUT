@@ -33,7 +33,40 @@ impl ExecutionManifest {
 
     pub fn read_json(path: &camino::Utf8Path) -> Result<Self, crate::error::RepairError> {
         let bytes = std::fs::read(path.as_std_path())?;
-        serde_json::from_slice(&bytes)
-            .map_err(|e| crate::error::RepairError::InvalidPlan(e.to_string()))
+        let manifest: Self = serde_json::from_slice(&bytes)
+            .map_err(|e| crate::error::RepairError::InvalidPlan(e.to_string()))?;
+        if manifest.parqonaut_manifest_version != MANIFEST_VERSION {
+            return Err(crate::error::RepairError::InvalidPlan(format!(
+                "unsupported execution manifest version {} (expected {})",
+                manifest.parqonaut_manifest_version, MANIFEST_VERSION
+            )));
+        }
+        Ok(manifest)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_unsupported_manifest_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = camino::Utf8PathBuf::from_path_buf(dir.path().join("manifest.json")).unwrap();
+        let bad = serde_json::json!({
+            "parqonaut_manifest_version": 99,
+            "plan_id": "p",
+            "execution_id": "e",
+            "parqonaut_version": "0.12.0",
+            "source_fingerprint": { "version": 1, "root": "/", "digest": "0", "entries": [] },
+            "output_fingerprint": { "version": 1, "root": "/", "digest": "0", "entries": [] },
+            "policy_fingerprint": "0",
+            "started_at": "2026-01-01T00:00:00Z",
+            "completed_at": "2026-01-01T00:00:00Z",
+            "operations": []
+        });
+        std::fs::write(path.as_std_path(), bad.to_string()).unwrap();
+        let err = ExecutionManifest::read_json(&path).unwrap_err();
+        assert!(err.to_string().contains("unsupported execution manifest version 99"));
     }
 }

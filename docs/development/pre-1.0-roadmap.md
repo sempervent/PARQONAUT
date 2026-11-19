@@ -23,15 +23,18 @@ Planned capability sequence before **v1.0.0**. Each item must ship as **implemen
 - Plugin protocol v1 (`parqonaut-plugin-protocol`), Python SDK (`parqonaut_plugins`), subprocess host (`parqonaut-plugin-host`)
 - CLI + opt-in server integration, digest-pinned durable scan jobs, Local/S3 batch plugin matrix, `parqonaut-*` namespace migration
 
-## v0.11.0 — Interactive interfaces (current)
+## v0.11.0 — Interactive interfaces (shipped, commit `3f5afbe`)
 
 - Durable job-event journal, SSE + polling progress stream, `Idempotency-Key` submission safety
 - Shared operator client (`parqonaut-client`), interactive TUI (`prqnt tui`), and bundled Axum web dashboard (`/ui/`)
 - Live jobs, findings, explicit repair review & authorization, batch monitoring, and read-only plugin catalog
 
-## v0.12.x — 1.0 hardening
+## v0.12.0 — 1.0 hardening (current)
 
-- Public contract audit, CLI/API stability, migration guarantees, performance, fuzz/property tests, security audit, docs completeness, upgrade testing, release candidates
+- Byte-oriented incremental UTF-8 SSE framing, atomic job/event transactions, deterministic idempotency hashing & bounded cleanup, graceful worker drain & event flush
+- Historical SQLite/Postgres upgrade validation (`v0.8`/`v0.9`/`v0.10`/`v0.11`) and WAL `VACUUM INTO` / `pg_dump` backup-restore runbooks
+- Public CLI/OpenAPI/durable-format compatibility policy, Criterion + RSS baseline (`parqonaut-bench`), `proptest` suites, 9 fuzz targets (`fuzz/` + CI smoke), and Arrow IPC length-bounds hardening
+- Committed root `Cargo.lock`, `--locked` CI gates, `deny.toml`, Dependabot, binary release workflow, `Dockerfile`/`compose.yaml`, and `docs/operations.md`
 
 ## v1.0.0 — Stable PARQONAUT
 

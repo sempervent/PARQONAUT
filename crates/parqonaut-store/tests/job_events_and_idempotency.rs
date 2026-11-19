@@ -254,3 +254,150 @@ async fn stale_recovery_records_durable_recovery_events() {
     let events = store.list_job_events(jid, 0, 50, None, None).await.unwrap();
     assert!(events.iter().any(|e| e.kind == ProgressEventKind::JobRecovered));
 }
+
+#[tokio::test]
+async fn concurrent_idempotent_inserts_never_duplicate_jobs_and_prune_expired() {
+    let (_dir, _url, store) = open_sqlite().await;
+    let id =
+        TargetIdentity { target_kind: "local_file".into(), normalized_key: "/conc.parquet".into() };
+    let past = Utc::now() - Duration::seconds(30);
+
+    // Seed expired idempotency keys that should be bounded-pruned on subsequent inserts.
+    for i in 0..10 {
+        let j = JobId::new();
+        let _ = store
+            .insert_application_job_with_idempotency(
+                j,
+                JobKind::Scan,
+                &id,
+                "{}",
+                Some(("scan", &format!("expired-{i}"), "sha-exp", past)),
+            )
+            .await
+            .unwrap();
+    }
+
+    let future = Utc::now() + Duration::hours(1);
+    let mut handles = Vec::new();
+    for _ in 0..16 {
+        let st = store.clone();
+        let tid = id.clone();
+        handles.push(tokio::spawn(async move {
+            let jid = JobId::new();
+            let ev = AppendJobEvent {
+                job_id: jid,
+                occurred_at: Utc::now(),
+                kind: ProgressEventKind::JobQueued,
+                stage: JobStage::Queue,
+                is_terminal: false,
+                metrics: ProgressMetrics::default(),
+                message: Some("queued".into()),
+                run_id: None,
+                plugin_name: None,
+                plugin_digest: None,
+            };
+            st.insert_application_job_with_idempotency_and_event(
+                jid,
+                JobKind::Scan,
+                &tid,
+                r#"{"a":1}"#,
+                Some(("scan", "concurrent-race-key", "sha-same", future)),
+                ev,
+                500,
+            )
+            .await
+        }));
+    }
+
+    let mut resolved_ids = std::collections::BTreeSet::new();
+    let mut created_count = 0usize;
+    for h in handles {
+        let (res, ev_opt) = h.await.unwrap().unwrap();
+        match res {
+            IdempotencyInsertResult::Created { job_id, .. } => {
+                created_count += 1;
+                assert!(ev_opt.is_some());
+                resolved_ids.insert(job_id.0.to_string());
+            }
+            IdempotencyInsertResult::Replayed { existing } => {
+                assert!(ev_opt.is_none());
+                resolved_ids.insert(existing.job_id);
+            }
+        }
+    }
+    assert_eq!(created_count, 1, "exactly one concurrent request must win creation");
+    assert_eq!(resolved_ids.len(), 1, "all 16 callers must observe the same job_id");
+    let winner_id: uuid::Uuid = resolved_ids.into_iter().next().unwrap().parse().unwrap();
+    let events = store.list_job_events(JobId(winner_id), 0, 50, None, None).await.unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].kind, ProgressEventKind::JobQueued);
+}
+
+#[tokio::test]
+async fn atomic_lifecycle_transitions_persist_paired_events() {
+    let (_dir, _url, store) = open_sqlite().await;
+    let id =
+        TargetIdentity { target_kind: "local_file".into(), normalized_key: "/atom.parquet".into() };
+    let jid = JobId::new();
+    let ev_q = AppendJobEvent {
+        job_id: jid,
+        occurred_at: Utc::now(),
+        kind: ProgressEventKind::JobQueued,
+        stage: JobStage::Queue,
+        is_terminal: false,
+        metrics: ProgressMetrics::default(),
+        message: Some("queued".into()),
+        run_id: None,
+        plugin_name: None,
+        plugin_digest: None,
+    };
+    let _ = store
+        .insert_application_job_with_idempotency_and_event(
+            jid,
+            JobKind::Scan,
+            &id,
+            "{}",
+            None,
+            ev_q,
+            100,
+        )
+        .await
+        .unwrap();
+
+    let now = Utc::now();
+    let (_row, claimed_ev) = store
+        .claim_next_queued_scan_job_with_event("w-atom", now, now + Duration::seconds(30), 100)
+        .await
+        .unwrap()
+        .expect("claimed");
+    assert_eq!(claimed_ev.kind, ProgressEventKind::JobClaimed);
+
+    let done_ev = AppendJobEvent {
+        job_id: jid,
+        occurred_at: Utc::now(),
+        kind: ProgressEventKind::ExecutionCompleted,
+        stage: JobStage::Scan,
+        is_terminal: true,
+        metrics: ProgressMetrics::default(),
+        message: Some("done".into()),
+        run_id: None,
+        plugin_name: None,
+        plugin_digest: None,
+    };
+    let committed_ev = store
+        .complete_application_job_success_with_event(jid, None, None, done_ev, 100)
+        .await
+        .unwrap();
+    assert!(committed_ev.is_terminal);
+    let job = store.get_scan_job(jid).await.unwrap();
+    assert_eq!(job.status, "succeeded");
+    let events = store.list_job_events(jid, 0, 20, None, None).await.unwrap();
+    assert_eq!(
+        events.iter().map(|e| e.kind).collect::<Vec<_>>(),
+        vec![
+            ProgressEventKind::JobQueued,
+            ProgressEventKind::JobClaimed,
+            ProgressEventKind::ExecutionCompleted,
+        ]
+    );
+}

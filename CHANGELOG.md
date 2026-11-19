@@ -2,6 +2,27 @@
 
 All notable changes to PARQONAUT are documented here.
 
+## [0.12.0] - 2026-11-19
+
+Reliability, Distribution, and 1.0 Readiness milestone.
+
+### Added
+
+- **Historical database migration & backup/restore tests** (`crates/parqonaut-store/tests/migration_upgrade.rs`): automated forward-upgrade verification from v0.8 (`scan_jobs`), v0.9/v0.10 (`application_jobs`), and v0.11 schemas, SQLite WAL `VACUUM INTO` online backups, interrupted-migration recovery, and clean-instance restore
+- **Performance & bounded-memory suite** (`crates/parqonaut-bench`, `benches/stream-throughput/throughput.rs`): Criterion benchmarks and release RSS profiler across scan, streaming CSV->Parquet, rewrite, fused transform, repair, batch scheduling, and SQLite event load
+- **Property testing, fuzzing, and fault injection**: `proptest` suites (`parqonaut-types`, `parqonaut-client`, `parqonaut-repair`), 9 libFuzzer targets + seed corpora (`fuzz/`) with CI smoke execution (`fuzz_smoke`), and fault-injection suites (`chaos_backend`, `fault_injection`)
+- **Supply-chain & reproducible distribution**: committed `Cargo.lock` with `--locked` CI enforcement, `deny.toml`, `.github/dependabot.yml`, least-privilege workflow `permissions`, `.github/workflows/release.yml` (Linux x86_64/aarch64 + macOS arm64/x86_64 archives, SHA-256 checksums, SBOM, provenance attestations, clean-env smoke tests), `Dockerfile`, `compose.yaml` (with optional `postgres` profile), and `docs/operations.md`
+- **Public contract regression suite** (`crates/parqonaut-cli/tests/cli_contracts.rs`) and complete OpenAPI coverage including `/api/v1/health/live` and `/api/v1/health/ready`
+
+### Fixed
+
+- **Incremental UTF-8 SSE framing** (`crates/parqonaut-client/src/sse.rs`, `crates/parqonaut-service/src/ui/sse.js`): byte-oriented framing resilient to multibyte UTF-8 splits at arbitrary chunk boundaries, strict line/frame bounds (`512 KiB` / `2 MiB`), and mid-frame EOF error detection
+- **Atomic job state + lifecycle event transitions** (`parqonaut-store`, `parqonaut-service`): single-transaction enqueue/claim/cancel/success/failure + event recording, unified flusher with `biased` critical-priority draining, canonical JSON idempotency hashing, bounded expired-key pruning, and SSE terminal catch-up pass
+- **Graceful server shutdown** (`crates/parqonaut-service/src/server.rs`, `worker.rs`): signals background workers to stop claiming new jobs, drains in-flight workers, and flushes queued events on `SIGINT`/`SIGTERM`
+- **Arrow IPC bounds validation** (`crates/parqonaut-plugin-host/src/batch_ipc.rs`): validates IPC stream metadata and body lengths before `arrow_ipc::reader::StreamReader` to prevent `capacity overflow` panics on negative/oversized lengths discovered by fuzzing
+- **Event & HTTP error secret redaction** (`parqonaut-types`, `parqonaut-service`): strict `max_bytes` enforcement and Bearer/`token=`/`password=`/`secret=` redaction in `sanitize_event_message`, plus sanitization of internal `Store`/`Internal` errors in HTTP responses
+- **Directory merge & manifest/payload version checks**: `prqnt merge` recursively resolves `.parquet` files inside directories; `ExecutionManifest::read_json` and `decode_durable_payload` reject unsupported schema versions
+
 ## [0.11.0] - 2026-11-18
 
 Operator Console and Interactive Operations: shared operational events, `prqnt tui`, bundled `/ui/` web dashboard, and idempotent operator workflows.

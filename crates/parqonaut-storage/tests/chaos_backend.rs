@@ -255,3 +255,50 @@ async fn chaos_read_stream_body_fault_surfaces_on_first_read() {
     let io_err = stream.read(&mut buf).await.unwrap_err();
     assert!(io_err.to_string().contains("upstream timeout"));
 }
+
+#[tokio::test]
+async fn chaos_aborted_write_stream_leaves_target_absent() {
+    let (_dir, inner) = temp_local().await;
+    let object = ObjectLocation::S3 { bucket: "bucket".into(), key: "aborted.bin".into() };
+    let backend = FaultInjectingBackend::new(
+        inner,
+        vec![FaultRule::new(FaultTarget::WriteStreamPart)
+            .write_part_index(2)
+            .steps(vec![FaultStep::Inject(faults::multipart_part_failed(2))])],
+    );
+
+    let mut writer = backend.write_stream(&object, None).await.unwrap();
+    writer.write_all(b"part-one").await.unwrap();
+    let err = writer.write_all(b"partial-uncommitted-payload").await.unwrap_err();
+    assert_eq!(err.retry_class(), RetryClass::Retryable);
+    let _ = writer.abort().await;
+    assert!(backend.head(&object).await.is_err(), "aborted upload must never publish");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn local_permission_denied_atomic_write_leaves_no_output() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let readonly_dir = dir.path().join("readonly");
+    std::fs::create_dir_all(&readonly_dir).unwrap();
+    let mut perms = std::fs::metadata(&readonly_dir).unwrap().permissions();
+    perms.set_mode(0o555);
+    std::fs::set_permissions(&readonly_dir, perms).unwrap();
+
+    let backend = LocalStorageBackend::new(dir.path());
+    let obj = ObjectLocation::Local { path: camino::Utf8PathBuf::from("readonly/out.parquet") };
+    let res = backend
+        .conditional_create(&obj, ConditionalCreate::must_not_exist(), Bytes::from_static(b"data"))
+        .await;
+
+    // Restore permissions before tempdir drops.
+    let mut rw = std::fs::metadata(&readonly_dir).unwrap().permissions();
+    rw.set_mode(0o755);
+    let _ = std::fs::set_permissions(&readonly_dir, rw);
+
+    let err = res.expect_err("read-only directory must reject atomic write");
+    assert_eq!(err.retry_class(), RetryClass::NeverRetry);
+    assert!(!readonly_dir.join("out.parquet").exists());
+}

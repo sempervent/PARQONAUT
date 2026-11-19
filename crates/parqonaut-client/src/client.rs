@@ -393,7 +393,7 @@ impl OperatorClient {
         let (tx, rx) = mpsc::channel(64);
         tokio::spawn(async move {
             let mut stream = resp.bytes_stream();
-            let mut parser = SseParser::new();
+            let mut parser = SseParser::with_cursor(after_seq);
             while let Some(chunk_res) = stream.next().await {
                 match chunk_res {
                     Ok(bytes) => match parser.push_bytes(&bytes) {
@@ -418,6 +418,9 @@ impl OperatorClient {
                         return;
                     }
                 }
+            }
+            if let Err(e) = parser.finish() {
+                let _ = tx.send(Err(e)).await;
             }
         });
         Ok(rx)

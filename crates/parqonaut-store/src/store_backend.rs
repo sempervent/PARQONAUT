@@ -531,6 +531,171 @@ impl StoreBackend {
             StoreBackend::Postgres(p) => p.list_scan_runs_page(offset, limit).await,
         }
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_application_job_with_idempotency_and_event(
+        &self,
+        job_id: JobId,
+        kind: JobKind,
+        identity: &TargetIdentity,
+        request_json: &str,
+        idempotency: Option<(&str, &str, &str, DateTime<Utc>)>,
+        initial_event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<(IdempotencyInsertResult, Option<JobEvent>), StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.insert_application_job_with_idempotency_and_event(
+                    job_id,
+                    kind,
+                    identity,
+                    request_json,
+                    idempotency,
+                    initial_event,
+                    max_events_per_job,
+                )
+                .await
+            }
+            StoreBackend::Postgres(p) => {
+                p.insert_application_job_with_idempotency_and_event(
+                    job_id,
+                    kind,
+                    identity,
+                    request_json,
+                    idempotency,
+                    initial_event,
+                    max_events_per_job,
+                )
+                .await
+            }
+        }
+    }
+
+    pub async fn claim_next_queued_scan_job_with_event(
+        &self,
+        worker_id: &str,
+        heartbeat_at: DateTime<Utc>,
+        leased_until: DateTime<Utc>,
+        max_events_per_job: usize,
+    ) -> Result<Option<(ScanJobRow, JobEvent)>, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.claim_next_queued_scan_job_with_event(
+                    worker_id,
+                    heartbeat_at,
+                    leased_until,
+                    max_events_per_job,
+                )
+                .await
+            }
+            StoreBackend::Postgres(p) => {
+                p.claim_next_queued_scan_job_with_event(
+                    worker_id,
+                    heartbeat_at,
+                    leased_until,
+                    max_events_per_job,
+                )
+                .await
+            }
+        }
+    }
+
+    pub async fn complete_application_job_success_with_event(
+        &self,
+        job_id: JobId,
+        run_id: Option<RunId>,
+        result_ref_json: Option<&str>,
+        event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<JobEvent, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.complete_application_job_success_with_event(
+                    job_id,
+                    run_id,
+                    result_ref_json,
+                    event,
+                    max_events_per_job,
+                )
+                .await
+            }
+            StoreBackend::Postgres(p) => {
+                p.complete_application_job_success_with_event(
+                    job_id,
+                    run_id,
+                    result_ref_json,
+                    event,
+                    max_events_per_job,
+                )
+                .await
+            }
+        }
+    }
+
+    pub async fn complete_application_job_canceled_with_event(
+        &self,
+        job_id: JobId,
+        event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<JobEvent, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.complete_application_job_canceled_with_event(job_id, event, max_events_per_job)
+                    .await
+            }
+            StoreBackend::Postgres(p) => {
+                p.complete_application_job_canceled_with_event(job_id, event, max_events_per_job)
+                    .await
+            }
+        }
+    }
+
+    pub async fn complete_scan_job_failure_with_event(
+        &self,
+        job_id: JobId,
+        failure_code: &str,
+        failure_message: &str,
+        event: AppendJobEvent,
+        max_events_per_job: usize,
+    ) -> Result<JobEvent, StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.complete_scan_job_failure_with_event(
+                    job_id,
+                    failure_code,
+                    failure_message,
+                    event,
+                    max_events_per_job,
+                )
+                .await
+            }
+            StoreBackend::Postgres(p) => {
+                p.complete_scan_job_failure_with_event(
+                    job_id,
+                    failure_code,
+                    failure_message,
+                    event,
+                    max_events_per_job,
+                )
+                .await
+            }
+        }
+    }
+
+    pub async fn request_cancel_job_with_event(
+        &self,
+        job_id: JobId,
+        max_events_per_job: usize,
+    ) -> Result<(JobCancelOutcome, Option<JobEvent>), StoreError> {
+        match self {
+            StoreBackend::Sqlite(s) => {
+                s.request_cancel_job_with_event(job_id, max_events_per_job).await
+            }
+            StoreBackend::Postgres(p) => {
+                p.request_cancel_job_with_event(job_id, max_events_per_job).await
+            }
+        }
+    }
 }
 
 impl From<SqliteScanStore> for StoreBackend {

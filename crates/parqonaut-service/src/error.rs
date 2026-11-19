@@ -163,13 +163,25 @@ impl AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = self.status();
-        let body = ErrorBody {
-            error: ErrorEnvelope {
-                code: self.code(),
-                message: self.to_string(),
-                details: self.plugin_details(),
-            },
+        let code = self.code();
+        let details = self.plugin_details();
+        let message = match &self {
+            AppError::Store(raw) => {
+                tracing::error!(error = %raw, "internal store error returned via HTTP API");
+                "internal storage error".to_string()
+            }
+            AppError::Internal(raw) => {
+                tracing::error!(error = %raw, "internal server error returned via HTTP API");
+                "internal server error".to_string()
+            }
+            AppError::ScanFailed(raw) => {
+                format!("scan failed: {}", sanitize_plugin_message(raw))
+            }
+            AppError::TargetNotFound(_) => "target not found".to_string(),
+            AppError::LocationNotAllowed(_) => "location not allowed by server policy".to_string(),
+            _ => sanitize_plugin_message(&self.to_string()),
         };
+        let body = ErrorBody { error: ErrorEnvelope { code, message, details } };
         (status, Json(body)).into_response()
     }
 }
@@ -268,16 +280,39 @@ fn sanitize_plugin_message(msg: &str) -> String {
     {
         return "plugin Python runtime is unavailable".into();
     }
-    // Redact credentialed URLs and absolute filesystem paths from HTTP error messages.
+    // Redact credentialed URLs, bearer/secret tokens, and absolute filesystem paths from HTTP error messages.
     let mut out = String::with_capacity(msg.len());
+    let mut redact_next = false;
     for token in msg.split_whitespace() {
         if !out.is_empty() {
             out.push(' ');
         }
-        if token.contains("://") && token.contains('@') {
+        if redact_next {
+            out.push_str("<redacted>");
+            redact_next = false;
+            continue;
+        }
+        if token.eq_ignore_ascii_case("bearer") {
+            out.push_str("Bearer");
+            redact_next = true;
+        } else if token.contains("://") && token.contains('@') {
             out.push_str("<redacted-url>");
         } else if token.starts_with('/') && token.len() > 1 {
             out.push_str("<path>");
+        } else if let Some((k, _)) = token.split_once('=') {
+            let kl = k.to_ascii_lowercase();
+            if kl.contains("password")
+                || kl.contains("passwd")
+                || kl.contains("secret")
+                || kl.contains("token")
+                || kl.contains("api_key")
+                || kl.contains("access_key")
+            {
+                out.push_str(k);
+                out.push_str("=<redacted>");
+            } else {
+                out.push_str(token);
+            }
         } else {
             out.push_str(token);
         }

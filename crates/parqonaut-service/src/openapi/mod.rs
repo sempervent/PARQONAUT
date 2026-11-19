@@ -37,6 +37,8 @@ impl Modify for SecurityAddon {
     paths(
         paths::get_metrics,
         paths::get_health,
+        paths::get_health_live,
+        paths::get_health_ready,
         paths::get_openapi_json,
         paths::get_overview,
         paths::get_whoami,

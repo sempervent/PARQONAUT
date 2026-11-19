@@ -48,6 +48,8 @@ pub struct ParqonautService {
     app: ParqonautApp,
     server_plugins: ServerPluginState,
     events: JobEventRecorder,
+    shutdown_tx: Arc<tokio::sync::watch::Sender<bool>>,
+    worker_handles: Arc<std::sync::Mutex<Vec<tokio::task::JoinHandle<()>>>>,
 }
 
 impl ParqonautService {
@@ -66,7 +68,47 @@ impl ParqonautService {
     ) -> Self {
         let store = store.into();
         let events = JobEventRecorder::new(store.clone(), JobEventRetentionPolicy::from_env());
-        Self { store, app: ParqonautApp::new(policy), server_plugins, events }
+        let (shutdown_tx, _) = tokio::sync::watch::channel(false);
+        Self {
+            store,
+            app: ParqonautApp::new(policy),
+            server_plugins,
+            events,
+            shutdown_tx: Arc::new(shutdown_tx),
+            worker_handles: Arc::new(std::sync::Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn subscribe_shutdown(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.shutdown_tx.subscribe()
+    }
+
+    pub fn is_shutting_down(&self) -> bool {
+        *self.shutdown_tx.borrow()
+    }
+
+    pub(crate) fn register_workers(&self, handles: Vec<tokio::task::JoinHandle<()>>) {
+        let mut guard = self.worker_handles.lock().expect("worker handles lock");
+        guard.extend(handles);
+    }
+
+    /// Signals background workers to stop claiming new jobs, waits up to `timeout` for in-flight
+    /// jobs to finish, and flushes queued operational events.
+    pub async fn graceful_shutdown(&self, timeout: std::time::Duration) {
+        let _ = self.shutdown_tx.send(true);
+        let handles = {
+            let mut guard = self.worker_handles.lock().expect("worker handles lock");
+            std::mem::take(&mut *guard)
+        };
+        if !handles.is_empty() {
+            let _ = tokio::time::timeout(timeout, async move {
+                for h in handles {
+                    let _ = h.await;
+                }
+            })
+            .await;
+        }
+        self.events.flush().await;
     }
 
     pub fn events(&self) -> &JobEventRecorder {
@@ -280,35 +322,38 @@ impl ParqonautService {
         );
         let identity = TargetIdentity::from_scan_target(&req.target);
         let request_json = serde_json::to_string(&payload)?;
-        let sha = sha256_hex(&request_json);
+        let sha = canonical_json_sha256_hex(&request_json)?;
         let jid = JobId::new();
         let ttl = ChronoDuration::seconds(self.events.policy().idempotency_ttl_secs);
         let expires = Utc::now() + ttl;
         let idem = idempotency_key.map(|k| ("scan", k, sha.as_str(), expires));
+        let initial_ev = lifecycle_event(
+            jid,
+            ProgressEventKind::JobQueued,
+            JobStage::Queue,
+            ProgressMetrics::default(),
+            format!("scan job queued for {}", identity.normalized_key),
+        );
+        let max_events = self.events.policy().max_events_per_job;
         match self
             .store
-            .insert_application_job_with_idempotency(
+            .insert_application_job_with_idempotency_and_event(
                 jid,
                 JobKind::Scan,
                 &identity,
                 &request_json,
                 idem,
+                initial_ev,
+                max_events,
             )
             .await?
         {
-            IdempotencyInsertResult::Created { job_id, submitted_at } => {
+            (IdempotencyInsertResult::Created { job_id, submitted_at }, ev) => {
                 metrics::counter!("parqonaut_jobs_submitted_total").increment(1);
                 audit::scan_submitted(job_id.0, &identity.target_kind, &identity.normalized_key);
-                let _ = self
-                    .events
-                    .record_lifecycle(lifecycle_event(
-                        job_id,
-                        ProgressEventKind::JobQueued,
-                        JobStage::Queue,
-                        ProgressMetrics::default(),
-                        format!("scan job queued for {}", identity.normalized_key),
-                    ))
-                    .await;
+                if let Some(ev) = ev {
+                    self.events.broadcast_existing(ev);
+                }
                 Ok(ScanJobSubmissionResponse {
                     job_id: job_id.0,
                     status: JobStatus::Queued,
@@ -318,7 +363,7 @@ impl ParqonautService {
                     job_url: format!("/api/v1/jobs/{}", job_id.0),
                 })
             }
-            IdempotencyInsertResult::Replayed { existing } => submission_from_row(&existing),
+            (IdempotencyInsertResult::Replayed { existing }, _) => submission_from_row(&existing),
         }
     }
 
@@ -665,40 +710,40 @@ impl ParqonautService {
         let identity = application_http::target_identity_for_location(&req.source);
         let jid = JobId::new();
         let payload = application_http::durable_payload(&req)?;
-        let sha = sha256_hex(&payload);
+        let sha = canonical_json_sha256_hex(&payload)?;
         let expires =
             Utc::now() + ChronoDuration::seconds(self.events.policy().idempotency_ttl_secs);
         let idem = idempotency_key.map(|k| ("repair", k, sha.as_str(), expires));
+        let initial_ev = lifecycle_event(
+            jid,
+            ProgressEventKind::JobQueued,
+            JobStage::Queue,
+            ProgressMetrics::default(),
+            format!("repair job queued (plan={}, authorize={:?})", req.plan.plan_id, req.authorize),
+        );
+        let max_events = self.events.policy().max_events_per_job;
         match self
             .store
-            .insert_application_job_with_idempotency(
+            .insert_application_job_with_idempotency_and_event(
                 jid,
                 JobKind::Repair,
                 &identity,
                 &payload,
                 idem,
+                initial_ev,
+                max_events,
             )
             .await?
         {
-            IdempotencyInsertResult::Created { job_id, submitted_at } => {
+            (IdempotencyInsertResult::Created { job_id, submitted_at }, ev) => {
                 metrics::counter!("parqonaut_jobs_submitted_total", "kind" => "repair")
                     .increment(1);
-                let _ = self
-                    .events
-                    .record_lifecycle(lifecycle_event(
-                        job_id,
-                        ProgressEventKind::JobQueued,
-                        JobStage::Queue,
-                        ProgressMetrics::default(),
-                        format!(
-                            "repair job queued (plan={}, authorize={:?})",
-                            req.plan.plan_id, req.authorize
-                        ),
-                    ))
-                    .await;
+                if let Some(ev) = ev {
+                    self.events.broadcast_existing(ev);
+                }
                 Ok(job_submission_view_at(job_id, &identity, submitted_at))
             }
-            IdempotencyInsertResult::Replayed { existing } => submission_from_row(&existing),
+            (IdempotencyInsertResult::Replayed { existing }, _) => submission_from_row(&existing),
         }
     }
 
@@ -725,37 +770,40 @@ impl ParqonautService {
             application_http::target_identity_for_path("batch_repair", req.plan_path.as_str());
         let jid = JobId::new();
         let payload = application_http::durable_payload(&req)?;
-        let sha = sha256_hex(&payload);
+        let sha = canonical_json_sha256_hex(&payload)?;
         let expires =
             Utc::now() + ChronoDuration::seconds(self.events.policy().idempotency_ttl_secs);
         let idem = idempotency_key.map(|k| ("batch_repair", k, sha.as_str(), expires));
+        let initial_ev = lifecycle_event(
+            jid,
+            ProgressEventKind::JobQueued,
+            JobStage::Queue,
+            ProgressMetrics::default(),
+            format!("batch repair queued ({})", req.plan_path),
+        );
+        let max_events = self.events.policy().max_events_per_job;
         match self
             .store
-            .insert_application_job_with_idempotency(
+            .insert_application_job_with_idempotency_and_event(
                 jid,
                 JobKind::BatchRepair,
                 &identity,
                 &payload,
                 idem,
+                initial_ev,
+                max_events,
             )
             .await?
         {
-            IdempotencyInsertResult::Created { job_id, submitted_at } => {
+            (IdempotencyInsertResult::Created { job_id, submitted_at }, ev) => {
                 metrics::counter!("parqonaut_jobs_submitted_total", "kind" => "batch_repair")
                     .increment(1);
-                let _ = self
-                    .events
-                    .record_lifecycle(lifecycle_event(
-                        job_id,
-                        ProgressEventKind::JobQueued,
-                        JobStage::Queue,
-                        ProgressMetrics::default(),
-                        format!("batch repair queued ({})", req.plan_path),
-                    ))
-                    .await;
+                if let Some(ev) = ev {
+                    self.events.broadcast_existing(ev);
+                }
                 Ok(job_submission_view_at(job_id, &identity, submitted_at))
             }
-            IdempotencyInsertResult::Replayed { existing } => submission_from_row(&existing),
+            (IdempotencyInsertResult::Replayed { existing }, _) => submission_from_row(&existing),
         }
     }
 
@@ -777,42 +825,49 @@ impl ParqonautService {
         let identity = application_http::target_identity_for_path("batch_resume", run_dir.as_str());
         let jid = JobId::new();
         let payload = application_http::durable_payload(&req)?;
-        let sha = sha256_hex(&payload);
+        let sha = canonical_json_sha256_hex(&payload)?;
         let expires =
             Utc::now() + ChronoDuration::seconds(self.events.policy().idempotency_ttl_secs);
         let idem = idempotency_key.map(|k| ("batch_resume", k, sha.as_str(), expires));
+        let initial_ev = lifecycle_event(
+            jid,
+            ProgressEventKind::JobQueued,
+            JobStage::Queue,
+            ProgressMetrics::default(),
+            format!("batch resume queued ({})", run_dir),
+        );
+        let max_events = self.events.policy().max_events_per_job;
         match self
             .store
-            .insert_application_job_with_idempotency(
+            .insert_application_job_with_idempotency_and_event(
                 jid,
                 JobKind::BatchResume,
                 &identity,
                 &payload,
                 idem,
+                initial_ev,
+                max_events,
             )
             .await?
         {
-            IdempotencyInsertResult::Created { job_id, submitted_at } => {
+            (IdempotencyInsertResult::Created { job_id, submitted_at }, ev) => {
                 metrics::counter!("parqonaut_jobs_submitted_total", "kind" => "batch_resume")
                     .increment(1);
-                let _ = self
-                    .events
-                    .record_lifecycle(lifecycle_event(
-                        job_id,
-                        ProgressEventKind::JobQueued,
-                        JobStage::Queue,
-                        ProgressMetrics::default(),
-                        format!("batch resume queued ({})", run_dir),
-                    ))
-                    .await;
+                if let Some(ev) = ev {
+                    self.events.broadcast_existing(ev);
+                }
                 Ok(job_submission_view_at(job_id, &identity, submitted_at))
             }
-            IdempotencyInsertResult::Replayed { existing } => submission_from_row(&existing),
+            (IdempotencyInsertResult::Replayed { existing }, _) => submission_from_row(&existing),
         }
     }
 
     pub async fn cancel_job(&self, job_id: JobId) -> Result<JobCancelResponse, AppError> {
-        let outcome = self.store.request_cancel_job(job_id).await?;
+        let max_events = self.events.policy().max_events_per_job;
+        let (outcome, ev) = self.store.request_cancel_job_with_event(job_id, max_events).await?;
+        if let Some(ev) = ev {
+            self.events.broadcast_existing(ev);
+        }
         let status = match outcome {
             JobCancelOutcome::CanceledFromQueued | JobCancelOutcome::AlreadyCanceled => {
                 JobStatus::Canceled
@@ -820,31 +875,9 @@ impl ParqonautService {
             JobCancelOutcome::CancelRequestedForRunning => JobStatus::Running,
         };
         let message = match outcome {
-            JobCancelOutcome::CanceledFromQueued => {
-                let _ = self
-                    .events
-                    .record_lifecycle(lifecycle_event(
-                        job_id,
-                        ProgressEventKind::JobCancelled,
-                        JobStage::Cancel,
-                        ProgressMetrics::default(),
-                        "job canceled before worker execution",
-                    ))
-                    .await;
-                "job canceled".into()
-            }
+            JobCancelOutcome::CanceledFromQueued => "job canceled".into(),
             JobCancelOutcome::AlreadyCanceled => "job already canceled".into(),
             JobCancelOutcome::CancelRequestedForRunning => {
-                let _ = self
-                    .events
-                    .record_lifecycle(lifecycle_event(
-                        job_id,
-                        ProgressEventKind::CancelRequested,
-                        JobStage::Cancel,
-                        ProgressMetrics::default(),
-                        "cancel requested; worker stopping at next safe boundary",
-                    ))
-                    .await;
                 "cancel requested; worker will stop at next safe boundary".into()
             }
         };
@@ -886,6 +919,13 @@ impl ParqonautService {
         payload_json: &str,
     ) -> Result<T, AppError> {
         let envelope: parqonaut_app::DurableJobPayload = serde_json::from_str(payload_json)?;
+        if envelope.schema_version != parqonaut_app::APP_REQUEST_SCHEMA_VERSION {
+            return Err(AppError::InvalidRequest(format!(
+                "unsupported durable job payload schema version {} (expected {})",
+                envelope.schema_version,
+                parqonaut_app::APP_REQUEST_SCHEMA_VERSION
+            )));
+        }
         Ok(serde_json::from_value(envelope.body)?)
     }
 
@@ -960,10 +1000,13 @@ fn auth_token_summary_view(s: AuthTokenSummary) -> AuthTokenSummaryView {
     }
 }
 
-fn sha256_hex(s: &str) -> String {
+fn canonical_json_sha256_hex(s: &str) -> Result<String, AppError> {
+    let val: serde_json::Value = serde_json::from_str(s)?;
+    let sorted = parqonaut_types::sort_json_value(val);
+    let canonical = serde_json::to_string(&sorted)?;
     let mut h = Sha256::new();
-    h.update(s.as_bytes());
-    hex_encode(h.finalize())
+    h.update(canonical.as_bytes());
+    Ok(hex_encode(h.finalize()))
 }
 
 fn submission_from_row(row: &ScanJobRow) -> Result<ScanJobSubmissionResponse, AppError> {
