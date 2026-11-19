@@ -33,6 +33,7 @@
 
 # Operations
 
+- [Operations runbook](./operations.md)
 - [CI / prqnt check](./ci-policy.md)
 - [Recovery and resume](./resume-recovery.md)
 - [Remote publication](./remote-publication.md)

@@ -1,0 +1,44 @@
+services:
+  parqonaut:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: parqonaut:0.12.0
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Supply via .env or secret manager in production; never bake into the image.
+      PRQNT_BOOTSTRAP_ADMIN_TOKEN: "${PRQNT_BOOTSTRAP_ADMIN_TOKEN:-}"
+      PARQONAUT_ALLOWED_LOCAL_ROOTS: "/var/lib/parqonaut/data"
+    volumes:
+      - parqonaut_state:/var/lib/parqonaut/state
+      - ./data:/var/lib/parqonaut/data:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "2.0"
+
+  postgres:
+    image: postgres:16
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${PARQONAUT_PG_PASSWORD:-parqonaut_dev}"
+      POSTGRES_DB: parqonaut
+    volumes:
+      - parqonaut_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d parqonaut"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  parqonaut_state:
+  parqonaut_pg_data:

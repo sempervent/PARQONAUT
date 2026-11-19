@@ -1,15 +1,43 @@
 # Installation
 
-PARQONAUT ships as a single executable: **`prqnt`**.
+PARQONAUT ships as a single executable: **`prqnt`**, including the CLI, HTTP server (`prqnt serve`), terminal operator console (`prqnt tui`), and bundled browser dashboard (`/ui/`). No separate Node.js runtime is required to run `prqnt`.
 
-There is no Homebrew formula or crates.io package for PARQONAUT at this time. Supported paths are **source build** and **`cargo install --git`**.
+## Pre-built release archives
+
+Versioned release archives (`parqonaut-v<version>-<target>.tar.gz`) and `SHA256SUMS` are built via `.github/workflows/release.yml` for:
+
+- `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
+- `aarch64-apple-darwin` (macOS Apple Silicon)
+- `x86_64-apple-darwin` (macOS Intel)
+
+Verify the checksum and install:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+tar -xzf parqonaut-v0.12.0-x86_64-unknown-linux-gnu.tar.gz
+sudo install -m 0755 parqonaut-v0.12.0-x86_64-unknown-linux-gnu/prqnt /usr/local/bin/prqnt
+prqnt --version
+```
+
+## Container image (`prqnt serve`)
+
+Build and run the non-root multi-stage container with Docker Compose:
+
+```bash
+docker compose up --build -d
+# Or include the optional PostgreSQL profile:
+docker compose --profile postgres up --build -d
+```
+
+See [Operations runbook](./operations.md) for backup, authentication bootstrap, and reverse-proxy configuration.
 
 ## Build from source
 
 ```bash
 git clone https://github.com/sempervent/PARQONAUT
 cd PARQONAUT
-cargo build --release -p parqonaut-cli --bin prqnt
+cargo build --release --locked -p parqonaut-cli --bin prqnt
 ```
 
 The binary is at `target/release/prqnt`.
@@ -25,20 +53,20 @@ just test
 ## Install with Cargo (git)
 
 ```bash
-cargo install --git https://github.com/sempervent/PARQONAUT --bin prqnt
+cargo install --git https://github.com/sempervent/PARQONAUT --locked --bin prqnt
 ```
 
-This compiles the latest `main` (or the ref you pin with `--tag v0.7.1`). Ensure Rust stable is installed.
+## Optional Python plugin runtime
+
+Python plugins (`parqonaut_plugins`) are an optional runtime dependency. Core CLI commands, streaming conversion, repair, and `/ui/` work without Python; invoking `--plugin` when Python is unavailable reports actionable diagnostics (`plugin Python runtime is unavailable`).
 
 ## S3 / object storage features
 
-S3-compatible backends (AWS, MinIO, **RustFS** in tests) use the `parqonaut-storage` S3 backend. The CLI binary includes S3 support in the default workspace build used for releases in this repository.
-
-For local integration tests, see [Object storage](./object-storage.md) and `just s3-demo`.
+S3-compatible backends (AWS, MinIO, **RustFS** in tests) use the `parqonaut-storage` S3 backend. The release `prqnt` binary includes S3 support by default.
 
 ## Application server & Operator Console
 
-`prqnt serve` uses SQLite by default under `--state-dir` and serves both `/api/v1` and the bundled web dashboard at `/ui/`. Postgres is supported via `--database`.
+`prqnt serve` uses SQLite by default under `--state-dir` and serves both `/api/v1` and `/ui/`. PostgreSQL is supported via `--database`.
 
 Connect from the terminal using:
 
@@ -49,8 +77,8 @@ prqnt tui --url http://127.0.0.1:8080
 
 ### Troubleshooting
 
-- **Disconnected or unauthorized in TUI / Web UI:** Verify `prqnt serve` is running (`curl http://127.0.0.1:8080/api/v1/health`), ensure `Authorization: Bearer` token is valid (`--token-env`, `--token-file`, or interactive masked prompt), and check role (`Reader` is read-only; `Operator` or `Admin` required for scan/repair/batch/cancel).
+- **Disconnected or unauthorized in TUI / Web UI:** Verify `prqnt serve` is running (`curl http://127.0.0.1:8080/api/v1/health/ready`), ensure `Authorization: Bearer` token is valid (`--token-env`, `--token-file`, or interactive masked prompt), and check role (`Reader` is read-only; `Operator` or `Admin` required for mutations).
 - **SSE live updates behind reverse proxies:** Disable response buffering/compression on `/api/v1/jobs/*/events/stream` (`text/event-stream`). PARQONAUT's built-in `CompressionLayer` explicitly excludes `text/event-stream`, and clients automatically resume via `Last-Event-ID` or fall back to polling `GET /api/v1/jobs/{job_id}/events`.
-- **Headless browser test (`just ui-test`):** Requires Node 22+ and a Chromium/Chrome binary (runs automatically when `CHROME_BIN` or standard Chrome/Chromium paths exist).
+- **Headless browser test (`just ui-test`):** Requires Node 22+ and a Chromium/Chrome binary.
 
-See [prqnt serve](./server.md) and [Durable jobs & events](./job-model.md).
+See [prqnt serve](./server.md), [Operations runbook](./operations.md), and [Durable jobs & events](./job-model.md).
