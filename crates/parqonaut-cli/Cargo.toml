@@ -23,7 +23,7 @@ parqonaut-app = { path = "../parqonaut-app", features = ["s3"] }
 parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
 parqonaut-plugin-protocol = { workspace = true }
 parqonaut-tui = { path = "../parqonaut-tui" }
-dirs = "6"
+dirs = "7"
 toml = "0.8"
 url = "2"
 parqonaut-transform = { path = "../parqonaut-transform", features = ["s3"] }

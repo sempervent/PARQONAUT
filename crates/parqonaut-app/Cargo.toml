@@ -20,7 +20,7 @@ parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
 parqonaut-transform = { path = "../parqonaut-transform" }
 parqonaut-workflow = { path = "../parqonaut-workflow" }
 parqonaut-plugin-protocol = { workspace = true }
-dirs = "6"
+dirs = "7"
 camino.workspace = true
 serde.workspace = true
 serde_json.workspace = true
