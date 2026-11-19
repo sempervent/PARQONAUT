@@ -22,7 +22,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
-      - uses: extractions/setup-just@v2
+      - uses: extractions/setup-just@v4
       - name: Python plugin SDK
         working-directory: python/parqonaut_plugins
         run: |
