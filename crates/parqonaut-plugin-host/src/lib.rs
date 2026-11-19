@@ -20,6 +20,7 @@ pub use batch_arrow::validate_schema_supported;
 pub use batch_bridge::{BatchBridgeMetrics, BatchBridgeMetricsSnapshot, BatchPluginBridge};
 pub use batch_execute::batch_plugin_spawn_count;
 pub use batch_execute::BatchPluginSession;
+pub use batch_ipc::{decode_ipc_stream_bytes, validate_ipc_stream_framing};
 pub use catalog::{CatalogEntry, PluginCatalog, PluginCompatibility, HOST_PARQONAUT_VERSION};
 pub use env::plugin_child_env;
 pub use error::PluginHostError;

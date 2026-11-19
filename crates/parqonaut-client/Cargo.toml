@@ -30,5 +30,6 @@ parquet.workspace = true
 parqonaut-app = { path = "../parqonaut-app" }
 parqonaut-plugin-host = { path = "../parqonaut-plugin-host" }
 parqonaut-store = { path = "../parqonaut-store" }
+proptest = "1"
 tempfile = "3"
 camino.workspace = true
