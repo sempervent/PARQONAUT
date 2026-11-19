@@ -52,7 +52,7 @@ jobs:
       - name: Build site
         run: bash scripts/docs/build.sh
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: target/pages
       - name: Deploy to GitHub Pages
