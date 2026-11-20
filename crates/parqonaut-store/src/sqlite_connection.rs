@@ -11,7 +11,15 @@ pub fn connect_options(
     database_url: impl AsRef<str>,
     config: &SqliteStoreConfig,
 ) -> Result<SqliteConnectOptions, StoreError> {
-    let opts = SqliteConnectOptions::from_str(database_url.as_ref())?;
+    let raw = database_url.as_ref();
+    let mut opts = SqliteConnectOptions::from_str(raw)?;
+    let explicit_mode = raw
+        .split_once('?')
+        .map(|(_, q)| q.split('&').any(|kv| matches!(kv, "mode=ro" | "mode=rw" | "mode=memory")))
+        .unwrap_or(false);
+    if !explicit_mode {
+        opts = opts.create_if_missing(true);
+    }
     Ok(opts
         .journal_mode(config.journal_mode)
         .synchronous(config.synchronous)

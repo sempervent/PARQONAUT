@@ -26,3 +26,15 @@ async fn hardened_sqlite_pragmas_on_disk() {
         sqlx::query_scalar("PRAGMA busy_timeout").fetch_one(store.pool()).await.unwrap();
     assert_eq!(busy_ms, 5000);
 }
+
+#[tokio::test]
+async fn connect_creates_new_sqlite_file_without_pre_touch() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("fresh").join("parqonaut.sqlite");
+    std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+    let url = format!("sqlite://{}", db_path.display());
+
+    let store = parqonaut_store::SqliteScanStore::connect(&url).await.expect("connect fresh file");
+    store.ping().await.expect("ping fresh store");
+    assert!(db_path.exists());
+}

@@ -154,5 +154,5 @@ fn default_sqlite_url(state_dir: &std::path::Path) -> String {
     let db_dir = state_dir.join("database");
     let _ = std::fs::create_dir_all(&db_dir);
     let path = db_dir.join("parqonaut.sqlite");
-    format!("sqlite://{}", path.display())
+    format!("sqlite://{}?mode=rwc", path.display())
 }
