@@ -232,7 +232,7 @@ jobs:
             --source-version "${PKG}" \
             -o "cyclonedx-json@1.6=dist/raw-sbom.cdx.json"
           uvx --with 'cyclonedx-python-lib[json-validation]' \
-            python3 scripts/release/build-and-validate-sbom.py \
+            python scripts/release/build-and-validate-sbom.py \
             dist/raw-sbom.cdx.json \
             "dist/parqonaut-${VER}.cdx.json" \
             "${VER}" \
