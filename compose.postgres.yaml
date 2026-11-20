@@ -1,0 +1,13 @@
+# Explicit PostgreSQL overlay for compose.yaml.
+# Usage:
+#   PARQONAUT_PG_PASSWORD="$(openssl rand -hex 24)" \
+#   PRQNT_BOOTSTRAP_ADMIN_TOKEN="$(openssl rand -hex 32)" \
+#   docker compose -f compose.yaml -f compose.postgres.yaml --profile postgres up --build
+services:
+  parqonaut:
+    environment:
+      PARQONAUT_DATABASE_URL: "postgres://${PARQONAUT_PG_USER:-parqonaut}:${PARQONAUT_PG_PASSWORD:?PARQONAUT_PG_PASSWORD must be set for PostgreSQL deployment}@postgres:5432/${PARQONAUT_PG_DB:-parqonaut}"
+
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: "${PARQONAUT_PG_PASSWORD:?PARQONAUT_PG_PASSWORD must be set for PostgreSQL deployment}"

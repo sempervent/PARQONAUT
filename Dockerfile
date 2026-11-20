@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=builder /src/target/release/prqnt /usr/local/bin/prqnt
 
-RUN mkdir -p /var/lib/parqonaut/state /var/lib/parqonaut/data \
+RUN mkdir -p /var/lib/parqonaut/state /var/lib/parqonaut/data /var/lib/parqonaut/out \
     && chown -R parqonaut:parqonaut /var/lib/parqonaut
 
 USER parqonaut:parqonaut

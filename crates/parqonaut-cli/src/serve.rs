@@ -78,10 +78,27 @@ pub async fn run(args: ServeArgs) -> Result<(), Box<dyn std::error::Error>> {
     let state_dir = resolve_state_dir(args.state_dir.as_deref())?;
     std::fs::create_dir_all(&state_dir)?;
 
-    let db_url = args.database.clone().unwrap_or_else(|| default_sqlite_url(&state_dir));
+    let db_url = args
+        .database
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| default_sqlite_url(&state_dir));
+    let database_backend =
+        if db_url.starts_with("postgres://") || db_url.starts_with("postgresql://") {
+            "postgres"
+        } else {
+            "sqlite"
+        };
 
     let policy = storage_policy_from_config(&file_cfg);
-    info!(state_dir = %state_dir.display(), workers = args.workers, "starting PARQONAUT server");
+    info!(
+        state_dir = %state_dir.display(),
+        workers = args.workers,
+        database_backend,
+        "starting PARQONAUT server"
+    );
 
     let store = StoreBackend::connect(&db_url).await?;
     store.bootstrap_auth_from_env().await?;
