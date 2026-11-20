@@ -22,14 +22,15 @@ impl ParquetWriter {
     ) -> Result<Self> {
         let mut props_builder = WriterProperties::builder()
             .set_write_batch_size(8192)
-            .set_max_row_group_size(128 * 1024 * 1024); // 128MB default
+            .set_max_row_group_bytes(Some(128 * 1024 * 1024)); // 128MB default
 
         if let Some(comp) = compression {
             props_builder = props_builder.set_compression(comp);
         }
 
         if let Some(size_mb) = row_group_size_mb {
-            props_builder = props_builder.set_max_row_group_size((size_mb * 1024 * 1024) as usize);
+            props_builder = props_builder
+                .set_max_row_group_bytes(Some(((size_mb * 1024 * 1024) as usize).max(1)));
         }
 
         if rebuild_stats {

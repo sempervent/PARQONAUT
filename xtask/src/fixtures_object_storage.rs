@@ -78,7 +78,7 @@ pub fn run(root: &camino::Utf8Path) -> Result<(), Box<dyn std::error::Error>> {
 fn writer_props(compression: Compression, max_row_group_size: usize) -> WriterProperties {
     WriterProperties::builder()
         .set_compression(compression)
-        .set_max_row_group_size(max_row_group_size)
+        .set_max_row_group_row_count(Some(max_row_group_size))
         .set_statistics_enabled(EnabledStatistics::Chunk)
         .build()
 }

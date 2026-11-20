@@ -42,7 +42,7 @@ fn write_batch_file(
     let file = File::create(path)?;
     let props = WriterProperties::builder()
         .set_compression(compression)
-        .set_max_row_group_size(max_row_group_size)
+        .set_max_row_group_row_count(Some(max_row_group_size))
         .build();
     let mut writer = ArrowWriter::try_new(BufWriter::new(file), schema.clone(), Some(props))?;
     let mut written = 0;
@@ -169,7 +169,7 @@ fn write_frankenlake(dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let file = File::create(dir.join("schema-outlier.parquet"))?;
     let props = WriterProperties::builder()
         .set_compression(Compression::SNAPPY)
-        .set_max_row_group_size(512)
+        .set_max_row_group_row_count(Some(512))
         .build();
     let mut writer = ArrowWriter::try_new(BufWriter::new(file), s64.clone(), Some(props))?;
     let batch = RecordBatch::try_new(s64, vec![Arc::new(Int64Array::from_iter_values(0..400))])?;

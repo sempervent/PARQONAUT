@@ -47,7 +47,13 @@ impl S3Config {
     }
 
     pub async fn build_client(&self) -> Client {
-        let mut loader = aws_config::defaults(BehaviorVersion::latest());
+        let http_client = aws_smithy_http_client::Builder::new()
+            .tls_provider(aws_smithy_http_client::tls::Provider::Rustls(
+                aws_smithy_http_client::tls::rustls_provider::CryptoMode::AwsLc,
+            ))
+            .build_https();
+        let mut loader =
+            aws_config::defaults(BehaviorVersion::latest()).http_client(http_client.clone());
         if let Some(region) = &self.region {
             loader = loader.region(Region::new(region.clone()));
         }
@@ -56,7 +62,7 @@ impl S3Config {
         }
         let sdk_config = loader.load().await;
 
-        let mut builder = aws_sdk_s3::config::Builder::from(&sdk_config);
+        let mut builder = aws_sdk_s3::config::Builder::from(&sdk_config).http_client(http_client);
         if let Some(endpoint) = &self.endpoint {
             builder = builder.endpoint_url(endpoint);
         }

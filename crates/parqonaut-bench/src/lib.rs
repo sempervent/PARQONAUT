@@ -123,7 +123,7 @@ pub fn write_parquet_file(path: &Path, rows: usize, batch_size: usize, widen_id_
     ]));
     let props = WriterProperties::builder()
         .set_compression(Compression::ZSTD(ZstdLevel::try_new(1).unwrap()))
-        .set_max_row_group_size(batch_size.max(64))
+        .set_max_row_group_row_count(Some(batch_size.max(64)))
         .build();
     let file = File::create(path).unwrap();
     let mut writer =
