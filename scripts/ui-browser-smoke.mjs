@@ -48,6 +48,7 @@ const chrome = spawn(
     "--no-default-browser-check",
     "--no-sandbox",
     "--disable-gpu",
+    "--disable-dev-shm-usage",
     "about:blank",
   ],
   { stdio: ["ignore", "pipe", "pipe"] }
@@ -69,7 +70,7 @@ process.on("exit", cleanup);
 
 const browserWsUrl = await new Promise((resolve, reject) => {
   let stderr = "";
-  const timer = setTimeout(() => reject(new Error(`Chrome start timeout: ${stderr}`)), 15000);
+  const timer = setTimeout(() => reject(new Error(`Chrome start timeout: ${stderr}`)), 45000);
   chrome.stderr.on("data", (d) => {
     stderr += d.toString();
     const m = stderr.match(/DevTools listening on (ws:\/\/\S+)/);

@@ -40,4 +40,22 @@
 
 ## 3. Final `1.0.0-rc.1` Matrix Run
 
-*(Updated after final `1.0.0-rc.1` version bump commit is pushed and `release.yml` `workflow_dispatch` completes on the PR HEAD SHA.)*
+- **Workflow Run:** [`44679003417`](https://github.com/sempervent/PARQONAUT/actions/runs/44679003417) (`workflow_dispatch`, `version=v1.0.0-rc.1`, commit `a97e988`)
+- **Job Outcomes:**
+  - `Verify Release Identity`: **PASS**
+  - `Build & Verify` (`x86_64-unknown-linux-gnu`): **PASS**
+  - `Build & Verify` (`aarch64-unknown-linux-gnu`): **PASS**
+  - `Build & Verify` (`aarch64-apple-darwin`): **PASS**
+  - `Build & Verify` (`x86_64-apple-darwin`): **PASS**
+  - `Assemble SBOM, Checksums & Provenance`: **PASS**
+  - `Publish Draft GitHub Release (Tag Push Only)`: **SKIPPED** (as designed for `workflow_dispatch`)
+
+### Downloaded Bundle Verification (`release-bundle-v1.0.0-rc.1`)
+
+- **`shasum -a 256 -c SHA256SUMS`:** **OK** across all 4 archives + SBOM + metadata:
+  - `parqonaut-v1.0.0-rc.1-aarch64-apple-darwin.tar.gz`: `3b6f1e1ec9f07e89af0d007931db6d662ab66ad4ef63e71c2b083a31ecb98d23`
+  - `parqonaut-v1.0.0-rc.1-aarch64-unknown-linux-gnu.tar.gz`: `59f9c20b25485ba4849dfc3470a273930ffd49df91e72c2cb2e3367a00be3405`
+  - `parqonaut-v1.0.0-rc.1-x86_64-apple-darwin.tar.gz`: `11da3da8ff6cf7293402828da517b406460f656274c18e5eb86ccdc7e1316817`
+  - `parqonaut-v1.0.0-rc.1-x86_64-unknown-linux-gnu.tar.gz`: `377fc1e33c48e0f668c945384421eb894d3f460c0481345f406d575b48e957d3`
+- **CycloneDX 1.6 SBOM (`parqonaut-v1.0.0-rc.1.cdx.json`):** `633` components, `455` dependency entries, embedded matching SHA-256 hashes for all 4 archives.
+- **Provenance Attestation (`gh attestation verify <tarball> --repo sempervent/PARQONAUT`):** **PASS (exit 0)** for all 4 platform archives.

@@ -8,7 +8,7 @@
 
 | Gate | Scope | Evidence Artifact | Verdict |
 |---|---|---|---|
-| **RC-01..RC-05** | Release workflow runners, validation/publish split, strict identity, 12-step smoke, CycloneDX SBOM & build provenance | [release-matrix.md](release-matrix.md), run [`44658428683`](https://github.com/sempervent/PARQONAUT/actions/runs/44658428683) (+ final RC1 run) | **PASS** |
+| **RC-01..RC-05** | Release workflow runners, validation/publish split, strict identity, 12-step smoke, CycloneDX SBOM & build provenance | [release-matrix.md](release-matrix.md), baseline run [`44658428683`](https://github.com/sempervent/PARQONAUT/actions/runs/44658428683), `v1.0.0-rc.1` run [`44679003417`](https://github.com/sempervent/PARQONAUT/actions/runs/44679003417) | **PASS** |
 | **RC-06** | `cargo audit`, `cargo deny check`, Python `uvx pip-audit`, CI security job, container/error hygiene | [security-results.md](security-results.md) | **PASS** |
 | **RC-07** | Sustained Linux `x86_64` nightly `cargo-fuzz` libFuzzer across all 9 targets (`8,936,647` execs, 0 crashes) | [fuzz-results.md](fuzz-results.md), `.github/workflows/fuzz-extended.yml` | **PASS** |
 | **RC-08..RC-10** | Hardened `Dockerfile`, SQLite Compose, PostgreSQL 16 Compose (`compose.postgres.yaml`), RustFS S3 & Python plugins | [deployment-validation.md](deployment-validation.md) | **PASS** |
