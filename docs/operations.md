@@ -1,6 +1,6 @@
 # Operations Runbook
 
-Operational guide for running `prqnt serve` as a long-running service. Note: PARQONAUT uses an **in-process worker pool** per server instance (no external distributed worker queue in v0.12.0).
+Operational guide for running `prqnt serve` as a long-running service. Note: PARQONAUT uses an **in-process worker pool** per server instance (no external distributed worker queue in v1.0.0-rc.1).
 
 ## 1. Installation and Upgrade
 
@@ -18,9 +18,9 @@ Before upgrading an existing instance:
 `prqnt serve` resolves settings in the following order (highest precedence first):
 
 1. Explicit CLI flags (`--listen`, `--database`, `--state-dir`, `--workers`, `--config`).
-2. Environment variables (`PRQNT_BOOTSTRAP_ADMIN_TOKEN`, `PARQONAUT_ALLOWED_LOCAL_ROOTS`, `PARQONAUT_ALLOWED_S3_BUCKETS`, `PARQONAUT_ALLOWED_S3_PREFIXES`, `PARQONAUT_PLUGIN_*`, `PARQONAUT_MAX_EVENTS_PER_JOB`, `PARQONAUT_EVENT_CHANNEL_CAPACITY`, `PARQONAUT_IDEMPOTENCY_TTL_SECS`).
+2. Environment variables (`PARQONAUT_DATABASE_URL`, `PRQNT_BOOTSTRAP_ADMIN_TOKEN`, `PARQONAUT_ALLOWED_LOCAL_ROOTS`, `PARQONAUT_ALLOWED_S3_BUCKETS`, `PARQONAUT_ALLOWED_S3_PREFIXES`, `PARQONAUT_PLUGIN_*`, `PARQONAUT_MAX_EVENTS_PER_JOB`, `PARQONAUT_EVENT_CHANNEL_CAPACITY`, `PARQONAUT_IDEMPOTENCY_TTL_SECS`).
 3. TOML config file (`--config server.toml`).
-4. Built-in defaults (`127.0.0.1:8080`, SQLite in `--state-dir`, 2 workers, plugins disabled, 500 retained events/job, 24h idempotency TTL).
+4. Built-in defaults (`127.0.0.1:8080`, SQLite in `<state-dir>/database/parqonaut.sqlite`, 2 workers, plugins disabled, 500 retained events/job, 24h idempotency TTL).
 
 ## 3. Backup and Restoration
 
@@ -31,15 +31,15 @@ Before upgrading an existing instance:
 Online consistent backup:
 
 ```bash
-sqlite3 /var/lib/parqonaut/state/parqonaut.sqlite "VACUUM INTO '/var/backups/parqonaut-$(date -u +%Y%m%dT%H%M%SZ).sqlite';"
+sqlite3 /var/lib/parqonaut/state/database/parqonaut.sqlite "VACUUM INTO '/var/backups/parqonaut-$(date -u +%Y%m%dT%H%M%SZ).sqlite';"
 sqlite3 /var/backups/parqonaut-*.sqlite "PRAGMA integrity_check;"
 ```
 
 Restore to a clean or failed instance (stop `prqnt serve` first, remove `-wal` / `-shm` sidecars, restore the verified backup):
 
 ```bash
-rm -f /var/lib/parqonaut/state/parqonaut.sqlite{,-wal,-shm}
-cp /var/backups/parqonaut-backup.sqlite /var/lib/parqonaut/state/parqonaut.sqlite
+rm -f /var/lib/parqonaut/state/database/parqonaut.sqlite{,-wal,-shm}
+cp /var/backups/parqonaut-backup.sqlite /var/lib/parqonaut/state/database/parqonaut.sqlite
 ```
 
 ### PostgreSQL
@@ -58,6 +58,16 @@ pg_restore --clean --if-exists --no-owner --no-acl --dbname=parqonaut_restored /
 ```
 
 Version constraint: use `pg_dump` / `pg_restore` from a PostgreSQL client version `>=` the source server version (tested with PostgreSQL 16).
+
+When running via Docker Compose with PostgreSQL, supply the overlay file (`compose.postgres.yaml`) and an explicit `PARQONAUT_PG_PASSWORD`:
+
+```bash
+PARQONAUT_PG_PASSWORD="<strong-password>" \
+PRQNT_BOOTSTRAP_ADMIN_TOKEN="$(openssl rand -hex 32)" \
+  docker compose -f compose.yaml -f compose.postgres.yaml --profile postgres up -d
+```
+
+Set `PARQONAUT_PORT` to override the default host binding (`127.0.0.1:8080`).
 
 ## 4. Authentication Bootstrap and Token Rotation
 

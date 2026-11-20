@@ -116,8 +116,11 @@ async fn seed_historical_scan_run(db_path: &Path) -> (RunId, String) {
 async fn sqlite_vacuum_backup(src_db: &Path, backup_db: &Path) {
     let opts = SqliteConnectOptions::new().filename(src_db).foreign_keys(true);
     let pool = SqlitePoolOptions::new().max_connections(1).connect_with(opts).await.unwrap();
-    let escaped = backup_db.display().to_string().replace('\'', "''");
-    sqlx::query(&format!("VACUUM INTO '{escaped}'")).execute(&pool).await.unwrap();
+    sqlx::query("VACUUM INTO ?")
+        .bind(backup_db.display().to_string())
+        .execute(&pool)
+        .await
+        .unwrap();
     pool.close().await;
 
     let check_opts = SqliteConnectOptions::new().filename(backup_db).read_only(true);

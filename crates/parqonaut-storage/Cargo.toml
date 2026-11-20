@@ -33,7 +33,7 @@ parqonaut-workflow = { path = "../parqonaut-workflow" }
 
 [features]
 default = []
-s3 = ["dep:aws-config", "dep:aws-sdk-s3"]
+s3 = ["dep:aws-config", "dep:aws-sdk-s3", "dep:aws-smithy-http-client"]
 columnar = ["dep:arrow", "dep:parquet", "dep:parqonaut-columnar", "dep:parqonaut-workflow"]
 fogbank-fixtures = ["dep:arrow", "dep:parquet"]
 test-util = []
@@ -54,11 +54,11 @@ path = "tests/columnar_s3_integration.rs"
 required-features = ["columnar", "s3"]
 
 [dependencies.arrow]
-version = "54"
+version = "60"
 optional = true
 
 [dependencies.parquet]
-version = "54"
+version = "60"
 optional = true
 features = ["arrow", "async"]
 
@@ -73,9 +73,17 @@ optional = true
 [dependencies.aws-config]
 version = "1"
 optional = true
-features = ["behavior-version-latest", "rustls"]
+default-features = false
+features = ["behavior-version-latest", "rt-tokio", "credentials-process", "sso"]
 
 [dependencies.aws-sdk-s3]
 version = "1"
 optional = true
-features = ["rustls", "rt-tokio"]
+default-features = false
+features = ["sigv4a", "http-1x", "rt-tokio"]
+
+[dependencies.aws-smithy-http-client]
+version = "1"
+optional = true
+default-features = false
+features = ["rustls-aws-lc", "rt-tokio"]

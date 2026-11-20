@@ -1,0 +1,60 @@
+name: Extended Fuzz Campaign
+
+on:
+  workflow_dispatch:
+    inputs:
+      priority_secs:
+        description: "Time budget (seconds) per priority target (parquet, ipc, plugin, uri, repair_plan)"
+        required: false
+        default: "120"
+      standard_secs:
+        description: "Time budget (seconds) per standard target"
+        required: false
+        default: "60"
+      seed:
+        description: "Deterministic PRNG seed for libFuzzer"
+        required: false
+        default: "20261119"
+  schedule:
+    - cron: "0 5 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  libfuzzer-linux-x86_64:
+    name: libFuzzer Extended Campaign (linux x86_64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz@0.13.2
+
+      - name: Run extended libFuzzer campaign across all 9 targets
+        env:
+          PRIORITY_SECS: ${{ inputs.priority_secs || '120' }}
+          STANDARD_SECS: ${{ inputs.standard_secs || '60' }}
+          PARQONAUT_FUZZ_SEED: ${{ inputs.seed || '20261119' }}
+          RSS_LIMIT_MB: "2048"
+          TIMEOUT_SECS: "10"
+        run: bash scripts/fuzz/run-extended.sh
+
+      - name: Upload fuzz summary and any crash artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-extended-results
+          path: |
+            target/fuzz-extended/summary.json
+            target/fuzz-extended/summary.md
+            target/fuzz-extended/logs/
+            target/fuzz-extended/artifacts/
+          retention-days: 30

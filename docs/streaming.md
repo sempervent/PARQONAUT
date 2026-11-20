@@ -1,6 +1,6 @@
 # Streaming conversion
 
-`prqnt convert` runs the schema-aware streaming engine (`parqonaut-stream`) on **Apache Arrow/Parquet 54.3.1** `RecordBatch` streams via `parqonaut-columnar`.
+`prqnt convert` runs the schema-aware streaming engine (`parqonaut-stream`) on **Apache Arrow/Parquet 60.1.0** `RecordBatch` streams via `parqonaut-columnar`.
 
 Inputs and outputs may be **local paths** or **`s3://`** URIs (with S3-enabled builds). Parquet written to object storage streams through the storage columnar sink (bounded encoder + multipart upload), not an in-memory object buffer.
 

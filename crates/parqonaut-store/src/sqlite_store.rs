@@ -51,6 +51,14 @@ impl SqliteScanStore {
         Ok(Self { pool })
     }
 
+    /// Starts a `BEGIN IMMEDIATE` write transaction so SQLite waits on `busy_timeout`
+    /// upfront instead of failing snapshot upgrades with un-retriable `SQLITE_BUSY`.
+    pub(crate) async fn begin_immediate(
+        &self,
+    ) -> Result<sqlx::Transaction<'_, sqlx::Sqlite>, StoreError> {
+        Ok(self.pool.begin_with("BEGIN IMMEDIATE").await?)
+    }
+
     /// Persists a validated scan: canonical JSON blob plus normalized rows.
     pub async fn persist_scan_run(
         &self,
@@ -76,7 +84,7 @@ impl SqliteScanStore {
         let sha = hex_encode(digest);
         let summary_json = serde_json::to_string(&stored.summary)?;
 
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.begin_immediate().await?;
         sqlx::query(
             r#"INSERT INTO scan_runs (
                 run_id, request_scan_id, target_kind, normalized_target_key, target_json,
@@ -624,7 +632,7 @@ impl SqliteScanStore {
         policy: JobRecoveryPolicy,
     ) -> Result<StaleRecoveryStats, StoreError> {
         let now_s = now.to_rfc3339();
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.begin_immediate().await?;
         let rows: Vec<(String, i32)> = sqlx::query_as(
             r#"SELECT job_id, attempt_count FROM application_jobs
                WHERE status = 'running'

@@ -19,7 +19,7 @@ parqonaut-repair = { path = "../crates/parqonaut-repair" }
 parqonaut-orchestrator = { path = "../crates/parqonaut-orchestrator" }
 parqonaut-storage = { path = "../crates/parqonaut-storage", features = ["s3", "fogbank-fixtures"] }
 bytes = "1.9"
-arrow = "54"
-parquet = { version = "54", features = ["arrow"] }
+arrow = "60"
+parquet = { version = "60", features = ["arrow"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

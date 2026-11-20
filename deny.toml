@@ -8,7 +8,17 @@ version = 2
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 ignore = [
-    # Documented transitive advisories (if any) must include rationale and expiry here.
+    # SQLite CVE-2026-119375 (libsqlite3-sys 0.30.1 via sqlx-sqlite 0.9.1):
+    # Exposure requires opening a database + sibling -wal file written by a less-trusted party.
+    # PARQONAUT state DBs are operator-owned local state; no sqlx release yet uses libsqlite3-sys >= 0.39.0.
+    # Review by: 2027-02-01
+    { id = "RUSTSEC-2026-0459", reason = "Trusted operator-owned state DB only; no sqlx upgrade to libsqlite3-sys >= 0.39.0 yet (review by 2027-02-01)" },
+    # chrono 0.4.45 marked unmaintained with no fixed replacement release; pervasive across sqlx/utoipa/schemars/public types.
+    # Review by: 2027-03-01
+    { id = "RUSTSEC-2026-0543", reason = "Unmaintained upstream with no patch release; public/DB schema migration deferred post-v1.0 (review by 2027-03-01)" },
+    # unsafe-libyaml 0.2.11 (unmaintained via serde_yaml 0.9.34+deprecated, no security vulnerability); used only for operator-supplied --spec YAML files.
+    # Review by: 2027-03-01
+    { id = "RUSTSEC-2024-0449", reason = "Unmaintained notice only (no CVE); used solely to parse local operator transform YAML specs (review by 2027-03-01)" },
 ]
 
 [licenses]
@@ -19,6 +29,7 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    "CC0-1.0",
     "ISC",
     "Zlib",
     "Unicode-3.0",

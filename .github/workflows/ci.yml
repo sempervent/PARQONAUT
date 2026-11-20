@@ -52,6 +52,28 @@ jobs:
           cargo test --locked -p parqonaut-storage --features test-util --test chaos_backend
           cargo bench --locked -p parqonaut-bench --no-run
 
+  security-audit:
+    name: Security & Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit@0.23.0,cargo-deny@0.22.0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: Cargo deny check (advisories, licenses, bans, sources)
+        run: cargo deny check
+      - name: Cargo audit (with documented narrow exception)
+        run: cargo audit --db "${RUNNER_TEMP}/advisory-db" --ignore RUSTSEC-2026-0459
+      - name: Python dependency audit (uv.lock)
+        working-directory: python/parqonaut_plugins
+        run: |
+          uv export --frozen --no-hashes --no-emit-project -o "${RUNNER_TEMP}/parqonaut-py-req.txt"
+          uvx pip-audit==2.10.1 --disable-pip --no-deps -r "${RUNNER_TEMP}/parqonaut-py-req.txt"
+          rm -f "${RUNNER_TEMP}/parqonaut-py-req.txt"
+
   api-integration:
     name: API integration (SQLite)
     runs-on: ubuntu-latest

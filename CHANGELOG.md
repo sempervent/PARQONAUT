@@ -2,6 +2,26 @@
 
 All notable changes to PARQONAUT are documented here.
 
+Note: `v0.10.0`, `v0.11.0`, and `v0.12.0` were merged milestones on `main` following the `v0.9.2` GitHub Release tag; `v1.0.0-rc.1` is the first release candidate prepared for public tag validation.
+
+## [1.0.0-rc.1] - 2026-11-19
+
+First Release Candidate for PARQONAUT v1.0.0.
+
+### Added
+
+- **4-platform release validation, CycloneDX 1.6 SBOM & provenance** (`.github/workflows/release.yml`, `scripts/release/build-and-validate-sbom.py`, `scripts/release/verify-artifact.sh`): updated matrix runners (`ubuntu-24.04`, `ubuntu-24.04-arm`, `macos-15`, `macos-15-intel`), separated `workflow_dispatch` validation from tag-push draft release publication, enforced workspace/binary/archive/SBOM identity consistency, and added 12-step archive smoke tests including live `prqnt serve` + `/ui/`.
+- **CI security enforcement & extended fuzzing** (`.github/workflows/ci.yml`, `.github/workflows/fuzz-extended.yml`, `scripts/fuzz/run-extended.sh`): added pinned `security-audit` CI job (`cargo audit --ignore RUSTSEC-2026-0459`, `cargo deny check`) and reproducible Linux `x86_64` nightly `cargo-fuzz` workflow (`8,936,647` executions across all 9 targets, `0` crashes).
+- **PostgreSQL Docker Compose overlay** (`compose.postgres.yaml`, `compose.yaml`): explicit `postgres` profile wiring with required `PARQONAUT_PG_PASSWORD`, separate `parqonaut_out` read-write volume, and documented SQLite/PostgreSQL qualification.
+- **Qualification & contract-freeze records** (`docs/history/v1.0.0-rc.1/`): complete qualification plan, security results, fuzz results, release matrix, deployment validation, contract freeze, performance regression envelopes, 12-scenario failure-recovery matrix, acceptance record, and release notes.
+
+### Fixed
+
+- **SQLite `SQLITE_BUSY` snapshot-upgrade flakiness** (`crates/parqonaut-store/src/{sqlite_store,job_events_store,auth_store}.rs`): switched `SqliteScanStore` write transactions to `BEGIN IMMEDIATE` so concurrent event writes and cancellations wait on `busy_timeout` instead of failing mid-transaction upgrades.
+- **Non-existent repair output path in `StoragePolicy`** (`crates/parqonaut-app/src/policy.rs`): canonicalizes the deepest existing ancestor for non-existent repair output directories while still rejecting `..` traversal segments.
+- **`prqnt serve` environment configuration & container parity** (`crates/parqonaut-cli/src/serve.rs`, `Dockerfile`, `.dockerignore`): wired `PARQONAUT_DATABASE_URL`, `PARQONAUT_ALLOWED_LOCAL_ROOTS`, `PARQONAUT_ALLOWED_S3_BUCKETS`, and `PARQONAUT_ALLOWED_S3_PREFIXES`; updated `Dockerfile` builder to `rust:1.99-slim-bookworm` and tightened `.dockerignore`.
+- **Criterion `repair_and_store` output directory** (`benches/stream-throughput/throughput.rs`): passes a non-existent child path inside `TempDir` so all 9 Criterion benchmarks execute cleanly.
+
 ## [0.12.0] - 2026-11-19
 
 Reliability, Distribution, and 1.0 Readiness milestone.

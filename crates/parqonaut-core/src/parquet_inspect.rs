@@ -6,7 +6,7 @@ use std::fs::File;
 use camino::Utf8Path;
 use parqonaut_types::{FieldDefinition, SchemaSnapshot};
 use parquet::basic::Repetition;
-use parquet::file::metadata::ParquetMetaDataReader;
+use parquet::file::metadata::{FooterTail, ParquetMetaDataReader};
 use parquet::file::reader::{ChunkReader, FileReader, SerializedFileReader};
 
 use crate::CoreError;
@@ -73,7 +73,7 @@ pub fn inspect_parquet_footer_buffer(
     let trailer: [u8; 8] = footer[footer.len() - 8..]
         .try_into()
         .map_err(|_| CoreError::Parquet("invalid Parquet footer trailer".into()))?;
-    let metadata_len = ParquetMetaDataReader::decode_footer_tail(&trailer)
+    let metadata_len = FooterTail::try_new(&trailer)
         .map_err(|e| CoreError::Parquet(e.to_string()))?
         .metadata_length();
     if metadata_len + 8 != footer.len() {
@@ -142,7 +142,7 @@ fn schema_from_parquet_meta(desc: &parquet::schema::types::SchemaDescriptor) -> 
         let nullable = t.get_basic_info().repetition() == Repetition::OPTIONAL;
         fields.push(FieldDefinition {
             name: col.name().to_string(),
-            logical_type: format!("{:?} {:?}", col.physical_type(), col.logical_type()),
+            logical_type: format!("{:?} {:?}", col.physical_type(), col.logical_type_ref()),
             nullable,
         });
     }

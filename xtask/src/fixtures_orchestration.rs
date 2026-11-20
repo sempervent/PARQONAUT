@@ -51,7 +51,7 @@ fn writer_props(
 ) -> WriterProperties {
     let mut b = WriterProperties::builder()
         .set_compression(compression)
-        .set_max_row_group_size(max_row_group_size);
+        .set_max_row_group_row_count(Some(max_row_group_size));
     b = b.set_statistics_enabled(if stats {
         EnabledStatistics::Chunk
     } else {

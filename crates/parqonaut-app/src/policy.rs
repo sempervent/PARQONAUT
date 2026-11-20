@@ -45,9 +45,7 @@ impl StoragePolicy {
                     .into(),
             ));
         }
-        let abs = path
-            .canonicalize_utf8()
-            .map_err(|e| ApplicationError::InvalidRequest(e.to_string()))?;
+        let abs = resolve_lexical_or_canonical(path)?;
         for root in &self.allowed_local_roots {
             let root_abs = root.canonicalize_utf8().unwrap_or_else(|_| root.clone());
             if abs.starts_with(&root_abs) {
@@ -88,5 +86,79 @@ impl StoragePolicy {
                 "s3 location `{uri}` is outside configured allowed_s3_prefixes"
             )))
         }
+    }
+}
+
+fn resolve_lexical_or_canonical(path: &Utf8Path) -> Result<Utf8PathBuf, ApplicationError> {
+    if let Ok(abs) = path.canonicalize_utf8() {
+        return Ok(abs);
+    }
+    let mut suffix: Vec<&str> = Vec::new();
+    let mut cursor = path;
+    loop {
+        if let Ok(abs) = cursor.canonicalize_utf8() {
+            let mut out = abs;
+            for seg in suffix.into_iter().rev() {
+                out.push(seg);
+            }
+            return Ok(out);
+        }
+        let Some(comp) = cursor.components().next_back() else {
+            return Err(ApplicationError::InvalidRequest(format!(
+                "cannot resolve local path `{path}`"
+            )));
+        };
+        match comp {
+            camino::Utf8Component::Normal(s) => suffix.push(s),
+            camino::Utf8Component::CurDir => {}
+            camino::Utf8Component::ParentDir => {
+                return Err(ApplicationError::LocationNotAllowed(format!(
+                    "parent directory traversal (`..`) is not allowed in `{path}`"
+                )));
+            }
+            _ => {
+                return Err(ApplicationError::InvalidRequest(format!(
+                    "cannot resolve local path `{path}`"
+                )));
+            }
+        }
+        cursor = cursor.parent().ok_or_else(|| {
+            ApplicationError::InvalidRequest(format!("cannot resolve local path `{path}`"))
+        })?;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_non_existent_output_under_allowed_root_and_rejects_traversal() {
+        let base =
+            std::env::temp_dir().join(format!("parqonaut-policy-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let root = Utf8PathBuf::from_path_buf(base.clone()).unwrap();
+        let policy = StoragePolicy {
+            allow_unrestricted_local: false,
+            allowed_local_roots: vec![root.clone()],
+            ..StoragePolicy::default()
+        };
+
+        let nested_out = root.join("nested").join("repaired-ds");
+        assert!(policy.validate_local_path(&nested_out).is_ok());
+
+        let traversal = root.join("nested").join("..").join("..").join("etc");
+        assert!(matches!(
+            policy.validate_local_path(&traversal),
+            Err(ApplicationError::LocationNotAllowed(_))
+        ));
+
+        let outside = Utf8PathBuf::from("/tmp/definitely-outside-parqonaut-test-root");
+        assert!(matches!(
+            policy.validate_local_path(&outside),
+            Err(ApplicationError::LocationNotAllowed(_))
+        ));
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

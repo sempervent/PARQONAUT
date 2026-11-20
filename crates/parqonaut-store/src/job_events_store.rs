@@ -257,7 +257,7 @@ impl SqliteScanStore {
         input: AppendJobEvent,
         max_events_per_job: usize,
     ) -> Result<JobEvent, StoreError> {
-        let mut tx = self.pool().begin().await?;
+        let mut tx = self.begin_immediate().await?;
         let ev = append_event_sqlite_tx(&mut tx, &input, max_events_per_job).await?;
         tx.commit().await?;
         Ok(ev)
@@ -324,7 +324,7 @@ impl SqliteScanStore {
     ) -> Result<IdempotencyInsertResult, StoreError> {
         let now = Utc::now();
         let now_str = now.to_rfc3339();
-        let mut tx = self.pool().begin().await?;
+        let mut tx = self.begin_immediate().await?;
 
         if let Some((scope, key, req_sha, expires_at)) = idempotency {
             sqlx::query(
@@ -540,7 +540,7 @@ impl SqliteScanStore {
         .execute(self.pool())
         .await;
 
-        let mut tx = self.pool().begin().await?;
+        let mut tx = self.begin_immediate().await?;
         if let Some((scope, key, req_sha, expires_at)) = idempotency {
             sqlx::query(
                 "DELETE FROM idempotency_keys WHERE scope = ? AND idempotency_key = ? AND expires_at <= ?",
@@ -672,7 +672,7 @@ impl SqliteScanStore {
         let started = Utc::now().to_rfc3339();
         let hb = heartbeat_at.to_rfc3339();
         let lu = leased_until.to_rfc3339();
-        let mut tx = self.pool().begin().await?;
+        let mut tx = self.begin_immediate().await?;
         let row = sqlx::query_as::<_, ScanJobRow>(
             r#"UPDATE application_jobs
                SET status = 'running',
@@ -739,7 +739,7 @@ impl SqliteScanStore {
         max_events_per_job: usize,
     ) -> Result<JobEvent, StoreError> {
         let completed = Utc::now().to_rfc3339();
-        let mut tx = self.pool().begin().await?;
+        let mut tx = self.begin_immediate().await?;
         let res = sqlx::query(
             r#"UPDATE application_jobs SET status = 'succeeded', completed_at = ?, run_id = ?,
                result_ref_json = ?, worker_id = NULL, heartbeat_at = NULL, leased_until = NULL,
@@ -769,7 +769,7 @@ impl SqliteScanStore {
         max_events_per_job: usize,
     ) -> Result<JobEvent, StoreError> {
         let completed = Utc::now().to_rfc3339();
-        let mut tx = self.pool().begin().await?;
+        let mut tx = self.begin_immediate().await?;
         let res = sqlx::query(
             r#"UPDATE application_jobs SET status = 'canceled', completed_at = ?,
                failure_code = 'canceled', failure_message = 'job canceled by client request',
@@ -799,7 +799,7 @@ impl SqliteScanStore {
         max_events_per_job: usize,
     ) -> Result<JobEvent, StoreError> {
         let completed = Utc::now().to_rfc3339();
-        let mut tx = self.pool().begin().await?;
+        let mut tx = self.begin_immediate().await?;
         let res = sqlx::query(
             r#"UPDATE application_jobs SET status = 'failed', completed_at = ?, failure_code = ?, failure_message = ?,
                worker_id = NULL, heartbeat_at = NULL, leased_until = NULL
@@ -826,7 +826,7 @@ impl SqliteScanStore {
         job_id: JobId,
         max_events_per_job: usize,
     ) -> Result<(crate::models::JobCancelOutcome, Option<JobEvent>), StoreError> {
-        let mut tx = self.pool().begin().await?;
+        let mut tx = self.begin_immediate().await?;
         let status: Option<String> =
             sqlx::query_scalar("SELECT status FROM application_jobs WHERE job_id = ?")
                 .bind(job_id.0.to_string())
