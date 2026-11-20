@@ -66,7 +66,7 @@ jobs:
       - name: Cargo deny check (advisories, licenses, bans, sources)
         run: cargo deny check
       - name: Cargo audit (with documented narrow exception)
-        run: cargo audit --ignore RUSTSEC-2026-0459
+        run: cargo audit --db "${RUNNER_TEMP}/advisory-db" --ignore RUSTSEC-2026-0459
       - name: Python dependency audit (uv.lock)
         working-directory: python/parqonaut_plugins
         run: |
