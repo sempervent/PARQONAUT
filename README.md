@@ -8,7 +8,7 @@ PARQONAUT is a Rust-first toolkit for exploring, diagnosing, streaming, transfor
 
 Use **`prqnt`** for local and S3-backed workflows: forensic scans, repair planning, batch fleet operations, streaming conversion, declarative transforms, and batch Python plugins in the transform pipeline. For lineage and source provenance, see [docs/provenance.md](docs/provenance.md).
 
-**Current release:** **v0.12.0** (in PR) — Reliability, Distribution, and 1.0 Readiness: incremental UTF-8 SSE framing, atomic job/event transitions, historical DB migration & WAL backup/restore validation, Criterion benchmarks, `proptest`/fuzz/fault-injection suites, `Cargo.lock` + `deny.toml`, reproducible binary release packaging, Docker/Compose, and operational runbook (prior shipped milestones: [v0.11.0](CHANGELOG.md#0110---2026-11-18), [v0.10.0](docs/history/v0.10.0/release-notes.md); latest GitHub tag: [v0.9.2](https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.2)).
+**Current release candidate:** **v1.0.0-rc.1** (qualification branch) — validated 4-platform release packaging with CycloneDX SBOM and build provenance, Rust/Python dependency security audits, sustained Linux `x86_64` libFuzzer campaigns, hardened Docker/PostgreSQL Compose/RustFS S3 deployments, frozen public contracts, performance envelopes, and 12-scenario failure-recovery drills (prior merged milestones on `main`: [v0.12.0](CHANGELOG.md#0120---2026-11-19), [v0.11.0](CHANGELOG.md#0110---2026-11-18), [v0.10.0](docs/history/v0.10.0/release-notes.md); latest published GitHub Release tag: [v0.9.2](https://github.com/sempervent/PARQONAUT/releases/tag/v0.9.2)).
 
 **Documentation:** [PARQONAUT docs](https://sempervent.github.io/PARQONAUT/) (GitHub Pages)
 
@@ -50,7 +50,7 @@ Local paths and **`s3://`** dataset URIs are supported when built with S3 featur
 | Stream | `parqonaut-stream` | `convert` |
 | Plugins | `parqonaut-plugin-host`, `python/parqonaut_plugins` | transform pipeline plugins |
 
-Columnar execution converges on Arrow/Parquet 54 via `parqonaut-columnar` ([ADR-0015](docs/adr/ADR-0015-columnar-stack-convergence.md)).
+Columnar execution converges on Arrow/Parquet 60 via `parqonaut-columnar` ([ADR-0015](docs/adr/ADR-0015-columnar-stack-convergence.md)).
 
 ## Build
 
@@ -128,7 +128,7 @@ just tui-demo          # Terminal console: prqnt tui tests and launch check
 - Generic HTTP server transform jobs (batch plugins via `prqnt transform --spec` and `parqonaut-app` only)
 - Additional plugin capability classes beyond scan analyzers and batch Arrow IPC transforms
 - Extended partition/merge/split transform surface
-- 1.0 hardening and production deployment guides
+- Multi-node distributed worker queue (`prqnt serve` uses an in-process worker pool)
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 

@@ -3404,7 +3404,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-app"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "camino",
  "dirs",
@@ -3427,7 +3427,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-bench"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow",
  "bytes",
@@ -3459,7 +3459,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-cli"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow",
  "assert_cmd",
@@ -3496,7 +3496,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-client"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow",
  "axum",
@@ -3526,7 +3526,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-columnar"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow",
  "arrow-schema",
@@ -3545,7 +3545,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-core"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "bytes",
  "camino",
@@ -3564,7 +3564,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-orchestrator"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow",
  "bytes",
@@ -3589,7 +3589,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-plugin-host"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow",
  "camino",
@@ -3612,7 +3612,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-plugin-protocol"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "parqonaut-types",
  "schemars",
@@ -3624,7 +3624,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-repair"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow",
  "async-trait",
@@ -3655,7 +3655,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-report"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "camino",
  "chrono",
@@ -3667,7 +3667,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-service"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "aws-sdk-s3",
  "axum",
@@ -3707,7 +3707,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-storage"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow",
  "async-trait",
@@ -3736,7 +3736,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-store"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "camino",
  "chrono",
@@ -3758,7 +3758,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-stream"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -3798,7 +3798,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-transform"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -3832,7 +3832,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-tui"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "chrono",
  "crossterm 0.28.1",
@@ -3850,7 +3850,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-types"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "camino",
  "chrono",
@@ -3869,7 +3869,7 @@ dependencies = [
 
 [[package]]
 name = "parqonaut-workflow"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "chrono",
  "schemars",
@@ -6693,7 +6693,7 @@ checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
 
 [[package]]
 name = "xtask"
-version = "0.12.0"
+version = "1.0.0-rc.1"
 dependencies = [
  "arrow",
  "bytes",
