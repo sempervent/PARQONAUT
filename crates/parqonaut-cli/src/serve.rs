@@ -15,7 +15,7 @@ pub struct ServeArgs {
     #[arg(long, default_value = "127.0.0.1:8080")]
     pub listen: String,
     /// SQLite or Postgres database URL.
-    #[arg(long)]
+    #[arg(long, env = "PARQONAUT_DATABASE_URL")]
     pub database: Option<String>,
     /// Application state directory (database + artifacts).
     #[arg(long)]
@@ -129,11 +129,49 @@ fn plugin_policy_from_config(cfg: &ServerFileConfig) -> ServerPluginPolicy {
 fn storage_policy_from_config(cfg: &ServerFileConfig) -> StoragePolicy {
     let mut roots = cfg.server.allowed_local_roots.clone();
     roots.extend(cfg.storage.allowed_local_roots.clone());
+    if let Ok(env_roots) = std::env::var("PARQONAUT_ALLOWED_LOCAL_ROOTS") {
+        let parsed: Vec<Utf8PathBuf> = env_roots
+            .split([':', ','])
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(Utf8PathBuf::from)
+            .collect();
+        if !parsed.is_empty() {
+            roots = parsed;
+        }
+    }
+
+    let mut s3_buckets = cfg.storage.allowed_s3_buckets.clone();
+    if let Ok(env_buckets) = std::env::var("PARQONAUT_ALLOWED_S3_BUCKETS") {
+        let parsed: Vec<String> = env_buckets
+            .split(',')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect();
+        if !parsed.is_empty() {
+            s3_buckets = parsed;
+        }
+    }
+
+    let mut s3_prefixes = cfg.storage.allowed_s3_prefixes.clone();
+    if let Ok(env_prefixes) = std::env::var("PARQONAUT_ALLOWED_S3_PREFIXES") {
+        let parsed: Vec<String> = env_prefixes
+            .split(',')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect();
+        if !parsed.is_empty() {
+            s3_prefixes = parsed;
+        }
+    }
+
     StoragePolicy {
         allow_unrestricted_local: false,
         allowed_local_roots: roots,
-        allowed_s3_buckets: cfg.storage.allowed_s3_buckets.clone(),
-        allowed_s3_prefixes: cfg.storage.allowed_s3_prefixes.clone(),
+        allowed_s3_buckets: s3_buckets,
+        allowed_s3_prefixes: s3_prefixes,
     }
 }
 
@@ -155,4 +193,43 @@ fn default_sqlite_url(state_dir: &std::path::Path) -> String {
     let _ = std::fs::create_dir_all(&db_dir);
     let path = db_dir.join("parqonaut.sqlite");
     format!("sqlite://{}?mode=rwc", path.display())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn storage_policy_reads_env_and_overrides_toml() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let cfg = ServerFileConfig {
+            server: ServerSection { allowed_local_roots: vec![Utf8PathBuf::from("/toml/root")] },
+            storage: StorageSection {
+                allowed_local_roots: vec![],
+                allowed_s3_buckets: vec!["toml-bucket".into()],
+                allowed_s3_prefixes: vec!["toml-bucket/prefix".into()],
+            },
+            plugins: PluginsSection::default(),
+        };
+
+        std::env::set_var("PARQONAUT_ALLOWED_LOCAL_ROOTS", "/var/lib/parqonaut/data:/tmp/extra");
+        std::env::set_var("PARQONAUT_ALLOWED_S3_BUCKETS", "b1, b2");
+        std::env::set_var("PARQONAUT_ALLOWED_S3_PREFIXES", "b1/sub/");
+
+        let policy = storage_policy_from_config(&cfg);
+        std::env::remove_var("PARQONAUT_ALLOWED_LOCAL_ROOTS");
+        std::env::remove_var("PARQONAUT_ALLOWED_S3_BUCKETS");
+        std::env::remove_var("PARQONAUT_ALLOWED_S3_PREFIXES");
+
+        assert!(!policy.allow_unrestricted_local);
+        assert_eq!(
+            policy.allowed_local_roots,
+            vec![Utf8PathBuf::from("/var/lib/parqonaut/data"), Utf8PathBuf::from("/tmp/extra")]
+        );
+        assert_eq!(policy.allowed_s3_buckets, vec!["b1", "b2"]);
+        assert_eq!(policy.allowed_s3_prefixes, vec!["b1/sub/"]);
+    }
 }
