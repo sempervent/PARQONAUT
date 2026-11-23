@@ -1,4 +1,3 @@
-use camino::Utf8Path;
 use parqonaut_repair::{
     location_root, scan_dataset, scan_directory, verify_repair, EffectivePolicy, ExecutionManifest,
     RepairBackend, ScanReport, VerificationOutcome,
@@ -88,28 +87,23 @@ async fn verify_batch_async(
         let policy = EffectivePolicy::from_toml(None)
             .map_err(|e| OrchestratorError::InvalidConfig(e.to_string()))?;
 
-        let uses_remote =
-            ds.source_path.starts_with("s3://") || ds.output_path.starts_with("s3://");
+        let source = DatasetLocation::parse(&ds.source_path).map_err(storage_loc_err)?;
+        let output = DatasetLocation::parse(&ds.output_path).map_err(storage_loc_err)?;
 
-        let (before_scan, after_scan, source_root, output_root, manifest) = if uses_remote {
-            let source = DatasetLocation::parse(&ds.source_path).map_err(storage_loc_err)?;
-            let output = DatasetLocation::parse(&ds.output_path).map_err(storage_loc_err)?;
-            let before = scan_location(storage, &source).await?;
-            let after = scan_location(storage, &output).await?;
-            let manifest = local_manifest_if_present(&output);
-            (before, after, location_root(&source), location_root(&output), manifest)
-        } else {
-            let source = Utf8Path::new(&ds.source_path);
-            let output = Utf8Path::new(&ds.output_path);
-            let before = scan_directory(source)?;
-            let after = scan_directory(output)?;
-            let manifest_path = output.join(".parqonaut-manifest.json");
-            let manifest = if manifest_path.exists() {
-                Some(ExecutionManifest::read_json(&manifest_path)?)
-            } else {
-                None
-            };
-            (before, after, source.to_path_buf(), output.to_path_buf(), manifest)
+        let (before_scan, after_scan, source_root, output_root, manifest) = match (&source, &output)
+        {
+            (DatasetLocation::Local(src_local), DatasetLocation::Local(out_local)) => {
+                let before = scan_directory(&src_local.path)?;
+                let after = scan_directory(&out_local.path)?;
+                let manifest = local_manifest_if_present(&output);
+                (before, after, src_local.path.clone(), out_local.path.clone(), manifest)
+            }
+            _ => {
+                let before = scan_location(storage, &source).await?;
+                let after = scan_location(storage, &output).await?;
+                let manifest = local_manifest_if_present(&output);
+                (before, after, location_root(&source), location_root(&output), manifest)
+            }
         };
 
         let report = verify_repair(
@@ -126,8 +120,7 @@ async fn verify_batch_async(
             VerificationOutcome::Verified | VerificationOutcome::VerifiedWithWarnings
         );
 
-        if ok && ds.output_path.starts_with("s3://") {
-            let output = DatasetLocation::parse(&ds.output_path).map_err(storage_loc_err)?;
+        if ok && matches!(output, DatasetLocation::S3(_)) {
             let run_id = batch_run_id.map(|r| r.0.as_str()).unwrap_or("batch-run");
             if !remote_output_committed(storage, &output, run_id).await? {
                 ok = false;

@@ -31,7 +31,7 @@ pub use parqonaut_types::{
     apply_redaction_policy, diff_reports, RedactionPolicy, RetentionPolicy, RunDiff, RunId,
     RunOutcome, ScanRun, ScanRunListItem, StoredReportRef, SummaryDelta, TargetIdentity,
 };
-pub use postgres_store::PostgresScanStore;
+pub use postgres_store::{PostgresConnectConfig, PostgresScanStore};
 pub use sqlite_config::SqliteStoreConfig;
 pub use sqlite_store::SqliteScanStore;
 pub use sqlx::sqlite::{SqliteJournalMode, SqliteSynchronous};

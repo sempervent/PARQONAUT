@@ -145,7 +145,7 @@ fn s3_mid_stream_plugin_failure_does_not_commit_partial_object() {
 
     let local_in = work.path().join("multi.parquet");
     let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int32, false)]));
-    let props = WriterProperties::builder().set_max_row_group_size(1).build();
+    let props = WriterProperties::builder().set_max_row_group_row_count(Some(1)).build();
     let mut writer = ArrowWriter::try_new(
         std::fs::File::create(&local_in).unwrap(),
         schema.clone(),

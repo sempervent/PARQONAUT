@@ -22,7 +22,7 @@ fn repo_root() -> PathBuf {
 fn write_many_batch_parquet(path: &std::path::Path, batches: usize) {
     let schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int32, false)]));
     let file = std::fs::File::create(path).expect("create parquet");
-    let props = WriterProperties::builder().set_max_row_group_size(1).build();
+    let props = WriterProperties::builder().set_max_row_group_row_count(Some(1)).build();
     let mut writer = ArrowWriter::try_new(file, schema.clone(), Some(props)).expect("writer");
     for i in 0..batches {
         let batch =

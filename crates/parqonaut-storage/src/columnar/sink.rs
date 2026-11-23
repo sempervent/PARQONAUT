@@ -138,7 +138,7 @@ async fn write_stream_async<B: StorageBackend + ?Sized>(
     let encode = tokio::task::spawn_blocking(move || {
         let props = WriterProperties::builder()
             .set_compression(options.compression)
-            .set_max_row_group_size(options.max_row_group_size_bytes)
+            .set_max_row_group_bytes(Some(options.max_row_group_size_bytes.max(1)))
             .build();
         let mut writer =
             ArrowWriter::try_new(ChunkWriter { tx: chunk_tx }, schema_enc, Some(props))

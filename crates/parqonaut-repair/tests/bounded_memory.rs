@@ -19,7 +19,7 @@ fn cast_rewrite_processes_multiple_batches() {
     let file = File::create(&input).unwrap();
     let props = WriterProperties::builder()
         .set_compression(Compression::ZSTD(ZstdLevel::default()))
-        .set_max_row_group_size(64 * 1024)
+        .set_max_row_group_row_count(Some(64 * 1024))
         .build();
     let mut writer =
         ArrowWriter::try_new(BufWriter::new(file), schema.clone(), Some(props)).unwrap();

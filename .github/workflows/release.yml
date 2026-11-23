@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release tag / version (e.g. v0.12.0)"
-        required: true
+        description: "Optional version tag to verify against Cargo.toml (defaults to v<Cargo.toml version>; NEVER publishes)"
+        required: false
         type: string
   push:
     tags:
@@ -16,44 +16,114 @@ permissions:
 
 env:
   CARGO_BUILD_JOBS: 2
+  SYFT_VERSION: v1.57.2
+  SYFT_LINUX_AMD64_SHA256: ad92bd3ec1b94a3df01d4d0aec199afa9c42b72e86da436ff5f837914d32706b
+  SYFT_CHECKSUMS_SHA256: 73e421a829285be9a2af92d56ff93d8287c34f0515eaac7c2081f06031cab4bd
 
 jobs:
+  verify-identity:
+    name: Verify Release Identity
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      pkg_version: ${{ steps.check.outputs.pkg_version }}
+      release_tag: ${{ steps.check.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workspace version and requested tag
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG_VERSION="$(python3 -c '
+          import tomllib
+          with open("Cargo.toml", "rb") as f:
+              data = tomllib.load(f)
+          print(data["workspace"]["package"]["version"])
+          ')"
+          EXPECTED_TAG="v${PKG_VERSION}"
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            REQUESTED="${GITHUB_REF_NAME}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            REQUESTED="${{ inputs.version }}"
+          else
+            REQUESTED="${EXPECTED_TAG}"
+          fi
+
+          if ! [[ "${REQUESTED}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "ERROR: Invalid SemVer release tag format: '${REQUESTED}'" >&2
+            exit 1
+          fi
+
+          if [ "${REQUESTED}" != "${EXPECTED_TAG}" ]; then
+            echo "ERROR: Requested version '${REQUESTED}' does not match Cargo.toml workspace version '${EXPECTED_TAG}'" >&2
+            exit 1
+          fi
+
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_type }}" = "tag" ]; then
+            if ! grep -q "## \[${PKG_VERSION}\]" CHANGELOG.md; then
+              echo "ERROR: CHANGELOG.md is missing section header '## [${PKG_VERSION}]'" >&2
+              exit 1
+            fi
+          fi
+
+          echo "pkg_version=${PKG_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "release_tag=${REQUESTED}" >> "${GITHUB_OUTPUT}"
+          echo "Identity verified: tag=${REQUESTED} pkg=${PKG_VERSION} sha=${GITHUB_SHA}"
+
   build-artifacts:
-    name: Build (${{ matrix.target }})
+    name: Build & Verify (${{ matrix.target }})
+    needs: verify-identity
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            use_cross: false
+            expected_arch: x86_64
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            use_cross: false
-          - os: macos-14
+            expected_arch: aarch64
+          - os: macos-15
             target: aarch64-apple-darwin
-            use_cross: false
-          - os: macos-13
+            expected_arch: arm64
+          - os: macos-15-intel
             target: x86_64-apple-darwin
-            use_cross: false
+            expected_arch: x86_64
     steps:
       - uses: actions/checkout@v4
+      - name: Verify runner architecture matches target
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_ARCH="$(uname -m)"
+          echo "Runner uname -m: ${ACTUAL_ARCH} (expected ${{ matrix.expected_arch }} for ${{ matrix.target }})"
+          if [ "${ACTUAL_ARCH}" != "${{ matrix.expected_arch }}" ]; then
+            echo "ERROR: Runner architecture '${ACTUAL_ARCH}' does not match expected '${{ matrix.expected_arch }}'" >&2
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - name: Build release binary (--locked)
-        run: |
-          cargo build --release --locked --target "${{ matrix.target }}" -p parqonaut-cli --bin prqnt
-      - name: Package archive & clean-environment smoke test
         shell: bash
         run: |
           set -euo pipefail
-          VER="${GITHUB_REF_NAME}"
-          if [ -n "${{ inputs.version }}" ]; then
-            VER="${{ inputs.version }}"
-          fi
+          cargo build --release --locked --target "${{ matrix.target }}" -p parqonaut-cli --bin prqnt
+      - name: Package archive & checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="${{ needs.verify-identity.outputs.release_tag }}"
+          PKG="${{ needs.verify-identity.outputs.pkg_version }}"
           STAGE="dist/parqonaut-${VER}-${{ matrix.target }}"
           mkdir -p "${STAGE}" dist
           cp "target/${{ matrix.target }}/release/prqnt" "${STAGE}/prqnt"
@@ -61,8 +131,13 @@ jobs:
           cat > "${STAGE}/BUILD_METADATA.json" <<EOF
           {
             "version": "${VER}",
+            "package_version": "${PKG}",
             "target": "${{ matrix.target }}",
+            "runner_os": "${{ runner.os }}",
+            "runner_arch": "${{ runner.arch }}",
             "git_sha": "${GITHUB_SHA}",
+            "workflow_ref": "${GITHUB_WORKFLOW_REF}",
+            "run_id": "${GITHUB_RUN_ID}",
             "locked": true
           }
           EOF
@@ -76,67 +151,184 @@ jobs:
               shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
             fi
           )
-
-          # Clean-environment verification in an isolated directory without cargo/node/repo env.
-          CLEAN_DIR="$(mktemp -d)"
-          tar -C "${CLEAN_DIR}" -xzf "dist/${ARCHIVE}"
-          BIN="${CLEAN_DIR}/parqonaut-${VER}-${{ matrix.target }}/prqnt"
-          "${BIN}" --version
-          "${BIN}" --help >/dev/null
-          "${BIN}" plugin list
-          "${BIN}" tui --help >/dev/null
-          "${BIN}" serve --print-openapi >/dev/null
-          printf "id,region,val\n1,us,10\n2,eu,20\n" > "${CLEAN_DIR}/in.csv"
-          "${BIN}" convert "${CLEAN_DIR}/in.csv" -o "${CLEAN_DIR}/out.parquet"
-          "${BIN}" --json scan "${CLEAN_DIR}/out.parquet" >/dev/null
-          rm -rf "${CLEAN_DIR}"
+      - name: Run isolated 12-step clean-environment verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="${{ needs.verify-identity.outputs.release_tag }}"
+          PKG="${{ needs.verify-identity.outputs.pkg_version }}"
+          ARCHIVE="dist/parqonaut-${VER}-${{ matrix.target }}.tar.gz"
+          bash scripts/release/verify-artifact.sh "${ARCHIVE}" "${VER}" "${PKG}" "${{ matrix.target }}" "${GITHUB_SHA}"
+      - name: Attest platform archive build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/parqonaut-*.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
+          retention-days: 14
           path: |
             dist/parqonaut-*.tar.gz
             dist/parqonaut-*.tar.gz.sha256
 
-  package-sbom-and-release:
-    name: Assemble Release & Attestations
-    needs: build-artifacts
+  assemble-and-verify:
+    name: Assemble SBOM, Checksums & Provenance
+    needs: [verify-identity, build-artifacts]
     runs-on: ubuntu-24.04
-    environment: release
     permissions:
-      contents: write
+      contents: read
       id-token: write
       attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
-      - name: Generate Cargo metadata SBOM & combined SHA256SUMS
+      - name: Verify all 4 target archives & identities
+        shell: bash
         run: |
           set -euo pipefail
-          cargo metadata --locked --format-version 1 > dist/cargo-metadata-sbom.json
+          VER="${{ needs.verify-identity.outputs.release_tag }}"
+          PKG="${{ needs.verify-identity.outputs.pkg_version }}"
+          EXPECTED_TARGETS=(
+            x86_64-unknown-linux-gnu
+            aarch64-unknown-linux-gnu
+            aarch64-apple-darwin
+            x86_64-apple-darwin
+          )
+          for t in "${EXPECTED_TARGETS[@]}"; do
+            ARCH="dist/parqonaut-${VER}-${t}.tar.gz"
+            [ -f "${ARCH}" ] || { echo "Missing ${ARCH}" >&2; exit 1; }
+            [ -f "${ARCH}.sha256" ] || { echo "Missing ${ARCH}.sha256" >&2; exit 1; }
+            (cd dist && sha256sum -c "$(basename "${ARCH}").sha256")
+            META="$(tar -xOzf "${ARCH}" "parqonaut-${VER}-${t}/BUILD_METADATA.json")"
+            python3 - "${META}" "${VER}" "${PKG}" "${t}" "${GITHUB_SHA}" <<'PY'
+          import json, sys
+          m = json.loads(sys.argv[1])
+          ver, pkg, target, sha = sys.argv[2:6]
+          assert m["version"] == ver
+          assert m["package_version"] == pkg
+          assert m["target"] == target
+          assert m["git_sha"] == sha
+          assert m["locked"] is True
+          PY
+          done
+      - name: Install Syft (pinned SHA-256 verified archive) and generate CycloneDX SBOM + Cargo metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="${{ needs.verify-identity.outputs.release_tag }}"
+          PKG="${{ needs.verify-identity.outputs.pkg_version }}"
+          SYFT_VER_NO_V="${SYFT_VERSION#v}"
+          SYFT_TAR="syft_${SYFT_VER_NO_V}_linux_amd64.tar.gz"
+          SYFT_SUMS="syft_${SYFT_VER_NO_V}_checksums.txt"
+          SYFT_TMP="${RUNNER_TEMP}/syft-dl"
+          mkdir -p "${RUNNER_TEMP}/bin" "${SYFT_TMP}"
+          curl -fsSL --retry 3 "https://github.com/anchore/syft/releases/download/${SYFT_VERSION}/${SYFT_TAR}" -o "${SYFT_TMP}/${SYFT_TAR}"
+          curl -fsSL --retry 3 "https://github.com/anchore/syft/releases/download/${SYFT_VERSION}/${SYFT_SUMS}" -o "${SYFT_TMP}/${SYFT_SUMS}"
+          (
+            cd "${SYFT_TMP}"
+            echo "${SYFT_CHECKSUMS_SHA256}  ${SYFT_SUMS}" | sha256sum -c -
+            echo "${SYFT_LINUX_AMD64_SHA256}  ${SYFT_TAR}" | sha256sum -c -
+            grep "  ${SYFT_TAR}\$" "${SYFT_SUMS}" | sha256sum -c -
+            tar -xzf "${SYFT_TAR}" syft
+            install -m 0755 syft "${RUNNER_TEMP}/bin/syft"
+          )
+          rm -rf "${SYFT_TMP}"
+          echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
+          "${RUNNER_TEMP}/bin/syft" version
+          cargo metadata --locked --format-version 1 > "dist/cargo-metadata-${VER}.json"
+          "${RUNNER_TEMP}/bin/syft" "file:Cargo.lock" \
+            --source-name parqonaut \
+            --source-version "${PKG}" \
+            -o "cyclonedx-json@1.6=dist/raw-sbom.cdx.json"
+          uvx --with 'cyclonedx-python-lib[json-validation]' \
+            python scripts/release/build-and-validate-sbom.py \
+            dist/raw-sbom.cdx.json \
+            "dist/parqonaut-${VER}.cdx.json" \
+            "${VER}" \
+            dist
+          rm -f dist/raw-sbom.cdx.json
+      - name: Build & verify unified SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="${{ needs.verify-identity.outputs.release_tag }}"
           (
             cd dist
-            cat *.sha256 > SHA256SUMS
-            sha256sum cargo-metadata-sbom.json >> SHA256SUMS
+            cat parqonaut-"${VER}"-*.tar.gz.sha256 > SHA256SUMS
+            sha256sum "parqonaut-${VER}.cdx.json" "cargo-metadata-${VER}.json" >> SHA256SUMS
             sha256sum -c SHA256SUMS
           )
-      - name: Generate build provenance attestation
+      - name: Attest release checksums and CycloneDX SBOM
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
-            dist/*.tar.gz
             dist/SHA256SUMS
-      - name: Publish draft GitHub Release (tag pushes only)
-        if: startsWith(github.ref, 'refs/tags/v')
+            dist/parqonaut-*.cdx.json
+      - name: Upload verified release bundle (temporary artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle-${{ needs.verify-identity.outputs.release_tag }}
+          retention-days: 14
+          path: |
+            dist/parqonaut-*.tar.gz
+            dist/parqonaut-*.tar.gz.sha256
+            dist/parqonaut-*.cdx.json
+            dist/cargo-metadata-*.json
+            dist/SHA256SUMS
+
+  publish-draft-release:
+    name: Publish Draft GitHub Release (Tag Push Only)
+    # Explicitly requires an actual tag push event; manual workflow_dispatch runs can never publish.
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    needs: [verify-identity, assemble-and-verify]
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-bundle-${{ needs.verify-identity.outputs.release_tag }}
+          path: dist
+      - name: Re-verify bundle checksums and release notes identity
+        id: notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="${{ needs.verify-identity.outputs.release_tag }}"
+          if [ "${GITHUB_REF_NAME}" != "${VER}" ]; then
+            echo "ERROR: Tag '${GITHUB_REF_NAME}' != verified version '${VER}'" >&2
+            exit 1
+          fi
+          (cd dist && sha256sum -c SHA256SUMS)
+          NOTES_FILE="docs/history/${VER}/release-notes.md"
+          if [ -f "${NOTES_FILE}" ]; then
+            if ! grep -q "${VER}" "${NOTES_FILE}"; then
+              echo "ERROR: ${NOTES_FILE} does not reference ${VER}" >&2
+              exit 1
+            fi
+            echo "notes_file=${NOTES_FILE}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "notes_file=" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: Publish draft GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          generate_release_notes: true
+          prerelease: ${{ contains(needs.verify-identity.outputs.release_tag, '-') }}
+          body_path: ${{ steps.notes.outputs.notes_file }}
+          generate_release_notes: ${{ steps.notes.outputs.notes_file == '' }}
           files: |
-            dist/*.tar.gz
-            dist/*.sha256
+            dist/parqonaut-*.tar.gz
+            dist/parqonaut-*.tar.gz.sha256
+            dist/parqonaut-*.cdx.json
+            dist/cargo-metadata-*.json
             dist/SHA256SUMS
-            dist/cargo-metadata-sbom.json

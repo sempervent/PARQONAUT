@@ -455,6 +455,7 @@ fn app_error_to_job_failure_label(e: &AppError) -> &'static str {
         AppError::RunNotFound => "store_error",
         AppError::ScanFailed(_) => "scan_failed",
         AppError::Store(_) => "store_error",
+        AppError::ServiceUnavailable(_) => "store_error",
         AppError::Internal(_) => "internal_error",
         AppError::Conflict(_) => "conflict",
         AppError::JobNotFound => "internal_error",

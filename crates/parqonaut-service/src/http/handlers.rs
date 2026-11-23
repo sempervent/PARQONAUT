@@ -43,7 +43,11 @@ pub async fn health_live() -> Json<HealthResponse> {
 }
 
 pub async fn health_ready(State(state): State<AppState>) -> Result<Json<HealthResponse>, AppError> {
-    state.service.store().ping().await?;
+    if let Err(err) = state.service.store().ping().await {
+        let raw = err.to_string();
+        let _ = AppError::from(err);
+        return Err(AppError::ServiceUnavailable(raw));
+    }
     metrics::gauge!("parqonaut_workers_active").set(1.0);
     Ok(Json(HealthResponse { status: "ready".into() }))
 }

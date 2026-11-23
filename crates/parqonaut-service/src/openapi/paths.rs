@@ -53,7 +53,7 @@ pub fn get_health_live() {}
     tag = "health",
     responses(
         (status = 200, description = "Readiness probe (store connectivity verified)", body = HealthResponse),
-        (status = 500, description = "Store dependency unavailable", body = ErrorBody)
+        (status = 503, description = "Store dependency unavailable", body = ErrorBody)
     )
 )]
 pub fn get_health_ready() {}

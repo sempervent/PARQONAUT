@@ -81,7 +81,7 @@ impl SqliteScanStore {
         plaintext: &str,
         role: AuthRole,
     ) -> Result<(), StoreError> {
-        let mut tx = self.pool().begin().await?;
+        let mut tx = self.begin_immediate().await?;
         sqlx::query("DELETE FROM auth_tokens WHERE label = 'bootstrap'").execute(&mut *tx).await?;
         let id = AuthTokenId::new();
         let hash = hash_bearer_token(plaintext);
@@ -171,7 +171,7 @@ impl SqliteScanStore {
         &self,
         old_id: AuthTokenId,
     ) -> Result<(AuthTokenId, String), StoreError> {
-        let mut tx = self.pool().begin().await?;
+        let mut tx = self.begin_immediate().await?;
         let old = sqlx::query_as::<_, AuthTokenListRow>(
             r#"SELECT token_id, label, role, created_at, disabled_at, note, token_prefix, last_used_at, replaced_by_token_id
                FROM auth_tokens WHERE token_id = ? AND disabled_at IS NULL"#,

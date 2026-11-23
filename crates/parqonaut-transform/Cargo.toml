@@ -24,7 +24,7 @@ num_cpus = "1.16"
 uuid = { version = "1.10", features = ["v4"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-indicatif = "0.17"
+indicatif = "0.18"
 rayon = "1.8"
 nom = "7.1"
 parqonaut-workflow = { path = "../parqonaut-workflow" }

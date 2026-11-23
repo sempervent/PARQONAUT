@@ -29,12 +29,17 @@ Planned capability sequence before **v1.0.0**. Each item must ship as **implemen
 - Shared operator client (`parqonaut-client`), interactive TUI (`prqnt tui`), and bundled Axum web dashboard (`/ui/`)
 - Live jobs, findings, explicit repair review & authorization, batch monitoring, and read-only plugin catalog
 
-## v0.12.0 — 1.0 hardening (current)
+## v0.12.0 — 1.0 hardening (shipped on `main`, commit `e6e6940`)
 
 - Byte-oriented incremental UTF-8 SSE framing, atomic job/event transactions, deterministic idempotency hashing & bounded cleanup, graceful worker drain & event flush
 - Historical SQLite/Postgres upgrade validation (`v0.8`/`v0.9`/`v0.10`/`v0.11`) and WAL `VACUUM INTO` / `pg_dump` backup-restore runbooks
 - Public CLI/OpenAPI/durable-format compatibility policy, Criterion + RSS baseline (`parqonaut-bench`), `proptest` suites, 9 fuzz targets (`fuzz/` + CI smoke), and Arrow IPC length-bounds hardening
 - Committed root `Cargo.lock`, `--locked` CI gates, `deny.toml`, Dependabot, binary release workflow, `Dockerfile`/`compose.yaml`, and `docs/operations.md`
+
+## v1.0.0-rc.1 — Release candidate qualification (current)
+
+- 4-platform release validation (`ubuntu-24.04`, `ubuntu-24.04-arm`, `macos-15`, `macos-15-intel`) with CycloneDX 1.6 SBOM, `SHA256SUMS`, and build provenance attestations
+- CI-enforced `cargo audit` + `cargo deny check`, Python `pip-audit`, sustained Linux `x86_64` libFuzzer qualification, Docker + PostgreSQL Compose + RustFS S3 verification, contract freeze, operating envelopes, and 12-scenario failure-recovery drills
 
 ## v1.0.0 — Stable PARQONAUT
 

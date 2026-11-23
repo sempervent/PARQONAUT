@@ -38,7 +38,7 @@ impl ParquetWriter {
 
         let props = WriterProperties::builder()
             .set_compression(compression)
-            .set_max_row_group_size(128 * 1024 * 1024)
+            .set_max_row_group_bytes(Some(128 * 1024 * 1024))
             .build();
 
         let file = File::create(path)?;

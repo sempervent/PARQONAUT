@@ -3,15 +3,23 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: parqonaut:0.12.0
+    image: parqonaut:1.0.0-rc.1
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${PARQONAUT_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     environment:
-      # Supply via .env or secret manager in production; never bake into the image.
+      # Supply via .env or secret manager; never bake credentials into the image.
       PRQNT_BOOTSTRAP_ADMIN_TOKEN: "${PRQNT_BOOTSTRAP_ADMIN_TOKEN:-}"
-      PARQONAUT_ALLOWED_LOCAL_ROOTS: "/var/lib/parqonaut/data"
+      PARQONAUT_ALLOWED_LOCAL_ROOTS: "/var/lib/parqonaut/data:/var/lib/parqonaut/out"
+      # Set explicitly (or use compose.postgres.yaml) to connect to PostgreSQL instead of SQLite:
+      # postgres://<user>:<password>@postgres:5432/<db>
+      PARQONAUT_DATABASE_URL: "${PARQONAUT_DATABASE_URL:-}"
     volumes:
       - parqonaut_state:/var/lib/parqonaut/state
+      - parqonaut_out:/var/lib/parqonaut/out
       - ./data:/var/lib/parqonaut/data:ro
     read_only: true
     tmpfs:
@@ -28,17 +36,20 @@ services:
     image: postgres:16
     profiles: ["postgres"]
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "${PARQONAUT_PG_PASSWORD:-parqonaut_dev}"
-      POSTGRES_DB: parqonaut
+      POSTGRES_USER: "${PARQONAUT_PG_USER:-parqonaut}"
+      # Must be supplied explicitly via environment / .env when using --profile postgres.
+      POSTGRES_PASSWORD: "${PARQONAUT_PG_PASSWORD:-}"
+      POSTGRES_DB: "${PARQONAUT_PG_DB:-parqonaut}"
     volumes:
       - parqonaut_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d parqonaut"]
+      test: ["CMD-SHELL", "pg_isready -U ${PARQONAUT_PG_USER:-parqonaut} -d ${PARQONAUT_PG_DB:-parqonaut}"]
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout: 15s
+      retries: 20
+      start_period: 30s
 
 volumes:
   parqonaut_state:
+  parqonaut_out:
   parqonaut_pg_data:

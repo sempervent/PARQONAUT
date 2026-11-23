@@ -13,7 +13,7 @@ parqonaut-workflow = { path = "../parqonaut-workflow" }
 parqonaut-service = { path = "../parqonaut-service" }
 parqonaut-repair = { path = "../parqonaut-repair" }
 parqonaut-orchestrator = { path = "../parqonaut-orchestrator" }
-ratatui = "0.29"
+ratatui = "0.30"
 crossterm = "0.28"
 tokio.workspace = true
 uuid.workspace = true

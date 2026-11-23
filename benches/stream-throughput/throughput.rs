@@ -158,7 +158,8 @@ fn bench_repair_and_store_events(c: &mut Criterion) {
         b.iter(|| {
             let src = DatasetLocation::parse(&fx.small_files_dir.to_string_lossy()).unwrap();
             let out_dir = tempfile::tempdir().unwrap();
-            let out_loc = DatasetLocation::parse(&out_dir.path().to_string_lossy()).unwrap();
+            let out_path = out_dir.path().join("repaired");
+            let out_loc = DatasetLocation::parse(&out_path.to_string_lossy()).unwrap();
             rt.block_on(async {
                 let policy = EffectivePolicy::default();
                 let _dx =

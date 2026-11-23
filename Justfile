@@ -108,6 +108,9 @@ api-test:
     cargo test -p parqonaut-store --test job_events_and_idempotency
     scripts/api-test/smoke.sh --start
 
+postgres-compose-test:
+    bash scripts/postgres-compose-test.sh
+
 console-demo:
     bash scripts/console-demo.sh
 

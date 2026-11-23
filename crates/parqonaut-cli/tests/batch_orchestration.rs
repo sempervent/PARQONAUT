@@ -491,3 +491,63 @@ fn batch_plan_deterministic_serialization() {
         );
     }
 }
+
+#[test]
+#[serial]
+fn batch_verify_handles_file_uri_paths_without_stripping() {
+    generate_fixtures();
+    let tmp = TempDir::new().unwrap();
+    let out_root = tmp.path().join("repaired");
+    let src = shipwreck_root().join("02-safe-repairs");
+    let cfg = tmp.path().join("batch.toml");
+    fs::write(
+        &cfg,
+        format!(
+            "schema_version = 1\n\n[batch]\nname = \"file-uri-verify\"\noutput_root = \"{}\"\n\n[[datasets]]\nid = \"safe\"\npath = \"{}\"\n",
+            out_root.display(),
+            src
+        ),
+    )
+    .unwrap();
+
+    let plan_path = tmp.path().join("batch-plan.json");
+    run_batch(&[
+        "batch",
+        "plan",
+        "--config",
+        cfg.to_str().unwrap(),
+        "--output",
+        plan_path.to_str().unwrap(),
+    ])
+    .success();
+
+    let plan: BatchPlan = serde_json::from_str(&fs::read_to_string(&plan_path).unwrap()).unwrap();
+    assert!(plan.datasets[0].source_path.starts_with("file://"));
+    assert!(plan.datasets[0].output_path.starts_with("file://"));
+
+    run_batch(&["batch", "repair", "--plan", plan_path.to_str().unwrap()]).success();
+
+    let runs_dir = out_root.join(".parqonaut").join("runs");
+    let run_dir = fs::read_dir(&runs_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| p.is_dir())
+        .expect("run directory");
+
+    let verify_out = Command::new(cargo_bin_cmd!("prqnt").get_program())
+        .args(["--json", "batch", "verify", "--run-dir", run_dir.to_str().unwrap()])
+        .current_dir(repo_root().as_std_path())
+        .output()
+        .unwrap();
+    assert!(
+        verify_out.status.success(),
+        "batch verify failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&verify_out.stdout),
+        String::from_utf8_lossy(&verify_out.stderr)
+    );
+    let parsed: Value = serde_json::from_slice(&verify_out.stdout).unwrap();
+    assert_eq!(parsed["ok"], true, "parsed={parsed}");
+    assert_eq!(parsed["passed"], 1, "parsed={parsed}");
+    assert_eq!(parsed["failed"], 0, "parsed={parsed}");
+}

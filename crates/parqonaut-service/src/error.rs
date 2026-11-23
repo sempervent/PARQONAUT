@@ -24,6 +24,7 @@ pub enum ErrorCode {
     ScanFailed,
     StoreError,
     InternalError,
+    ServiceUnavailable,
     Conflict,
     Unauthorized,
     Forbidden,
@@ -76,6 +77,8 @@ pub enum AppError {
     Store(String),
     #[error("internal error: {0}")]
     Internal(String),
+    #[error("service unavailable: {0}")]
+    ServiceUnavailable(String),
     #[error("conflict: {0}")]
     Conflict(String),
     #[error("{0}")]
@@ -110,6 +113,7 @@ impl AppError {
             AppError::ScanFailed(_) => ErrorCode::ScanFailed,
             AppError::Store(_) => ErrorCode::StoreError,
             AppError::Internal(_) => ErrorCode::InternalError,
+            AppError::ServiceUnavailable(_) => ErrorCode::ServiceUnavailable,
             AppError::Conflict(_) => ErrorCode::Conflict,
             AppError::Unauthorized(_) => ErrorCode::Unauthorized,
             AppError::Forbidden(_) => ErrorCode::Forbidden,
@@ -134,6 +138,7 @@ impl AppError {
             AppError::ScanFailed(_) => StatusCode::UNPROCESSABLE_ENTITY,
             AppError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
@@ -173,6 +178,13 @@ impl IntoResponse for AppError {
             AppError::Internal(raw) => {
                 tracing::error!(error = %raw, "internal server error returned via HTTP API");
                 "internal server error".to_string()
+            }
+            AppError::ServiceUnavailable(raw) => {
+                tracing::warn!(
+                    error = %sanitize_plugin_message(raw),
+                    "readiness probe failed: store dependency unavailable"
+                );
+                "store dependency unavailable".to_string()
             }
             AppError::ScanFailed(raw) => {
                 format!("scan failed: {}", sanitize_plugin_message(raw))

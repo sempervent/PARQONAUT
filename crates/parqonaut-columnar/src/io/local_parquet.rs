@@ -133,7 +133,7 @@ impl BatchSink for LocalParquetBatchSink {
         let file = File::create(&temp_path)?;
         let props = WriterProperties::builder()
             .set_compression(self.options.compression)
-            .set_max_row_group_size(self.options.max_row_group_size_bytes)
+            .set_max_row_group_bytes(Some(self.options.max_row_group_size_bytes.max(1)))
             .build();
         let mut writer = ArrowWriter::try_new(BufWriter::new(file), schema.clone(), Some(props))?;
 

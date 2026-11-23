@@ -145,12 +145,16 @@ pub async fn run_repair(
 
 pub async fn run_verify(
     before: String,
-    after: PathBuf,
+    after: String,
     manifest: Option<PathBuf>,
     json: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let before_location = parse_dataset_location(&before)?;
-    let after_root = to_utf8(after)?;
+    let after_location = parse_dataset_location(&after)?;
+    let after_root = camino::Utf8PathBuf::from(match &after_location {
+        parqonaut_storage::location::DatasetLocation::Local(l) => l.path.to_string(),
+        parqonaut_storage::location::DatasetLocation::S3(s) => s.display_uri(),
+    });
     let manifest_path = manifest.map(to_utf8).transpose()?;
     let app = ParqonautApp::cli();
     let report = app

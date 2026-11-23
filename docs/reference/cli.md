@@ -221,7 +221,7 @@ Usage: prqnt verify [OPTIONS] <BEFORE> <AFTER>
 
 Arguments:
   <BEFORE>  Before dataset local path or s3:// URI
-  <AFTER>   
+  <AFTER>   After dataset local path or s3:// URI
 
 Options:
       --json                 Emit JSON where supported
@@ -362,7 +362,7 @@ Usage: prqnt serve [OPTIONS]
 Options:
       --json                   Emit JSON where supported
       --listen <LISTEN>        Listen address (default loopback-only) [default: 127.0.0.1:8080]
-      --database <DATABASE>    SQLite or Postgres database URL
+      --database <DATABASE>    SQLite or Postgres database URL [env: PARQONAUT_DATABASE_URL=]
       --state-dir <STATE_DIR>  Application state directory (database + artifacts)
       --workers <WORKERS>      In-process async job workers [default: 2]
       --config <CONFIG>        Optional TOML config (server + storage policy)

@@ -9,8 +9,10 @@ use parqonaut_types::{
     ScanSummary, TargetIdentity,
 };
 use sha2::{Digest, Sha256};
-use sqlx::postgres::{PgPoolOptions, PgRow};
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgRow};
 use sqlx::{PgPool, Row};
+use std::fmt;
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::error::StoreError;
@@ -22,6 +24,59 @@ use crate::models::{
     RunPublicMeta, ScanJobRow, StaleRecoveryStats, StoredAssetRow, StoredFindingRow,
 };
 
+/// Structured PostgreSQL connection parameters (avoids URI interpolation for special-character passwords).
+#[derive(Clone, PartialEq, Eq)]
+pub struct PostgresConnectConfig {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub database: String,
+}
+
+impl fmt::Debug for PostgresConnectConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PostgresConnectConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .field("database", &self.database)
+            .finish()
+    }
+}
+
+impl PostgresConnectConfig {
+    pub fn to_connect_options(&self) -> PgConnectOptions {
+        PgConnectOptions::new()
+            .host(&self.host)
+            .port(self.port)
+            .username(&self.username)
+            .password(&self.password)
+            .database(&self.database)
+    }
+}
+
+fn scrub_secret(msg: String, secret: &str) -> String {
+    let mut out = if secret.is_empty() { msg } else { msg.replace(secret, "<redacted>") };
+    for scheme in ["postgres://", "postgresql://"] {
+        let mut cursor = 0;
+        while cursor < out.len() {
+            let Some(rel_start) = out[cursor..].find(scheme) else {
+                break;
+            };
+            let cred_start = cursor + rel_start + scheme.len();
+            let Some(rel_at) = out[cred_start..].find('@') else {
+                break;
+            };
+            let cred_end = cred_start + rel_at;
+            out.replace_range(cred_start..cred_end, "<redacted>");
+            cursor = cred_start + "<redacted>".len() + 1;
+        }
+    }
+    out
+}
+
 /// Postgres persistence for scan runs.
 #[derive(Debug, Clone)]
 pub struct PostgresScanStore {
@@ -31,7 +86,49 @@ pub struct PostgresScanStore {
 impl PostgresScanStore {
     /// Opens Postgres, applies migrations from `migrations/postgres`, and returns a pool-backed store.
     pub async fn connect(database_url: impl AsRef<str>) -> Result<Self, StoreError> {
-        let pool = PgPoolOptions::new().max_connections(10).connect(database_url.as_ref()).await?;
+        Self::connect_with_password_override(database_url, None).await
+    }
+
+    /// Opens Postgres from a URL, optionally applying an unencoded password directly to `PgConnectOptions`.
+    pub async fn connect_with_password_override(
+        database_url: impl AsRef<str>,
+        password: Option<&str>,
+    ) -> Result<Self, StoreError> {
+        let raw = database_url.as_ref();
+        let mut opts = PgConnectOptions::from_str(raw).map_err(|e| {
+            let mut msg = e.to_string();
+            if let Some(pw) = password {
+                msg = scrub_secret(msg, pw);
+            }
+            StoreError::AuthToken(format!("invalid postgres connection configuration: {msg}"))
+        })?;
+        if let Some(pw) = password.filter(|p| !p.is_empty()) {
+            opts = opts.password(pw);
+        }
+        Self::connect_with_options(opts, password).await
+    }
+
+    /// Opens Postgres from discrete connection parameters without URI password encoding.
+    pub async fn connect_parts(cfg: &PostgresConnectConfig) -> Result<Self, StoreError> {
+        Self::connect_with_options(cfg.to_connect_options(), Some(&cfg.password)).await
+    }
+
+    async fn connect_with_options(
+        opts: PgConnectOptions,
+        secret: Option<&str>,
+    ) -> Result<Self, StoreError> {
+        let pool =
+            PgPoolOptions::new().max_connections(10).connect_with(opts).await.map_err(|e| {
+                if let Some(pw) = secret {
+                    let scrubbed = scrub_secret(e.to_string(), pw);
+                    if scrubbed != e.to_string() {
+                        return StoreError::AuthToken(format!(
+                            "postgres connection failed: {scrubbed}"
+                        ));
+                    }
+                }
+                StoreError::Sql(e)
+            })?;
         sqlx::migrate!("./migrations/postgres").run(&pool).await?;
         Ok(Self { pool })
     }
@@ -975,5 +1072,38 @@ fn parse_inspection_status_pg(s: &str) -> Result<InspectionStatus, StoreError> {
         "failed" => Ok(InspectionStatus::Failed),
         "skipped" => Ok(InspectionStatus::Skipped),
         _ => Err(StoreError::ReportValidation(format!("unknown inspection_status {s}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn postgres_connect_config_redacts_password_in_debug_and_preserves_special_chars() {
+        let special_pw = "p@ss:w/o#rd?100%abc";
+        let cfg = PostgresConnectConfig {
+            host: "postgres".into(),
+            port: 5432,
+            username: "parqonaut".into(),
+            password: special_pw.into(),
+            database: "parqonaut".into(),
+        };
+        let dbg = format!("{cfg:?}");
+        assert!(!dbg.contains(special_pw), "Debug must redact password");
+        assert!(dbg.contains("<redacted>"));
+
+        let opts = cfg.to_connect_options();
+        assert_eq!(opts.get_host(), "postgres");
+        assert_eq!(opts.get_port(), 5432);
+        assert_eq!(opts.get_username(), "parqonaut");
+        assert_eq!(opts.get_database(), Some("parqonaut"));
+
+        let scrubbed = scrub_secret(
+            format!("connect failed for postgres://parqonaut:{special_pw}@postgres:5432/parqonaut"),
+            special_pw,
+        );
+        assert!(!scrubbed.contains(special_pw));
+        assert!(!scrubbed.contains("parqonaut:"));
     }
 }

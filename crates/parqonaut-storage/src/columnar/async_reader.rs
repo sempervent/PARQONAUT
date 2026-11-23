@@ -42,7 +42,7 @@ async fn load_metadata<B: StorageBackend + ?Sized>(
     let trailer: [u8; 8] = footer.footer[footer.footer.len() - 8..].try_into().map_err(|_| {
         StorageError::InvalidLocation { message: "invalid Parquet footer trailer".into() }
     })?;
-    let metadata_len = ParquetMetaDataReader::decode_footer_tail(&trailer)
+    let metadata_len = parquet::file::metadata::FooterTail::try_new(&trailer)
         .map_err(|e| StorageError::InvalidLocation {
             message: format!("Parquet footer decode: {e}"),
         })?
@@ -65,13 +65,13 @@ async fn load_metadata<B: StorageBackend + ?Sized>(
 impl<B: StorageBackend + ?Sized> AsyncFileReader for StorageAsyncFileReader<B> {
     fn get_bytes(
         &mut self,
-        range: Range<usize>,
+        range: Range<u64>,
     ) -> futures::future::BoxFuture<'_, ParquetResult<Bytes>> {
         if range.end <= range.start {
             return async move { Ok(Bytes::new()) }.boxed();
         }
-        let start = range.start as u64;
-        let end = range.end.saturating_sub(1) as u64;
+        let start = range.start;
+        let end = range.end.saturating_sub(1);
         let backend = Arc::clone(&self.backend);
         let object = self.object.clone();
         async move {
@@ -84,9 +84,10 @@ impl<B: StorageBackend + ?Sized> AsyncFileReader for StorageAsyncFileReader<B> {
         .boxed()
     }
 
-    fn get_metadata(
-        &mut self,
-    ) -> futures::future::BoxFuture<'_, ParquetResult<Arc<ParquetMetaData>>> {
+    fn get_metadata<'a>(
+        &'a mut self,
+        _options: Option<&'a parquet::arrow::arrow_reader::ArrowReaderOptions>,
+    ) -> futures::future::BoxFuture<'a, ParquetResult<Arc<ParquetMetaData>>> {
         let metadata = Arc::clone(&self.metadata);
         async move { Ok(metadata) }.boxed()
     }
