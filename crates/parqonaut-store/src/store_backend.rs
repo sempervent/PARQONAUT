@@ -13,7 +13,7 @@ use crate::models::{
     AppendJobEvent, IdempotencyInsertResult, JobCancelOutcome, RunPublicMeta, ScanJobRow,
     StaleRecoveryStats, StoredAssetRow, StoredFindingRow,
 };
-use crate::postgres_store::PostgresScanStore;
+use crate::postgres_store::{PostgresConnectConfig, PostgresScanStore};
 use crate::sqlite_store::SqliteScanStore;
 
 /// Which physical store backs PARQONAUT persistence.
@@ -26,15 +26,30 @@ pub enum StoreBackend {
 impl StoreBackend {
     /// Connects using `PARQONAUT_DATABASE_URL` semantics: `postgres://` / `postgresql://` use Postgres; otherwise SQLite.
     pub async fn connect(database_url: impl AsRef<str>) -> Result<Self, StoreError> {
+        Self::connect_with_password_override(database_url, None).await
+    }
+
+    /// Connects using a database URL plus an optional raw PostgreSQL password override (bypasses URI encoding).
+    pub async fn connect_with_password_override(
+        database_url: impl AsRef<str>,
+        pg_password: Option<&str>,
+    ) -> Result<Self, StoreError> {
         let url = database_url.as_ref().trim();
         if url.is_empty() {
             return Err(StoreError::AuthToken("PARQONAUT_DATABASE_URL is empty".into()));
         }
         if is_postgres_url(url) {
-            Ok(StoreBackend::Postgres(PostgresScanStore::connect(url).await?))
+            Ok(StoreBackend::Postgres(
+                PostgresScanStore::connect_with_password_override(url, pg_password).await?,
+            ))
         } else {
             Ok(StoreBackend::Sqlite(SqliteScanStore::connect(url).await?))
         }
+    }
+
+    /// Connects explicitly to PostgreSQL from structured parameters (never falls back to SQLite).
+    pub async fn connect_postgres_parts(cfg: &PostgresConnectConfig) -> Result<Self, StoreError> {
+        Ok(StoreBackend::Postgres(PostgresScanStore::connect_parts(cfg).await?))
     }
 
     pub async fn persist_scan_run(

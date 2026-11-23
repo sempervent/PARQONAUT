@@ -118,6 +118,22 @@ fn openapi_error_envelope_schemas() {
         code_enum.as_array().expect("ErrorCode enum").iter().any(|v| v == "invalid_json_request"),
         "OpenAPI ErrorCode should list invalid_json_request"
     );
+    assert!(
+        code_enum.as_array().expect("ErrorCode enum").iter().any(|v| v == "service_unavailable"),
+        "OpenAPI ErrorCode should list service_unavailable"
+    );
+    let ready_responses = &openapi_json()["paths"]["/api/v1/health/ready"]["get"]["responses"];
+    assert!(ready_responses.get("200").is_some(), "/api/v1/health/ready should document 200");
+    assert!(
+        ready_responses.get("503").is_some(),
+        "/api/v1/health/ready should document 503 for dependency unavailability"
+    );
+    assert!(
+        ready_responses.get("500").is_none(),
+        "/api/v1/health/ready should use 503 instead of 500 for dependency unavailability"
+    );
+    let live_responses = &openapi_json()["paths"]["/api/v1/health/live"]["get"]["responses"];
+    assert!(live_responses.get("200").is_some(), "/api/v1/health/live should document 200");
 }
 
 #[test]

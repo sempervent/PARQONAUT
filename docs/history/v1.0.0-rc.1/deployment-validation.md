@@ -25,15 +25,15 @@
 
 ## 3. PostgreSQL Docker Compose (`compose.yaml` + `compose.postgres.yaml --profile postgres`)
 
-- **Wiring & Security:** `compose.postgres.yaml` connects `parqonaut` to `postgres` (`condition: service_healthy`) and enforces required `PARQONAUT_PG_PASSWORD` (no weak default).
-- **Live Verification:**
-  - Startup logged `database_backend="postgres"` with **zero** SQLite file created in `/var/lib/parqonaut/state`.
+- **Wiring & Security:** `compose.postgres.yaml` connects `parqonaut` to `postgres` (`condition: service_healthy`), passes discrete `PARQONAUT_PG_HOST`/`PORT`/`USER`/`PASSWORD`/`DB` options without URI string interpolation (so `@ : / # ? %` credentials work verbatim), enforces required `PARQONAUT_PG_PASSWORD` (no weak default), and never falls back to SQLite when PostgreSQL fails.
+- **Live Verification (`scripts/postgres-compose-test.sh` / `just postgres-compose-test`):**
+  - Startup logged `database_backend="postgres"` with **zero** SQLite file created in `/var/lib/parqonaut/state`, verified with both simple (`simplepass123`) and special-character (`p@ss:w/o#rd?100%rc1`) passwords, and verified fail-closed startup (no SQLite fallback) on missing or wrong passwords.
   - Applied all 3 embedded Postgres migrations (`_sqlx_migrations`: `20250415120000`, `20250919140000`, `20261117120000`).
   - Verified auth bootstrap, durable scan job, monotonic event ordering (`[1, 2, 3, 4, 5]`), SSE `after_seq=2` replay (`[3, 4, 5]`), `Idempotency-Key` replay (`202` same `job_id`), and payload mismatch (`409 conflict`).
   - Direct `psql` inspection confirmed `tokens=1, jobs=1, events=5, runs=1, idem_keys=1`.
   - `SIGKILL` crash + restart retained full state in Postgres.
   - `pg_dump --format=custom` -> `createdb parqonaut_restored` -> `pg_restore` restored `jobs=1, events=5`.
-  - Database outage test: stopping `postgres` caused `/api/v1/health/ready` to return `HTTP 500 {"error":{"code":"store_error","message":"internal storage error","details":{}}}` without leaking credentials; restarting `postgres` auto-recovered `/api/v1/health/ready` to `200 ready` and `/api/v1/jobs` without restarting `parqonaut`.
+  - Database outage test: stopping `postgres` kept `/api/v1/health/live` at `200 {"status":"ok"}` while `/api/v1/health/ready` returned `HTTP 503 {"error":{"code":"service_unavailable","message":"store dependency unavailable","details":{}}}` without leaking credentials; restarting `postgres` auto-recovered `/api/v1/health/ready` to `200 ready` and `/api/v1/jobs` without restarting `parqonaut`.
   - Graceful `SIGTERM` (`docker compose ... stop -t 15 parqonaut`) exited with code `0`; logs contained zero secret strings.
 
 ## 4. RustFS S3 & Python Plugin Matrix

@@ -144,7 +144,8 @@ enum Command {
     Verify {
         /// Before dataset local path or s3:// URI
         before: String,
-        after: PathBuf,
+        /// After dataset local path or s3:// URI
+        after: String,
         #[arg(long, help = "Optional execution manifest path")]
         manifest: Option<PathBuf>,
     },

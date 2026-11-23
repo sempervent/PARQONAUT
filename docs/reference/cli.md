@@ -221,7 +221,7 @@ Usage: prqnt verify [OPTIONS] <BEFORE> <AFTER>
 
 Arguments:
   <BEFORE>  Before dataset local path or s3:// URI
-  <AFTER>   
+  <AFTER>   After dataset local path or s3:// URI
 
 Options:
       --json                 Emit JSON where supported

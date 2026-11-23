@@ -583,6 +583,7 @@
           "scan_failed",
           "store_error",
           "internal_error",
+          "service_unavailable",
           "conflict",
           "unauthorized",
           "forbidden",
@@ -3657,7 +3658,7 @@
             },
             "description": "Readiness probe (store connectivity verified)"
           },
-          "500": {
+          "503": {
             "content": {
               "application/json": {
                 "schema": {

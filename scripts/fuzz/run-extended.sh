@@ -89,11 +89,12 @@ for t in "${STANDARD_TARGETS[@]}"; do
   run_target "$t" "$STANDARD_SECS" "standard" || failures=$((failures + 1))
 done
 
-python3 - "$OUT_DIR" "$SEED" "$PRIORITY_SECS" "$STANDARD_SECS" "$RSS_LIMIT_MB" "$TIMEOUT_SECS" <<'PY'
+python3 - "$OUT_DIR" "$SEED" "$PRIORITY_SECS" "$STANDARD_SECS" "$RSS_LIMIT_MB" "$TIMEOUT_SECS" "$FUZZ_DIR" <<'PY'
 import json, pathlib, re, sys
 
 out_dir = pathlib.Path(sys.argv[1])
-seed, prio_s, std_s, rss_mb, timeout_s = sys.argv[2:]
+seed, prio_s, std_s, rss_mb, timeout_s, fuzz_dir_s = sys.argv[2:]
+fuzz_dir = pathlib.Path(fuzz_dir_s)
 logs_dir = out_dir / "logs"
 corpus_dir = out_dir / "corpus"
 art_dir = out_dir / "artifacts"
@@ -144,8 +145,10 @@ for t in targets:
     if cov_matches:
         cov = int(cov_matches[-1][0])
         ft = int(cov_matches[-1][1])
-    corp_count = len(list((corpus_dir / t).glob("*"))) if (corpus_dir / t).exists() else 0
-    art_count = len(list((art_dir / t).glob("*"))) if (art_dir / t).exists() else 0
+    seed_dir = fuzz_dir / "corpus" / t
+    init_count = len([p for p in seed_dir.iterdir() if p.is_file()]) if seed_dir.exists() else 0
+    corp_count = len([p for p in (corpus_dir / t).iterdir() if p.is_file()]) if (corpus_dir / t).exists() else 0
+    art_count = len([p for p in (art_dir / t).iterdir() if p.is_file()]) if (art_dir / t).exists() else 0
     rows.append({
         "target": t,
         "tier": "priority" if t in priority else "standard",
@@ -153,7 +156,9 @@ for t in targets:
         "actual_secs": dur_s,
         "execs": execs,
         "exec_per_sec": exec_s,
+        "initial_corpus_files": init_count,
         "final_corpus_files": corp_count,
+        "corpus_growth": corp_count - init_count,
         "edge_cov": cov,
         "features": ft,
         "peak_rss_mb": rss,
@@ -169,12 +174,12 @@ summary = {
 }
 (out_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
 lines = [
-    "| Target | Tier | Budget (s) | Actual (s) | Executions | Exec/s | Corpus Files | Edge Cov | Features | Peak RSS (MB) | Artifacts | Status |",
-    "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    "| Target | Tier | Budget (s) | Actual (s) | Executions | Exec/s | Initial Corpus | Final Corpus | Growth | Edge Cov | Features | Peak RSS (MB) | Artifacts | Status |",
+    "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
 ]
 for r in rows:
     lines.append(
-        f"| `{r['target']}` | {r['tier']} | {r['budget_secs']} | {r['actual_secs']} | {r['execs']} | {r['exec_per_sec']} | {r['final_corpus_files']} | {r['edge_cov']} | {r['features']} | {r['peak_rss_mb']} | {r['artifacts']} | {r['status']} |"
+        f"| `{r['target']}` | {r['tier']} | {r['budget_secs']} | {r['actual_secs']} | {r['execs']} | {r['exec_per_sec']} | {r['initial_corpus_files']} | {r['final_corpus_files']} | {r['corpus_growth']:+d} | {r['edge_cov']} | {r['features']} | {r['peak_rss_mb']} | {r['artifacts']} | {r['status']} |"
     )
 (out_dir / "summary.md").write_text("\n".join(lines) + "\n")
 print("\n".join(lines))

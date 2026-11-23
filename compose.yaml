@@ -45,8 +45,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PARQONAUT_PG_USER:-parqonaut} -d ${PARQONAUT_PG_DB:-parqonaut}"]
       interval: 5s
-      timeout: 5s
-      retries: 10
+      timeout: 15s
+      retries: 20
+      start_period: 30s
 
 volumes:
   parqonaut_state:

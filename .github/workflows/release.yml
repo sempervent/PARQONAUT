@@ -17,6 +17,8 @@ permissions:
 env:
   CARGO_BUILD_JOBS: 2
   SYFT_VERSION: v1.57.2
+  SYFT_LINUX_AMD64_SHA256: ad92bd3ec1b94a3df01d4d0aec199afa9c42b72e86da436ff5f837914d32706b
+  SYFT_CHECKSUMS_SHA256: 73e421a829285be9a2af92d56ff93d8287c34f0515eaac7c2081f06031cab4bd
 
 jobs:
   verify-identity:
@@ -216,14 +218,28 @@ jobs:
           assert m["locked"] is True
           PY
           done
-      - name: Install Syft (pinned) and generate CycloneDX SBOM + Cargo metadata
+      - name: Install Syft (pinned SHA-256 verified archive) and generate CycloneDX SBOM + Cargo metadata
         shell: bash
         run: |
           set -euo pipefail
           VER="${{ needs.verify-identity.outputs.release_tag }}"
           PKG="${{ needs.verify-identity.outputs.pkg_version }}"
-          mkdir -p "${RUNNER_TEMP}/bin"
-          curl -sSfL "https://raw.githubusercontent.com/anchore/syft/${SYFT_VERSION}/install.sh" | sh -s -- -b "${RUNNER_TEMP}/bin" "${SYFT_VERSION}"
+          SYFT_VER_NO_V="${SYFT_VERSION#v}"
+          SYFT_TAR="syft_${SYFT_VER_NO_V}_linux_amd64.tar.gz"
+          SYFT_SUMS="syft_${SYFT_VER_NO_V}_checksums.txt"
+          SYFT_TMP="${RUNNER_TEMP}/syft-dl"
+          mkdir -p "${RUNNER_TEMP}/bin" "${SYFT_TMP}"
+          curl -fsSL --retry 3 "https://github.com/anchore/syft/releases/download/${SYFT_VERSION}/${SYFT_TAR}" -o "${SYFT_TMP}/${SYFT_TAR}"
+          curl -fsSL --retry 3 "https://github.com/anchore/syft/releases/download/${SYFT_VERSION}/${SYFT_SUMS}" -o "${SYFT_TMP}/${SYFT_SUMS}"
+          (
+            cd "${SYFT_TMP}"
+            echo "${SYFT_CHECKSUMS_SHA256}  ${SYFT_SUMS}" | sha256sum -c -
+            echo "${SYFT_LINUX_AMD64_SHA256}  ${SYFT_TAR}" | sha256sum -c -
+            grep "  ${SYFT_TAR}\$" "${SYFT_SUMS}" | sha256sum -c -
+            tar -xzf "${SYFT_TAR}" syft
+            install -m 0755 syft "${RUNNER_TEMP}/bin/syft"
+          )
+          rm -rf "${SYFT_TMP}"
           echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
           "${RUNNER_TEMP}/bin/syft" version
           cargo metadata --locked --format-version 1 > "dist/cargo-metadata-${VER}.json"
